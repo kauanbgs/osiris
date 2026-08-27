@@ -1,7 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("../db/connect");
-const env = require("../config/env");
 const emailAlreadyExists = require("../services/validateEmail");
 const {
   validateRegistration,
@@ -26,7 +25,7 @@ class UserController {
       }
 
       const passwordHash = await bcrypt.hash(req.body.senha, SALT_ROUNDS);
-      const [result] = await pool.execute(
+      const [result] = await pool.promise().execute(
         "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
         [nome, email, passwordHash],
       );
@@ -51,7 +50,7 @@ class UserController {
       }
 
       const email = req.body.email.trim().toLowerCase();
-      const [rows] = await pool.execute(
+      const [rows] = await pool.promise().execute(
         "SELECT id, nome, email, senha FROM usuarios WHERE email = ? LIMIT 1",
         [email],
       );
@@ -65,9 +64,9 @@ class UserController {
         return res.status(401).json({ error: "E-mail ou senha inválidos." });
       }
 
-      const token = jwt.sign({}, env.jwtSecret, {
+      const token = jwt.sign({}, process.env.JWT_SECRET, {
         subject: String(user.id),
-        expiresIn: env.jwtExpiresIn,
+        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
       });
 
       return res.status(200).json({
@@ -82,7 +81,7 @@ class UserController {
 
   static async profile(req, res, next) {
     try {
-      const [rows] = await pool.execute(
+      const [rows] = await pool.promise().execute(
         "SELECT id, nome, email, criado_em FROM usuarios WHERE id = ? LIMIT 1",
         [req.userId],
       );
@@ -99,4 +98,3 @@ class UserController {
 }
 
 module.exports = UserController;
-

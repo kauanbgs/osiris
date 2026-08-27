@@ -1,7 +1,7 @@
 const pool = require("../db/connect");
 
 async function emailAlreadyExists(email) {
-  const [rows] = await pool.execute(
+  const [rows] = await pool.promise().execute(
     "SELECT id FROM usuarios WHERE email = ? LIMIT 1",
     [email],
   );
@@ -10,4 +10,3 @@ async function emailAlreadyExists(email) {
 }
 
 module.exports = emailAlreadyExists;
-

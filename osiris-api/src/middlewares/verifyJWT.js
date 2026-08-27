@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const env = require("../config/env");
 
 function verifyJWT(req, res, next) {
   const authorization = req.headers.authorization;
@@ -11,7 +10,7 @@ function verifyJWT(req, res, next) {
   const token = authorization.slice(7);
 
   try {
-    const payload = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = payload.sub;
     return next();
   } catch (error) {
@@ -25,4 +24,3 @@ function verifyJWT(req, res, next) {
 }
 
 module.exports = verifyJWT;
-

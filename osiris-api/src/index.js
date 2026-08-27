@@ -1,11 +1,11 @@
+require("dotenv-safe").config();
 const express = require("express");
 const cors = require("cors");
-const env = require("./config/env");
 const apiRoutes = require("./routes/apiRoutes");
 
 const app = express();
 
-app.use(cors({ origin: env.corsOrigin }));
+app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api/osiris", apiRoutes);

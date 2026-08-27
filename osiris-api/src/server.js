@@ -1,12 +1,13 @@
 const app = require("./index");
-const env = require("./config/env");
 const testConnect = require("./db/testConnect");
+
+const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
     await testConnect();
-    app.listen(env.port, () => {
-      console.log(`API iniciada na porta ${env.port}.`);
+    app.listen(PORT, () => {
+      console.log(`API iniciada na porta ${PORT}.`);
     });
   } catch (error) {
     console.error("Não foi possível iniciar a API:", error.message);
@@ -15,4 +16,3 @@ async function startServer() {
 }
 
 startServer();
-
