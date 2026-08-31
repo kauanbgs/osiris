@@ -1,14 +1,19 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
+import Home from "./pages/Home";
+import DefaultLayout from "./layouts/DefaultLayout";
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Cadastro />} />
+      <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
       <Route path="/cadastro" element={<Cadastro />} />
-      <Route path="*" element={<Cadastro />} />
+      <Route element={<DefaultLayout />}>
+      <Route path="/home" element={<Home />} />
+      </Route>
+      <Route path="*" element={<Login />} />
     </Routes>
   );
 }
