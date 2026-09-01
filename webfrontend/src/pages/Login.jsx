@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, KeyRound } from 'lucide-react';
 import DotField from '@/components/DotField';
+import Button from '@/components/buttons';
 
 export default function Login() {
     const navigate = useNavigate();
