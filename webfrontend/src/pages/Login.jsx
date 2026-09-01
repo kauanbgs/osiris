@@ -1,8 +1,9 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, KeyRound } from 'lucide-react';
 import DotField from '@/components/DotField';
 
 export default function Login() {
+    const navigate = useNavigate();
     
     return (
         <div className="relative min-h-screen w-full bg-zinc-950 flex items-center justify-center px-4 py-12 overflow-hidden">
@@ -54,6 +55,7 @@ export default function Login() {
                     </div>
 
                     <button
+                        onClick={() => navigate('/home')}
                         className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 rounded-lg py-3 font-mono font-semibold text-white transition-colors"
                     >
                         Iniciar Sessão
