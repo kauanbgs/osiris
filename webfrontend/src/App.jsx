@@ -1,9 +1,19 @@
+import { Route, Routes } from 'react-router-dom';
 import Login from "./pages/Login";
+import Cadastro from "./pages/Cadastro";
+import Home from "./pages/Home";
+import DefaultLayout from "./layouts/DefaultLayout";
 
 export default function App() {
   return (
-    <div>
-      <Login />
-    </div>
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/cadastro" element={<Cadastro />} />
+      <Route element={<DefaultLayout />}>
+      <Route path="/home" element={<Home />} />
+      </Route>
+      <Route path="*" element={<Login />} />
+    </Routes>
   );
 }
