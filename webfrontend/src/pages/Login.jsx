@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { Mail, KeyRound, LogIn } from 'lucide-react';
 import DotField from '@/components/DotField';
+import Button from '@/components/buttons';
 
 export default function Login() {
-    
+
     return (
         <div className="relative min-h-screen w-full bg-zinc-950 flex items-center justify-center px-4 py-12 overflow-hidden">
             <div className="absolute inset-0 pointer-events-none">
@@ -53,11 +53,7 @@ export default function Login() {
                         />
                     </div>
 
-                    <button
-                        className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 rounded-lg py-3 font-mono font-semibold text-white transition-colors"
-                    >
-                        Iniciar Sessão
-                    </button>
+                    <Button text="Iniciar Sessão" icon={LogIn} />
                 </div>
 
                 <p className="text-center font-mono text-sm text-zinc-400 mt-6">
