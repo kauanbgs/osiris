@@ -1,7 +1,21 @@
+import { Route, Routes } from 'react-router-dom';
+import Login from "./pages/Login";
+import Cadastro from "./pages/Cadastro";
+import Home from "./pages/Home";
+import Arquivos from "./pages/Arquivos";
+import DefaultLayout from "./layouts/DefaultLayout";
+
 export default function App() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold underline">Hello World</h1>
-    </div>
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/cadastro" element={<Cadastro />} />
+      <Route element={<DefaultLayout />}>
+      <Route path="/home" element={<Home />} />
+      <Route path="/arquivos" element={<Arquivos />} />
+      </Route>
+      <Route path="*" element={<Login />} />
+    </Routes>
   );
 }
