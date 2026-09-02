@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
 import Home from "./pages/Home";
+import Arquivos from "./pages/Arquivos";
 import DefaultLayout from "./layouts/DefaultLayout";
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
       <Route path="/cadastro" element={<Cadastro />} />
       <Route element={<DefaultLayout />}>
       <Route path="/home" element={<Home />} />
+      <Route path="/arquivos" element={<Arquivos />} />
       </Route>
       <Route path="*" element={<Login />} />
     </Routes>

@@ -160,14 +160,14 @@ export default function Home() {
             onValueChange={setInput}
             isLoading={isLoading}
             onSubmit={handleSubmit}
-            className="w-full max-w-(--breakpoint-md) bg-zinc-700/20"
+            className="w-full max-w-(--breakpoint-md) bg-zinc-800/20 border-0 text-white"
           >
             {files.length > 0 && (
               <div className="flex flex-wrap gap-2 pb-2">
                 {files.map((file, index) => (
                   <div
                     key={index}
-                    className="bg-secondary flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                    className="bg-white/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Paperclip className="size-4" />
@@ -183,7 +183,10 @@ export default function Home() {
               </div>
             )}
 
-            <PromptInputTextarea placeholder="Ask me anything..." />
+            <PromptInputTextarea
+              placeholder="Ask me anything..."
+              className="text-white"
+            />
 
             <PromptInputActions className="flex items-center justify-between gap-2 pt-2">
               <PromptInputAction tooltip="Attach files">
@@ -199,7 +202,7 @@ export default function Home() {
                     className="hidden"
                     id="file-upload"
                   />
-                  <Paperclip className="text-primary size-5" />
+                  <Paperclip className="text-white size-5" />
                 </label>
               </PromptInputAction>
 
@@ -209,7 +212,7 @@ export default function Home() {
                 <Button
                   variant="default"
                   size="icon"
-                  className="h-8 w-8 rounded-full"
+                  className="h-8 w-8 rounded-full bg-white text-black"
                   onClick={handleSubmit}
                 >
                   {isLoading ? (

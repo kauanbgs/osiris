@@ -10,12 +10,13 @@ import {
   Settings,
   TerminalSquare,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const workspaceItems = [
-  { label: 'Home', icon: House },
-  { label: 'Workflow', icon: Bot },
-  { label: 'Terminal', icon: TerminalSquare },
-  { label: 'Arquivos', icon: Folder },
+  { label: 'Home', icon: House, link: '/home' },
+  { label: 'Workflow', icon: Bot, link: '/workflow' },
+  { label: 'Terminal', icon: TerminalSquare, link: '/terminal' },
+  { label: 'Arquivos', icon: Folder, link: '/arquivos' },
 ];
 
 const environmentItems = [
@@ -28,16 +29,19 @@ const environmentItems = [
 const projects = ['Projeto 1', 'Projeto 2', 'Projeto 3', 'Projeto 4', 'Projeto 5'];
 
 function NavGroup({ title, items }) {
+  const navigate = useNavigate();
+
   return (
     <section className="mb-5">
       <h2 className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500">
         {title}
       </h2>
       <nav className="space-y-0.5">
-        {items.map(({ label, icon: Icon }) => (
+        {items.map(({ label, icon: Icon, link }) => (
           <button
             key={label}
             type="button"
+            onClick={() => navigate(link)}
             className="group flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
           >
             <Icon size={20} strokeWidth={1.8} className="text-zinc-400 group-hover:text-zinc-200" />
