@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import Arquivos from "./pages/Arquivos";
 import Workflow from "./pages/Workflow";
 import DefaultLayout from "./layouts/DefaultLayout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
       <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
       <Route path="/cadastro" element={<Cadastro />} />
+      <Route element={<ProtectedRoute />}/>
       <Route element={<DefaultLayout />}>
         <Route path="/home" element={<Home />} />
         <Route path="/arquivos" element={<Arquivos />} />
