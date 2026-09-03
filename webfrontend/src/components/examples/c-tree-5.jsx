@@ -1,3 +1,4 @@
+"use client";
 import {
   Tree,
   TreeItem,
@@ -5,9 +6,7 @@ import {
 } from "@/components/reui/tree"
 import { hotkeysCoreFeature, syncDataLoaderFeature } from "@headless-tree/core"
 import { useTree } from "@headless-tree/react"
-import { BracesIcon, FileCodeIcon, FileIcon, FileTextIcon, FolderIcon, FolderOpenIcon, PaletteIcon } from 'lucide-react'
-
- 
+import { FolderOpenIcon, FolderIcon, FileCodeIcon, PaletteIcon, BracesIcon, FileTextIcon, FileIcon } from "lucide-react"
 
 const items = {
   root: {
@@ -49,33 +48,33 @@ const items = {
 const getFileIcon = (type, isExpanded) => {
   if (!type || type === "folder") {
     return isExpanded ? (
-      <FolderOpenIcon  className="pointer-events-none size-4 text-amber-500" />
+      <FolderOpenIcon className="pointer-events-none size-4 text-amber-500" />
     ) : (
-      <FolderIcon  className="pointer-events-none size-4 text-amber-500" />
+      <FolderIcon className="pointer-events-none size-4 text-amber-500" />
     )
   }
   if (type === "tsx" || type === "ts") {
     return (
-      <FileCodeIcon  className="pointer-events-none size-4 text-blue-500" />
+      <FileCodeIcon className="pointer-events-none size-4 text-blue-500" />
     )
   }
   if (type === "css") {
     return (
-      <PaletteIcon  className="pointer-events-none size-4 text-purple-500" />
+      <PaletteIcon className="pointer-events-none size-4 text-purple-500" />
     )
   }
   if (type === "json") {
     return (
-      <BracesIcon  className="pointer-events-none size-4 text-yellow-500" />
+      <BracesIcon className="pointer-events-none size-4 text-yellow-500" />
     )
   }
   if (type === "md") {
     return (
-      <FileTextIcon  className="text-muted-foreground pointer-events-none size-4" />
+      <FileTextIcon className="text-muted-foreground pointer-events-none size-4" />
     )
   }
   return (
-    <FileIcon  className="text-muted-foreground pointer-events-none size-4" />
+    <FileIcon className="text-muted-foreground pointer-events-none size-4" />
   )
 }
 
@@ -111,20 +110,6 @@ export function Pattern() {
           </TreeItem>
         ))}
       </Tree>
-    </div>
-  )
-}
-
-export default function Arquivos() {
-  return (
-    <div className="flex h-full w-full">
-      <section className="border-r">
-
-        <Pattern />
-      </section>
-      <section>
-        
-      </section>
     </div>
   )
 }
