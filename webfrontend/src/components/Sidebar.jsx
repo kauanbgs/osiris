@@ -11,6 +11,7 @@ import {
   TerminalSquare,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from "@/contexts/AuthContext";
 
 const workspaceItems = [
   { label: 'Home', icon: House, link: '/home' },
@@ -54,6 +55,13 @@ function NavGroup({ title, items }) {
 }
 
 export default function Sidebar() {
+  const { user, logout } = useAuth();
+const navigate = useNavigate();
+
+function handleLogout() {
+  logout();
+  navigate("/login", { replace: true });
+}
   return (
     <aside className="flex h-dvh w-54 flex-col border-r border-zinc-900 bg-[#121212] px-2.5 pb-3 pt-2 font-sans text-zinc-200 z-10">
       {/* Header fixo */}
@@ -106,6 +114,13 @@ export default function Sidebar() {
         <button type="button" aria-label="Configurações da conta" className="text-zinc-500 hover:text-zinc-200">
           <Settings size={16} />
         </button>
+        <button
+  type="button"
+  onClick={handleLogout}
+  className="rounded-md px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+>
+  Sair
+</button>
       </div>
     </aside>
   );
