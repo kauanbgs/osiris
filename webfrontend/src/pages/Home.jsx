@@ -13,6 +13,11 @@ import {
   MessageAvatar,
   MessageContent,
 } from "@/components/ui/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ui/reasoning";
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
@@ -38,6 +43,29 @@ export default function Home() {
 
   const hasMessages = messages.length > 0;
 
+  function parseReasoning(text = "") {
+    const closedMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
+    if (closedMatch) {
+      return {
+        reasoning: closedMatch[1].trim(),
+        content: text.replace(closedMatch[0], "").trim(),
+      };
+    }
+
+    const openMatch = text.match(/<think>([\s\S]*)$/i);
+    if (openMatch) {
+      return {
+        reasoning: openMatch[1].trim(),
+        content: "",
+      };
+    }
+
+    return {
+      reasoning: "",
+      content: text.trim(),
+    };
+  }
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -45,41 +73,86 @@ export default function Home() {
   async function handleSubmit() {
     if ((!input.trim() && files.length === 0) || isLoading) return;
 
-    const content = files.length > 0
-      ? `${input}\n\n📎 ${files.map((f) => f.name).join(", ")}`
-      : input;
+    const content =
+      files.length > 0
+        ? `${input}\n\n📎 ${files.map((f) => f.name).join(", ")}`
+        : input;
 
     const userMessage = { content, sender: "Kauan", isBot: false };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      { content: "", reasoning: "", sender: "Osiris", isBot: true, isStreaming: true }
+    ]);
     setInput("");
     setFiles([]);
     setIsLoading(true);
 
+    let accumulatedText = "";
+    let removeStreamListener = null;
+
+    if (window.llama?.onStream) {
+      removeStreamListener = window.llama.onStream((data) => {
+        if (data.type === "chunk" && data.text) {
+          accumulatedText += data.text;
+          const parsed = parseReasoning(accumulatedText);
+
+          setMessages((prev) => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].isBot) {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: parsed.content,
+                reasoning: parsed.reasoning,
+                isStreaming: true
+              };
+            }
+            return updated;
+          });
+        }
+      });
+    }
+
     try {
-      if (window.llama?.prompt) {
-        const resposta = await window.llama.prompt(content);
-        const botMessage = {
-          content: resposta,
-          sender: "Osiris",
-          isBot: true,
-        };
-        setMessages((prev) => [...prev, botMessage]);
-      } else {
-        const botMessage = {
-          content: resposta,
-          sender: "Osiris",
-          isBot: true,
-        };
-        setMessages((prev) => [...prev, botMessage]);
+      if (!window.llama?.prompt) {
+        throw new Error("Llama não está disponível.");
       }
+
+      const resposta = await window.llama.prompt(content);
+      const parsed = parseReasoning(resposta || accumulatedText);
+
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].isBot) {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            content: parsed.content || "...",
+            reasoning: parsed.reasoning,
+            isStreaming: false
+          };
+        }
+        return updated;
+      });
     } catch (err) {
-      const errorMessage = {
-        content: `⚠️ ${err.message || 'Erro ao gerar resposta com o modelo.'}`,
-        sender: "Osiris",
-        isBot: true,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].isBot) {
+          updated[lastIdx] = {
+            content: `⚠️ ${err.message || "Erro ao gerar resposta com o modelo."}`,
+            reasoning: "",
+            sender: "Osiris",
+            isBot: true,
+            isStreaming: false
+          };
+        }
+        return updated;
+      });
     } finally {
+      removeStreamListener?.();
       setIsLoading(false);
     }
   }
@@ -125,28 +198,49 @@ export default function Home() {
             {messages.map((msg, i) => (
               <div
                 key={i}
-                style={{ animation: "messageIn 0.3s ease-out both" }}
+                style={{
+                  animation: "messageIn 0.3s ease-out both",
+                }}
               >
                 {msg.isBot ? (
-                  /* Mensagem do bot — alinhada à esquerda */
                   <Message>
                     <MessageAvatar
                       fallback="O"
                       className="bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20"
                     />
+
                     <div className="flex-1 space-y-2">
-                      <MessageContent
-                        markdown
-                        className="bg-transparent text-white"
-                      >
-                        {msg.content}
-                      </MessageContent>
+                      {/* Reasoning */}
+                      {msg.reasoning && (
+                        <Reasoning isStreaming={msg.isStreaming}>
+                          <ReasoningTrigger>
+                            {msg.isStreaming && !msg.content ? "Pensando..." : "Raciocínio"}
+                          </ReasoningTrigger>
+
+                          <ReasoningContent markdown>{msg.reasoning}</ReasoningContent>
+                        </Reasoning>
+                      )}
+
+                      {/* Resposta */}
+                      {msg.content && (
+                        <MessageContent
+                          markdown
+                          className="bg-transparent text-white"
+                        >
+                          {msg.content}
+                        </MessageContent>
+                      )}
+
+                      {/* Actions */}
                       <MessageActions>
                         <MessageAction tooltip="Copiar">
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-zinc-500 hover:text-zinc-200"
+                            onClick={() =>
+                              navigator.clipboard.writeText(msg.content)
+                            }
                           >
                             <Copy className="size-3.5" />
                           </Button>
@@ -155,7 +249,6 @@ export default function Home() {
                     </div>
                   </Message>
                 ) : (
-                  /* Mensagem do usuário — alinhada à direita */
                   <Message className="justify-end">
                     <MessageContent className="bg-transparent text-white">
                       {msg.content}

@@ -71,5 +71,24 @@ contextBridge.exposeInMainWorld('llama', {
     const listener = (_event, data) => callback(data)
     ipcRenderer.on('llama:download-complete', listener)
     return () => ipcRenderer.removeListener('llama:download-complete', listener)
-  }
+  },
+
+  prompt: (prompt) => {
+    return ipcRenderer.invoke("llama:prompt", prompt);
+  },
+
+  onStream: (callback) => {
+    const listener = (_event, data) => {
+      callback(data);
+    };
+
+    ipcRenderer.on("llama:stream", listener);
+
+    return () => {
+      ipcRenderer.removeListener(
+        "llama:stream",
+        listener
+      );
+    };
+  },
 })

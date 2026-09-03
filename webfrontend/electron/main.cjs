@@ -135,18 +135,43 @@ ipcMain.handle('llama:load-model', async (_, modelPath) => {
   }
 })
 
-ipcMain.handle('llama:prompt', async (_, promptText) => {
+ipcMain.handle("llama:prompt", async (event, prompt) => {
   if (!currentSession) {
-    throw new Error('Nenhum modelo GGUF está carregado. Vá para a aba "Modelos" para carregar ou baixar um modelo.')
+    throw new Error("Nenhum modelo carregado");
   }
+
+  const sender = event.sender;
+
   try {
-    const response = await currentSession.prompt(promptText)
-    return response
-  } catch (err) {
-    console.error('Erro na geração de resposta Llama:', err)
-    throw new Error(err.message || 'Erro durante a inferência do modelo')
+    const response = await currentSession.prompt(prompt, {
+      onTextChunk(chunk) {
+        if (!sender.isDestroyed()) {
+          sender.send("llama:stream", {
+            type: "chunk",
+            text: chunk,
+          });
+        }
+      },
+    });
+
+    if (!sender.isDestroyed()) {
+      sender.send("llama:stream", {
+        type: "done",
+      });
+    }
+
+    return response;
+  } catch (error) {
+    if (!sender.isDestroyed()) {
+      sender.send("llama:stream", {
+        type: "error",
+        error: error.message,
+      });
+    }
+
+    throw error;
   }
-})
+});
 
 ipcMain.handle('llama:download-model', async (event, { url, filename }) => {
   const win = BrowserWindow.fromWebContents(event.sender)
