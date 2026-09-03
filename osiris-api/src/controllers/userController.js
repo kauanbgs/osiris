@@ -17,22 +17,22 @@ class UserController {
         return res.status(400).json({ error: validationError });
       }
 
-      const nome = req.body.nome.trim();
+      const name = req.body.name.trim();
       const email = req.body.email.trim().toLowerCase();
 
       if (await emailAlreadyExists(email)) {
         return res.status(409).json({ error: "E-mail já cadastrado." });
       }
 
-      const passwordHash = await bcrypt.hash(req.body.senha, SALT_ROUNDS);
+      const passwordHash = await bcrypt.hash(req.body.password, SALT_ROUNDS);
       const [result] = await pool.promise().execute(
-        "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-        [nome, email, passwordHash],
+        "INSERT INTO user (name, email, password) VALUES (?, ?, ?)",
+        [name, email, passwordHash],
       );
 
       return res.status(201).json({
         message: "Usuário cadastrado com sucesso.",
-        user: { id: result.insertId, nome, email },
+        user: { id_user: result.insertId, name, email },
       });
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") {
@@ -51,13 +51,13 @@ class UserController {
 
       const email = req.body.email.trim().toLowerCase();
       const [rows] = await pool.promise().execute(
-        "SELECT id, nome, email, senha FROM usuarios WHERE email = ? LIMIT 1",
+        "SELECT id_user, name, email, password FROM user WHERE email = ? LIMIT 1",
         [email],
       );
 
       const user = rows[0];
       const validPassword = user
-        ? await bcrypt.compare(req.body.senha, user.senha)
+        ? await bcrypt.compare(req.body.password, user.password)
         : false;
 
       if (!validPassword) {
@@ -65,13 +65,13 @@ class UserController {
       }
 
       const token = jwt.sign({}, process.env.JWT_SECRET, {
-        subject: String(user.id),
+        subject: String(user.id_user),
         expiresIn: process.env.JWT_EXPIRES_IN || "1h",
       });
 
       return res.status(200).json({
         message: "Login realizado com sucesso.",
-        user: { id: user.id, nome: user.nome, email: user.email },
+        user: { id_user: user.id_user, name: user.name, email: user.email },
         token,
       });
     } catch (error) {
@@ -82,7 +82,7 @@ class UserController {
   static async profile(req, res, next) {
     try {
       const [rows] = await pool.promise().execute(
-        "SELECT id, nome, email, criado_em FROM usuarios WHERE id = ? LIMIT 1",
+        "SELECT id_user, name, email FROM user WHERE id_user = ? LIMIT 1",
         [req.userId],
       );
 
