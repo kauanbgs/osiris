@@ -42,7 +42,7 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if ((!input.trim() && files.length === 0) || isLoading) return;
 
     const content = files.length > 0
@@ -55,16 +55,33 @@ export default function Home() {
     setFiles([]);
     setIsLoading(true);
 
-    // Simula resposta do bot
-    setTimeout(() => {
-      const botMessage = {
-        content: `Entendido! Vou processar sua solicitação: "${userMessage.content}"`,
+    try {
+      if (window.llama?.prompt) {
+        const resposta = await window.llama.prompt(content);
+        const botMessage = {
+          content: resposta,
+          sender: "Osiris",
+          isBot: true,
+        };
+        setMessages((prev) => [...prev, botMessage]);
+      } else {
+        const botMessage = {
+          content: resposta,
+          sender: "Osiris",
+          isBot: true,
+        };
+        setMessages((prev) => [...prev, botMessage]);
+      }
+    } catch (err) {
+      const errorMessage = {
+        content: `⚠️ ${err.message || 'Erro ao gerar resposta com o modelo.'}`,
         sender: "Osiris",
         isBot: true,
       };
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 800);
+    }
   }
 
   function handleFileChange(event) {

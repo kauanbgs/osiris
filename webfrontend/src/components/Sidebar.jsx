@@ -20,7 +20,7 @@ const workspaceItems = [
 ];
 
 const environmentItems = [
-  { label: 'Modelos', icon: FileText },
+  { label: 'Modelos', icon: FileText, link: '/modelos' },
   { label: 'Memória', icon: Brain },
   { label: 'Monitoramento', icon: MonitorCog },
   { label: 'Configurações', icon: Settings },

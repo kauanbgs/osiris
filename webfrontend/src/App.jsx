@@ -5,6 +5,7 @@ import Cadastro from "./pages/Cadastro";
 import Home from "./pages/Home";
 import Arquivos from "./pages/Arquivos";
 import Workflow from "./pages/Workflow";
+import Modelos from "./pages/Modelos";
 import DefaultLayout from "./layouts/DefaultLayout";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/cadastro" element={<Cadastro />} />
           <Route element={<DefaultLayout />}>
             <Route path="/home" element={<Home />} />
+            <Route path="/modelos" element={<Modelos />} />
             <Route path="/arquivos" element={<Arquivos />} />
             <Route path="/workflow" element={<Workflow />} />
           </Route>
