@@ -7,7 +7,7 @@ export default function Login() {
     const navigate = useNavigate();
     
     return (
-        <div className="relative min-h-screen w-full bg-zinc-950 flex items-center justify-center px-4 py-12 overflow-hidden">
+        <div className="relative h-full w-full bg-zinc-950 flex items-center justify-center px-4 py-12 overflow-hidden">
             <div className="absolute inset-0 pointer-events-none">
                 <DotField
                     dotRadius={1.5}

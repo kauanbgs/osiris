@@ -55,7 +55,7 @@ function NavGroup({ title, items }) {
 
 export default function Sidebar() {
   return (
-    <aside className="flex h-dvh w-54 flex-col border-r border-zinc-900 bg-[#121212] px-2.5 pb-3 pt-2 font-sans text-zinc-200 z-10">
+    <aside className="flex h-full w-54 flex-col border-r border-zinc-900 bg-[#121212] px-2.5 pb-3 pt-2 font-sans text-zinc-200 z-10">
       {/* Header fixo */}
       <div className="mb-8 flex h-8 shrink-0 items-center gap-2 px-0.5">
         <span className="text-[24px] font-semibold text-zinc-200">LOGO</span>
