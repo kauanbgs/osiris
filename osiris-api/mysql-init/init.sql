@@ -264,6 +264,7 @@ CREATE TABLE messages (
     id_message INT AUTO_INCREMENT PRIMARY KEY,
     type ENUM('user', 'assistant', 'system', 'tool') NOT NULL,
     content TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fk_id_chat INT,
     fk_id_model INT,
     FOREIGN KEY (fk_id_chat)
