@@ -15,6 +15,7 @@ router.get("/health", (req, res) => {
 
 router.post("/auth/register", UserController.register);
 router.post("/auth/login", UserController.login);
+router.post("/auth/logout", verifyJWT, UserController.logout);
 router.get("/auth/me", verifyJWT, UserController.profile);
 
 router.post("/chat", verifyJWT, ChatController.create);

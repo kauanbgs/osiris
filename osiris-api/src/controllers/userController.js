@@ -98,6 +98,19 @@ class UserController {
       return next(error);
     }
   }
+
+  static async logout(req, res, next) {
+    try {
+      // Since we're using stateless JWT, logout is handled client-side
+      // by removing the token from storage
+      // This endpoint confirms the logout action
+      return res.status(200).json({
+        message: "Logout successful. Token should be removed from client.",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 }
 
 module.exports = UserController;
