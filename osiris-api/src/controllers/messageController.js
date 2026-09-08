@@ -1,4 +1,5 @@
 const pool = require("../db/connect");
+const { BadRequestError, NotFoundError } = require("../errors");
 
 class MessageController {
   static async create(req, res, next) {
@@ -7,14 +8,12 @@ class MessageController {
       const { type, content, fk_id_model } = req.body;
       const userId = req.userId;
 
-      // Validar conteúdo
+      // Validate content
       if (!content || !content.trim()) {
-        return res.status(400).json({
-          error: "O conteúdo da mensagem é obrigatório.",
-        });
+        throw new BadRequestError("Message content is required.");
       }
 
-      // Tipos permitidos
+      // Allowed types
       const allowedTypes = [
         "user",
         "assistant",
@@ -23,12 +22,10 @@ class MessageController {
       ];
 
       if (!type || !allowedTypes.includes(type)) {
-        return res.status(400).json({
-          error: "Tipo de mensagem inválido.",
-        });
+        throw new BadRequestError("Invalid message type.");
       }
 
-      // Verificar se o chat pertence ao usuário
+      // Verify chat belongs to user
       const [chatRows] = await pool.promise().execute(
         `SELECT id_chat
          FROM chat
@@ -38,12 +35,10 @@ class MessageController {
       );
 
       if (!chatRows[0]) {
-        return res.status(404).json({
-          error: "Chat não encontrado.",
-        });
+        throw new NotFoundError("Chat not found.");
       }
 
-      // Verificar modelo, caso tenha sido informado
+      // Verify model if provided
       if (
         fk_id_model !== undefined &&
         fk_id_model !== null
@@ -57,13 +52,11 @@ class MessageController {
         );
 
         if (!modelRows[0]) {
-          return res.status(404).json({
-            error: "Modelo de IA não encontrado.",
-          });
+          throw new NotFoundError("AI model not found.");
         }
       }
 
-      // Salvar mensagem
+      // Save message
       const [result] = await pool.promise().execute(
         `INSERT INTO messages
           (type, content, fk_id_chat, fk_id_model)
@@ -77,7 +70,7 @@ class MessageController {
       );
 
       return res.status(201).json({
-        message: "Mensagem criada com sucesso.",
+        message: "Message created successfully.",
         data: {
           id_message: result.insertId,
           type,
@@ -96,7 +89,7 @@ class MessageController {
       const { id_chat } = req.params;
       const userId = req.userId;
 
-      // Verificar se o chat pertence ao usuário
+      // Verify chat belongs to user
       const [chatRows] = await pool.promise().execute(
         `SELECT id_chat
          FROM chat
@@ -106,12 +99,10 @@ class MessageController {
       );
 
       if (!chatRows[0]) {
-        return res.status(404).json({
-          error: "Chat não encontrado.",
-        });
+        throw new NotFoundError("Chat not found.");
       }
 
-      // Buscar mensagens
+      // Fetch messages
       const [rows] = await pool.promise().execute(
         `SELECT
             id_message,

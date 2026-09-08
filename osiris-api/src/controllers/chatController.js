@@ -1,4 +1,5 @@
 const pool = require("../db/connect");
+const { BadRequestError, NotFoundError } = require("../errors");
 
 class ChatController {
   static async create(req, res, next) {
@@ -7,9 +8,7 @@ class ChatController {
       const userId = req.userId;
 
       if (!title || !title.trim()) {
-        return res.status(400).json({
-          error: "O título do chat é obrigatório.",
-        });
+        throw new BadRequestError("Chat title is required.");
       }
 
       const [result] = await pool.promise().execute(
@@ -18,7 +17,7 @@ class ChatController {
       );
 
       return res.status(201).json({
-        message: "Chat criado com sucesso.",
+        message: "Chat created successfully.",
         chat: {
           id_chat: result.insertId,
           title: title.trim(),
@@ -64,9 +63,7 @@ class ChatController {
       );
 
       if (!rows[0]) {
-        return res.status(404).json({
-          error: "Chat não encontrado.",
-        });
+        throw new NotFoundError("Chat not found.");
       }
 
       return res.status(200).json({
