@@ -7,21 +7,25 @@ import Arquivos from "./pages/Arquivos";
 import Workflow from "./pages/Workflow";
 import Modelos from "./pages/Modelos";
 import DefaultLayout from "./layouts/DefaultLayout";
-import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Login />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/cadastro" element={<Cadastro />} />
-      <Route element={<ProtectedRoute />}/>
-      <Route element={<DefaultLayout />}>
-        <Route path="/home" element={<Home />} />
-        <Route path="/arquivos" element={<Arquivos />} />
-        <Route path="/workflow" element={<Workflow />} />
-      </Route>
-      <Route path="*" element={<Login />} />
-    </Routes>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#141414] select-none">
+      <TitleBar />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/cadastro" element={<Cadastro />} />
+          <Route element={<DefaultLayout />}>
+            <Route path="/home" element={<Home />} />
+            <Route path="/modelos" element={<Modelos />} />
+            <Route path="/arquivos" element={<Arquivos />} />
+            <Route path="/workflow" element={<Workflow />} />
+          </Route>
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </div>
+    </div>
   );
 }

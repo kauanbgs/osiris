@@ -7,11 +7,14 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  ConnectionMode,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
 
 import TerminalNode from "@/components/terminalNode";
+import AgentNode from "@/components/agentNode";
+import FlowEdge from "@/components/FlowEdge";
 
 import {
   Menubar,
@@ -38,6 +41,11 @@ import {
 
 const nodeTypes = {
   terminal: TerminalNode,
+  agent: AgentNode,
+};
+
+const edgeTypes = {
+  curved: FlowEdge,
 };
 
 const initialNodes = [];
@@ -52,9 +60,46 @@ export default function Workflow() {
   const onConnect = useCallback(
     (params) =>
       setEdges((eds) =>
-        addEdge(params, eds)
+        addEdge(
+          {
+            ...params,
+            type: "curved",
+          },
+          eds
+        )
       ),
     [setEdges]
+  );
+
+  const addAgentNode = useCallback(
+    (mode) => {
+      const id = crypto.randomUUID();
+
+
+      const newNode = {
+        id,
+        type: "agent",
+
+        position: {
+          x: 250 + Math.random() * 200,
+          y: 150 + Math.random() * 150,
+        },
+
+        data: {
+          label: "Agent",
+
+          mode,
+        },
+
+        dragHandle: ".drag-handle",
+      };
+
+      setNodes((nodes) => [
+        ...nodes,
+        newNode,
+      ]);
+    },
+    [setNodes]
   );
 
   const addTerminalNode = useCallback(
@@ -141,6 +186,35 @@ export default function Workflow() {
             </DropdownMenu>
 
             <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex cursor-pointer items-center justify-center rounded-full p-2 hover:bg-zinc-800/60"
+                  >
+                    <Bot size={18} />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent
+                  align="center"
+                  className="w-52"
+                >
+                  <DropdownMenuItem
+                    onClick={() =>
+                      addAgentNode("Agent")
+                    }
+                    className="cursor-pointer gap-2"
+                  >
+                    <Bot size={16} />
+
+                    Agent
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </MenubarTrigger>
+
+            <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">
               <PaperclipIcon size={18} />
             </MenubarTrigger>
 
@@ -160,14 +234,13 @@ export default function Workflow() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={
-            onNodesChange
-          }
-          onEdgesChange={
-            onEdgesChange
-          }
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          defaultEdgeOptions={{ type: "curved" }}
           fitView
         >
           <Background
