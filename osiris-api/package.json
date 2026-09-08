@@ -1,0 +1,19 @@
+{
+  "name": "osiris-webapi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de autenticação do projeto Osiris",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv-safe": "^9.1.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.15.1"
+  }
+}

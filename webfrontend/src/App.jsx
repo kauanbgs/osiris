@@ -1,9 +1,11 @@
 import { Route, Routes } from 'react-router-dom';
+import TitleBar from "./components/TitleBar";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
 import Home from "./pages/Home";
 import Arquivos from "./pages/Arquivos";
 import Workflow from "./pages/Workflow";
+import Modelos from "./pages/Modelos";
 import DefaultLayout from "./layouts/DefaultLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
