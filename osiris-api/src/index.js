@@ -1,4 +1,7 @@
-require("dotenv-safe").config();
+// Only load dotenv-safe if not in test environment (test env vars are set in setup.js)
+if (process.env.NODE_ENV !== "test") {
+  require("dotenv-safe").config();
+}
 const express = require("express");
 const cors = require("cors");
 const apiRoutes = require("./routes/apiRoutes");
