@@ -21,6 +21,8 @@ router.get("/auth/me", verifyJWT, UserController.profile);
 router.post("/chat", verifyJWT, ChatController.create);
 router.get("/chat", verifyJWT, ChatController.list);
 router.get("/chat/:id_chat", verifyJWT, ChatController.getById);
+router.put("/chat/:id_chat", verifyJWT, ChatController.update);
+router.delete("/chat/:id_chat", verifyJWT, ChatController.delete);
 
 router.get("/chat/:id_chat/messages", verifyJWT, MessageController.listByChat,);
 router.post("/chat/:id_chat/messages", verifyJWT, MessageController.create,);
