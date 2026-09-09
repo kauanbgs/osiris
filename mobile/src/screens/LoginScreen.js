@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,12 +9,11 @@ import {
 import { Mail, KeyRound } from 'lucide-react-native';
 import DotField from '../components/DotField';
 
-export default function OsirisLoginScreen() {
+export default function Login({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      {/* Background animado de pontos, atrás de tudo */}
       <DotField
         dotRadius={1.5}
         dotSpacing={22}
@@ -57,14 +55,14 @@ export default function OsirisLoginScreen() {
           />
         </View>
 
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("HomeScreen")}>
           <Text style={styles.buttonText}>Iniciar Sessão →</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Não tem conta? </Text>
-        <TouchableOpacity>
+        <Text style={styles.footerText} onPress={() => navigation.navigate("Cadastro")}>Não tem conta? </Text>
+        <TouchableOpacity onPress={() => navigation.navigate("Cadastro")}>
           <Text style={styles.signUpText}>se cadastre!</Text>
         </TouchableOpacity>
       </View>
