@@ -6,6 +6,12 @@ const {
   validateRegistration,
   validateLogin,
 } = require("../services/validateUser");
+const {
+  BadRequestError,
+  UnauthorizedError,
+  NotFoundError,
+  ConflictError,
+} = require("../errors");
 
 const SALT_ROUNDS = 12;
 
@@ -14,14 +20,14 @@ class UserController {
     try {
       const validationError = validateRegistration(req.body);
       if (validationError) {
-        return res.status(400).json({ error: validationError });
+        throw new BadRequestError(validationError);
       }
 
       const name = req.body.name.trim();
       const email = req.body.email.trim().toLowerCase();
 
       if (await emailAlreadyExists(email)) {
-        return res.status(409).json({ error: "E-mail já cadastrado." });
+        throw new ConflictError("Email already registered.");
       }
 
       const passwordHash = await bcrypt.hash(req.body.password, SALT_ROUNDS);
@@ -31,13 +37,10 @@ class UserController {
       );
 
       return res.status(201).json({
-        message: "Usuário cadastrado com sucesso.",
+        message: "User registered successfully.",
         user: { id_user: result.insertId, name, email },
       });
     } catch (error) {
-      if (error.code === "ER_DUP_ENTRY") {
-        return res.status(409).json({ error: "E-mail já cadastrado." });
-      }
       return next(error);
     }
   }
@@ -46,7 +49,7 @@ class UserController {
     try {
       const validationError = validateLogin(req.body);
       if (validationError) {
-        return res.status(400).json({ error: validationError });
+        throw new BadRequestError(validationError);
       }
 
       const email = req.body.email.trim().toLowerCase();
@@ -61,7 +64,7 @@ class UserController {
         : false;
 
       if (!validPassword) {
-        return res.status(401).json({ error: "E-mail ou senha inválidos." });
+        throw new UnauthorizedError("Invalid email or password.");
       }
 
       const token = jwt.sign({}, process.env.JWT_SECRET, {
@@ -70,7 +73,7 @@ class UserController {
       });
 
       return res.status(200).json({
-        message: "Login realizado com sucesso.",
+        message: "Login successful.",
         user: { id_user: user.id_user, name: user.name, email: user.email },
         token,
       });
@@ -87,10 +90,23 @@ class UserController {
       );
 
       if (!rows[0]) {
-        return res.status(404).json({ error: "Usuário não encontrado." });
+        throw new NotFoundError("User not found.");
       }
 
       return res.status(200).json({ user: rows[0] });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async logout(req, res, next) {
+    try {
+      // Since we're using stateless JWT, logout is handled client-side
+      // by removing the token from storage
+      // This endpoint confirms the logout action
+      return res.status(200).json({
+        message: "Logout successful. Token should be removed from client.",
+      });
     } catch (error) {
       return next(error);
     }

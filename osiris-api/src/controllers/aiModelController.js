@@ -1,4 +1,5 @@
 const pool = require("../db/connect");
+const { BadRequestError, NotFoundError } = require("../errors");
 
 class AiModelController {
   static async create(req, res, next) {
@@ -12,21 +13,15 @@ class AiModelController {
       } = req.body;
 
       if (!name || !name.trim()) {
-        return res.status(400).json({
-          error: "O nome do modelo é obrigatório.",
-        });
+        throw new BadRequestError("Model name is required.");
       }
 
       if (!model_name || !model_name.trim()) {
-        return res.status(400).json({
-          error: "O nome técnico do modelo é obrigatório.",
-        });
+        throw new BadRequestError("Technical model name is required.");
       }
 
       if (!status || !status.trim()) {
-        return res.status(400).json({
-          error: "O status do modelo é obrigatório.",
-        });
+        throw new BadRequestError("Model status is required.");
       }
 
       const [result] = await pool.promise().execute(
@@ -43,7 +38,7 @@ class AiModelController {
       );
 
       return res.status(201).json({
-        message: "Modelo de IA criado com sucesso.",
+        message: "AI model created successfully.",
         ai_model: {
           id_model: result.insertId,
           name: name.trim(),
@@ -101,9 +96,7 @@ class AiModelController {
       );
 
       if (!rows[0]) {
-        return res.status(404).json({
-          error: "Modelo de IA não encontrado.",
-        });
+        throw new NotFoundError("AI model not found.");
       }
 
       return res.status(200).json({

@@ -1,10 +1,11 @@
 const jwt = require("jsonwebtoken");
+const { UnauthorizedError } = require("../errors");
 
 function verifyJWT(req, res, next) {
   const authorization = req.headers.authorization;
 
   if (!authorization?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Token não fornecido." });
+    throw new UnauthorizedError("Token not provided.");
   }
 
   const token = authorization.slice(7);
@@ -16,10 +17,10 @@ function verifyJWT(req, res, next) {
   } catch (error) {
     const message =
       error.name === "TokenExpiredError"
-        ? "Token expirado. Faça login novamente."
-        : "Token inválido.";
+        ? "Token expired. Please login again."
+        : "Invalid token.";
 
-    return res.status(401).json({ error: message });
+    throw new UnauthorizedError(message);
   }
 }
 
