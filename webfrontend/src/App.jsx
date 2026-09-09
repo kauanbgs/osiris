@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from "react-router-dom";
 import TitleBar from "./components/TitleBar";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
@@ -7,6 +7,7 @@ import Arquivos from "./pages/Arquivos";
 import Workflow from "./pages/Workflow";
 import Modelos from "./pages/Modelos";
 import DefaultLayout from "./layouts/DefaultLayout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (
@@ -17,12 +18,17 @@ export default function App() {
           <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
           <Route path="/cadastro" element={<Cadastro />} />
-          <Route element={<DefaultLayout />}>
-            <Route path="/home" element={<Home />} />
-            <Route path="/modelos" element={<Modelos />} />
-            <Route path="/arquivos" element={<Arquivos />} />
-            <Route path="/workflow" element={<Workflow />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route element={<DefaultLayout />}>
+              <Route path="/home" element={<Home />} />
+              <Route path="/home/:id" element={<Home />} />
+              <Route path="/modelos" element={<Modelos />} />
+              <Route path="/arquivos" element={<Arquivos />} />
+              <Route path="/workflow" element={<Workflow />} />
+            </Route>
           </Route>
+
           <Route path="*" element={<Login />} />
         </Routes>
       </div>

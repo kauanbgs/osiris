@@ -17,4 +17,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export default api;
+const sheets = {
+  getUser: () => api.get("/auth/me"),
+  postChat: (chat) => api.post("/chat", chat),
+  getChats: () => api.get("/chat"),
+  postMessage: (id_chat, message) => api.post(`/chat/${id_chat}/messages`, message),
+  getMessages: (id_chat) => api.get(`/chat/${id_chat}/messages`),
+}
+export const auth = {
+  login: (email, password) => api.post("/auth/login", { email, password }),
+  register: (name, email, password) => api.post("/auth/register", { name, email, password }),
+  getUser: () => api.get("/auth/me"),
+};
+
+export { api };
+export default sheets;
