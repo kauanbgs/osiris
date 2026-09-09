@@ -1,5 +1,7 @@
+
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   TextInput,
@@ -17,10 +19,18 @@ export default function Cadastro({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function handleCadastro() {
-    if (!email || !password || !confirmPassword) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password || !confirmPassword) {
       Alert.alert("Erro", "Todos os campos devem ser preenchidos.");
+      return;
+    }
+
+    if (password.length < 8) {
+      Alert.alert("Erro", "A senha deve ter pelo menos 8 caracteres.");
       return;
     }
 
@@ -30,21 +40,40 @@ export default function Cadastro({ navigation }) {
     }
 
     try {
-      const name = email.split("@")[0];
+      setLoading(true);
+
+      // A API exige nome. Como a tela original não possui
+      // campo de nome, usamos a parte anterior ao @.
+      const emailName = normalizedEmail.split("@")[0];
+      const name = emailName.length >= 2 ? emailName : "Usuário";
 
       const response = await api.postCadastro({
         name,
-        email,
+        email: normalizedEmail,
         password,
       });
 
-      Alert.alert("Sucesso", response.data?.message || "Usuário cadastrado!");
-      navigation.navigate("LoginScreen");
+      Alert.alert(
+        "Sucesso",
+        response.data?.message || "Usuário cadastrado com sucesso.",
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.replace("LoginScreen"),
+          },
+        ]
+      );
     } catch (error) {
       const errorMsg =
-        error.response?.data?.error || "Não foi possível realizar o cadastro.";
+        error.response?.data?.error ||
+        (error.request
+          ? "Não foi possível conectar à API. Verifique se ela está rodando e se o endereço do servidor está correto."
+          : "Não foi possível realizar o cadastro.");
+
       Alert.alert("Erro", errorMsg);
-      console.log(error.response?.data);
+      console.error("Erro no cadastro:", error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -68,68 +97,123 @@ export default function Cadastro({ navigation }) {
         <Text style={styles.title}>Osíris</Text>
 
         <View style={styles.card}>
-          {/* E-mail */}
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
-              <Octicons name="mail" size={24} color="#D8D5DF" style={{ marginRight: 8 }} />
+              <Octicons
+                name="mail"
+                size={24}
+                color="#D8D5DF"
+                style={{ marginRight: 8 }}
+              />
               <Text style={styles.label}>E-mail</Text>
             </View>
+
             <TextInput
               style={styles.input}
               placeholder="arthurMarques@gmail.com"
               placeholderTextColor="#666"
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
               value={email}
               onChangeText={setEmail}
+              editable={!loading}
+              returnKeyType="next"
             />
           </View>
 
-          {/* Senha */}
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
-              <Octicons name="key" size={24} color="#D8D5DF" style={{ marginRight: 8 }} />
+              <Octicons
+                name="key"
+                size={24}
+                color="#D8D5DF"
+                style={{ marginRight: 8 }}
+              />
               <Text style={styles.label}>Senha</Text>
             </View>
+
             <TextInput
               style={styles.input}
               placeholder="Digite sua senha"
               placeholderTextColor="#666"
               secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
               value={password}
               onChangeText={setPassword}
+              editable={!loading}
+              returnKeyType="next"
             />
           </View>
 
-          {/* Confirmar Senha */}
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
-              <Octicons name="key" size={24} color="#D8D5DF" style={{ marginRight: 8 }} />
+              <Octicons
+                name="key"
+                size={24}
+                color="#D8D5DF"
+                style={{ marginRight: 8 }}
+              />
               <Text style={styles.label}>Confirmar senha</Text>
             </View>
+
             <TextInput
               style={styles.input}
               placeholder="Digite sua senha novamente"
               placeholderTextColor="#666"
               secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
+              editable={!loading}
+              returnKeyType="done"
+              onSubmitEditing={handleCadastro}
             />
           </View>
 
-          {/* Botão Criar */}
-          <TouchableOpacity style={styles.button} onPress={handleCadastro}>
-            <Text style={styles.buttonText}>Criar</Text>
-            <Octicons name="sign-in" size={18} color="#FFFFFF" style={styles.buttonIcon} />
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleCadastro}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.buttonText}>Criar</Text>
+
+                <Octicons
+                  name="sign-in"
+                  size={18}
+                  color="#FFFFFF"
+                  style={styles.buttonIcon}
+                />
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Link para Login */}
         <View style={styles.footer}>
-          <Text style={styles.footerText} onPress={() => navigation.navigate("LoginScreen")}>
-            Já tem uma conta?{' '}
+          <Text
+            style={styles.footerText}
+            onPress={() =>
+              !loading && navigation.navigate("LoginScreen")
+            }
+          >
+            Já tem uma conta?{" "}
           </Text>
-          <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}>
+
+          <TouchableOpacity
+            onPress={() =>
+              !loading && navigation.navigate("LoginScreen")
+            }
+            disabled={loading}
+          >
             <Text style={styles.signUpText}>faça login!</Text>
           </TouchableOpacity>
         </View>
@@ -143,6 +227,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#121212",
   },
+
   content: {
     flex: 1,
     justifyContent: "center",
@@ -151,14 +236,16 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     zIndex: 1,
   },
+
   title: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     fontSize: 48,
     color: "#FFFFFF",
     fontWeight: "bold",
     marginBottom: 40,
     zIndex: 1,
   },
+
   card: {
     width: "100%",
     backgroundColor: "#1C1C1C",
@@ -171,21 +258,25 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 1,
   },
+
   inputGroup: {
     marginBottom: 20,
   },
+
   labelRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
   },
+
   label: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     fontSize: 16,
     color: "#CCCCCC",
   },
+
   input: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     backgroundColor: "#121212",
     borderWidth: 1,
     borderColor: "#333",
@@ -195,6 +286,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
   },
+
   button: {
     backgroundColor: "#8A56FF",
     borderRadius: 8,
@@ -203,30 +295,41 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 10,
+    minHeight: 50,
   },
+
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+
   buttonText: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "600",
   },
+
   buttonIcon: {
     marginLeft: 8,
   },
+
   footer: {
     flexDirection: "row",
     marginTop: 30,
     zIndex: 1,
   },
+
   footerText: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     color: "#888888",
     fontSize: 16,
   },
+
   signUpText: {
-    fontFamily: 'JetBrainsMono_400Regular',
+    fontFamily: "JetBrainsMono_400Regular",
     color: "#BB86FC",
     fontSize: 16,
     fontWeight: "600",
   },
 });
+
