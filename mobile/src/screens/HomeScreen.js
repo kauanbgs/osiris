@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  FlatList,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -18,6 +19,9 @@ const colors = {
   textSecondary: '#c9c9c9',
   purple: '#7c5cff',
   green: '#2ecc71',
+  bubbleUser: '#7c5cff',
+  bubbleAgent: '#1a1a1a',
+  bubbleAgentBorder: '#2a2a2a',
 };
 
 const fontFamily = Platform.select({ ios: 'Courier', android: 'monospace' });
@@ -42,9 +46,94 @@ function GreetingHeader({ userName = 'Usuário' }) {
   );
 }
 
+function MessageBubble({ role, text }) {
+  const isUser = role === 'user';
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  }, [anim]);
+
+  const animatedStyle = {
+    opacity: anim,
+    transform: [
+      {
+        translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
+      },
+      {
+        scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
+      },
+    ],
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.bubbleRow,
+        isUser ? styles.bubbleRowUser : styles.bubbleRowAgent,
+        animatedStyle,
+      ]}
+    >
+      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}>
+        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>{text}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function TypingIndicator() {
+  const dots = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+  ];
+
+  useEffect(() => {
+    const animations = dots.map((dot, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 150),
+          Animated.timing(dot, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 350, useNativeDriver: true }),
+        ]),
+      ),
+    );
+    animations.forEach((a) => a.start());
+    return () => animations.forEach((a) => a.stop());
+  }, []);
+
+  return (
+    <View style={[styles.bubbleRow, styles.bubbleRowAgent]}>
+      <View style={[styles.bubble, styles.bubbleAgent, styles.typingBubble]}>
+        {dots.map((dot, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.typingDot,
+              {
+                opacity: dot.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+                transform: [
+                  { translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) },
+                ],
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }) {
   const [message, setMessage] = useState('');
   const [userName, setUserName] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [isAgentTyping, setIsAgentTyping] = useState(false);
+  const listRef = useRef(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -64,10 +153,34 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   const handleSend = () => {
-    if (!message.trim()) return;
-    console.log('Enviar:', message);
+    const text = message.trim();
+    if (!text || isAgentTyping) return;
+
+    const userMessage = { id: `${Date.now()}-user`, role: 'user', text };
+    setMessages((prev) => [...prev, userMessage]);
     setMessage('');
+    setIsAgentTyping(true);
+
+    setTimeout(() => {
+      const agentMessage = {
+        id: `${Date.now()}-agent`,
+        role: 'agent',
+        text: 'Essa é uma resposta simulada — troque pelo retorno real da API do Gemini aqui.',
+      };
+      setMessages((prev) => [...prev, agentMessage]);
+      setIsAgentTyping(false);
+    }, 1400);
   };
+
+  useEffect(() => {
+    if (messages.length > 0 || isAgentTyping) {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      });
+    }
+  }, [messages, isAgentTyping]);
+
+  const hasConversation = messages.length > 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -77,7 +190,19 @@ export default function HomeScreen({ navigation }) {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <GreetingHeader userName={userName} />
+        {hasConversation ? (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <MessageBubble role={item.role} text={item.text} />}
+            contentContainerStyle={styles.messagesList}
+            ListFooterComponent={isAgentTyping ? <TypingIndicator /> : null}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          />
+        ) : (
+          <GreetingHeader userName={userName} />
+        )}
 
         <ChatInput
           value={message}
@@ -85,6 +210,7 @@ export default function HomeScreen({ navigation }) {
           onSend={handleSend}
           onMicPress={() => console.log('mic pressionado')}
           onPlusPress={() => console.log('plus pressionado')}
+          disabled={isAgentTyping}
         />
 
         <BottomNav onPressItem={(key) => console.log('nav:', key)} />
@@ -141,5 +267,62 @@ const styles = StyleSheet.create({
   },
   greetingName: {
     color: colors.purple,
+  },
+
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+  },
+  bubbleRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  bubbleRowUser: {
+    justifyContent: 'flex-end',
+  },
+  bubbleRowAgent: {
+    justifyContent: 'flex-start',
+  },
+  bubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  bubbleUser: {
+    backgroundColor: colors.bubbleUser,
+    borderBottomRightRadius: 4,
+  },
+  bubbleAgent: {
+    backgroundColor: colors.bubbleAgent,
+    borderWidth: 1,
+    borderColor: colors.bubbleAgentBorder,
+    borderBottomLeftRadius: 4,
+  },
+  bubbleText: {
+    fontFamily,
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  bubbleTextUser: {
+    color: '#ffffff',
+  },
+
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 14,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textSecondary,
+    marginHorizontal: 2,
   },
 });

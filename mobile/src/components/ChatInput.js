@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
@@ -12,6 +13,7 @@ const colors = {
   textPlaceholder: '#6b6b6b',
 
   purple: '#7c5cff',
+  purpleDisabled: '#4a3f80',
   green: '#2ecc71',
   white: '#ffffff',
 };
@@ -25,6 +27,7 @@ export default function ChatInput({
   onMicPress,
   onPlusPress,
   placeholder = 'O que você quer construir?',
+  disabled = false,
 }) {
   return (
     <View style={styles.wrapper}>
@@ -33,23 +36,28 @@ export default function ChatInput({
           <Text style={styles.prompt}>{'>'}</Text>
           <TextInput
             style={styles.input}
-            placeholder={placeholder}
+            placeholder={disabled ? 'Aguardando resposta do agente…' : placeholder}
             placeholderTextColor={colors.textPlaceholder}
             value={value}
             onChangeText={onChangeText}
+            editable={!disabled}
           />
         </View>
 
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.plusButton} onPress={onPlusPress}>
+          <TouchableOpacity style={styles.plusButton} onPress={onPlusPress} disabled={disabled}>
             <Feather name="plus" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
 
           <View style={styles.rightActions}>
-            <TouchableOpacity style={styles.micButton} onPress={onMicPress}>
+            <TouchableOpacity style={styles.micButton} onPress={onMicPress} disabled={disabled}>
               <Feather name="mic" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.sendButton} onPress={onSend}>
+            <TouchableOpacity
+              style={[styles.sendButton, disabled && styles.sendButtonDisabled]}
+              onPress={onSend}
+              disabled={disabled}
+            >
               <Ionicons name="send" size={16} color={colors.white} />
             </TouchableOpacity>
           </View>
@@ -118,5 +126,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.purple,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: colors.purpleDisabled,
   },
 });
