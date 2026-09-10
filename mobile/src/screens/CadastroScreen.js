@@ -16,16 +16,23 @@ import DotField from "../components/DotField";
 import api from "../services/api";
 
 export default function Cadastro({ navigation }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleCadastro() {
+    const normalizedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail || !password || !confirmPassword) {
+    if (!normalizedName || !normalizedEmail || !password || !confirmPassword) {
       Alert.alert("Erro", "Todos os campos devem ser preenchidos.");
+      return;
+    }
+
+    if (normalizedName.length < 2) {
+      Alert.alert("Erro", "O nome deve ter pelo menos 2 caracteres.");
       return;
     }
 
@@ -42,13 +49,8 @@ export default function Cadastro({ navigation }) {
     try {
       setLoading(true);
 
-      // A API exige nome. Como a tela original não possui
-      // campo de nome, usamos a parte anterior ao @.
-      const emailName = normalizedEmail.split("@")[0];
-      const name = emailName.length >= 2 ? emailName : "Usuário";
-
       const response = await api.postCadastro({
-        name,
+        name: normalizedName,
         email: normalizedEmail,
         password,
       });
@@ -65,6 +67,7 @@ export default function Cadastro({ navigation }) {
       );
     } catch (error) {
       const errorMsg =
+        error.response?.data?.error?.message ||
         error.response?.data?.error ||
         (error.request
           ? "Não foi possível conectar à API. Verifique se ela está rodando e se o endereço do servidor está correto."
@@ -97,6 +100,31 @@ export default function Cadastro({ navigation }) {
         <Text style={styles.title}>Osíris</Text>
 
         <View style={styles.card}>
+          <View style={styles.inputGroup}>
+            <View style={styles.labelRow}>
+              <Octicons
+                name="person"
+                size={24}
+                color="#D8D5DF"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.label}>Nome</Text>
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Arthur Marques"
+              placeholderTextColor="#666"
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoComplete="name"
+              value={name}
+              onChangeText={setName}
+              editable={!loading}
+              returnKeyType="next"
+            />
+          </View>
+
           <View style={styles.inputGroup}>
             <View style={styles.labelRow}>
               <Octicons
@@ -332,4 +360,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-

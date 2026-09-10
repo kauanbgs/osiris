@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomNav from '../components/Navbar';
 import ChatInput from '../components/ChatInput';
 
@@ -30,7 +31,7 @@ function StatusIndicator({ label = 'Conectado ao desktop' }) {
   );
 }
 
-function GreetingHeader({ userName = 'Marques' }) {
+function GreetingHeader({ userName = 'Usuário' }) {
   return (
     <View style={styles.content}>
       <Text style={styles.greeting}>
@@ -43,6 +44,24 @@ function GreetingHeader({ userName = 'Marques' }) {
 
 export default function HomeScreen({ navigation }) {
   const [message, setMessage] = useState('');
+  const [userName, setUserName] = useState('');
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const stored = await AsyncStorage.getItem('user');
+        if (stored) {
+          const parsedUser = JSON.parse(stored);
+          const firstName = parsedUser?.name?.trim().split(' ')[0];
+          setUserName(firstName || 'Usuário');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar usuário:', error);
+      }
+    }
+
+    loadUser();
+  }, []);
 
   const handleSend = () => {
     if (!message.trim()) return;
@@ -58,7 +77,7 @@ export default function HomeScreen({ navigation }) {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <GreetingHeader userName="ThurCintra" />
+        <GreetingHeader userName={userName} />
 
         <ChatInput
           value={message}
@@ -75,7 +94,6 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // Layout geral
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
@@ -85,7 +103,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
-  // StatusIndicator
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -107,7 +124,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // GreetingHeader
   content: {
     flex: 1,
     justifyContent: 'flex-start',
