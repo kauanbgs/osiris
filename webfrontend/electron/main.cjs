@@ -3,6 +3,7 @@ const path = require('path')
 const os = require('os')
 const fs = require('fs')
 const pty = require('node-pty')
+const express = require('express')
 
 const terminals = new Map()
 
@@ -12,6 +13,24 @@ let currentModel = null
 let currentSession = null
 let activeModelPath = null
 const activeDownloads = new Map()
+
+async function runLlamaPrompt(prompt, onTextChunk) {
+  if (!currentSession) {
+    throw new Error('Nenhum modelo carregado')
+  }
+
+  if (!prompt || typeof prompt !== 'string') {
+    throw new Error('Prompt inválido')
+  }
+
+  return await currentSession.prompt(prompt, {
+    onTextChunk(chunk) {
+      if (onTextChunk) {
+        onTextChunk(chunk)
+      }
+    }
+  })
+}
 
 async function getLlamaModule() {
   if (!llamaInstance) {
@@ -135,43 +154,38 @@ ipcMain.handle('llama:load-model', async (_, modelPath) => {
   }
 })
 
-ipcMain.handle("llama:prompt", async (event, prompt) => {
-  if (!currentSession) {
-    throw new Error("Nenhum modelo carregado");
-  }
-
-  const sender = event.sender;
+ipcMain.handle('llama:prompt', async (event, prompt) => {
+  const sender = event.sender
 
   try {
-    const response = await currentSession.prompt(prompt, {
-      onTextChunk(chunk) {
-        if (!sender.isDestroyed()) {
-          sender.send("llama:stream", {
-            type: "chunk",
-            text: chunk,
-          });
-        }
-      },
-    });
+    const response = await runLlamaPrompt(prompt, (chunk) => {
+      if (!sender.isDestroyed()) {
+        sender.send('llama:stream', {
+          type: 'chunk',
+          text: chunk
+        })
+      }
+    })
 
     if (!sender.isDestroyed()) {
-      sender.send("llama:stream", {
-        type: "done",
-      });
+      sender.send('llama:stream', {
+        type: 'done'
+      })
     }
 
-    return response;
+    return response
+
   } catch (error) {
     if (!sender.isDestroyed()) {
-      sender.send("llama:stream", {
-        type: "error",
-        error: error.message,
-      });
+      sender.send('llama:stream', {
+        type: 'error',
+        error: error.message
+      })
     }
 
-    throw error;
+    throw error
   }
-});
+})
 
 ipcMain.handle('llama:download-model', async (event, { url, filename }) => {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -405,6 +419,17 @@ ipcMain.handle('fs:write-file', async (_, { filePath, content }) => {
 // WINDOW CONTROLS IPC HANDLERS
 // ===============================
 
+app.whenReady().then(() => {
+  createWindow()
+  startAiServer()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    }
+  })
+})
+
 ipcMain.on('window-minimize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   win?.minimize()
@@ -429,27 +454,55 @@ ipcMain.handle('window-is-maximized', (event) => {
   return win?.isMaximized() ?? false
 })
 
-// ===============================
-// APP LIFECYCLE
-// ===============================
+const aiServer = express()
 
-app.whenReady().then(() => {
-  createWindow()
+aiServer.use(express.json({
+  limit: '1mb'
+}))
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+aiServer.get('/api/status', (req, res) => {
+  res.json({
+    online: true,
+    modelLoaded: Boolean(currentSession),
+    activeModelName: activeModelPath
+      ? path.basename(activeModelPath)
+      : null
   })
 })
 
-app.on('window-all-closed', () => {
-  for (const terminal of terminals.values()) {
-    terminal.kill()
-  }
-  terminals.clear()
+aiServer.post('/api/prompt', async (req, res) => {
+  try {
+    const { prompt } = req.body
 
-  if (process.platform !== 'darwin') {
-    app.quit()
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({
+        error: 'Prompt não informado'
+      })
+    }
+
+    const response = await runLlamaPrompt(prompt)
+
+    res.json({
+      success: true,
+      response
+    })
+
+  } catch (error) {
+    console.error('Erro na API local:', error)
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    })
   }
 })
+
+const AI_SERVER_PORT = 8080
+
+function startAiServer() {
+  aiServer.listen(AI_SERVER_PORT, '0.0.0.0', () => {
+    console.log(
+      `Osiris AI Server disponível na rede na porta ${AI_SERVER_PORT}`
+    )
+  })
+}
