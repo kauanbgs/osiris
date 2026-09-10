@@ -126,6 +126,62 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (!initialChatId) return;
+
+    async function loadHistory() {
+      setIsHistoryLoading(true);
+      try {
+        const { data } = await api.get(`/chat/${initialChatId}/messages`);
+        const loaded = data.messages.map((m) => ({
+          content: m.content,
+          reasoning: "",
+          sender: m.type === "user" ? "Kauan" : "Osiris",
+          isBot: m.type !== "user",
+          isStreaming: false,
+        }));
+        setMessages(loaded);
+        setChatId(initialChatId);
+      } catch (err) {
+        console.error("Falha ao carregar histórico do chat:", err);
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    }
+
+    loadHistory();
+  }, [initialChatId]);
+
+  async function ensureChat(firstMessageContent) {
+    if (chatId) return chatId;
+
+    const title = firstMessageContent.trim().slice(0, 60) || "Nova conversa";
+
+    try {
+      const { data } = await api.post("/chat", { title });
+      const newId = data.chat.id_chat;
+      setChatId(newId);
+      return newId;
+    } catch (err) {
+      console.error("Falha ao criar chat no backend:", err);
+      return null;
+    }
+  }
+
+  async function persistMessage(targetChatId, type, content) {
+    if (!targetChatId || !content?.trim()) return;
+
+    try {
+      await api.post(`/chat/${targetChatId}/messages`, {
+        type,
+        content,
+        fk_id_model: DEFAULT_MODEL_ID,
+      });
+    } catch (err) {
+      console.error(`Falha ao salvar mensagem (${type}):`, err);
+    }
+  }
+
   async function handleSubmit() {
     if ((!input.trim() && files.length === 0) || isLoading) return;
 
@@ -221,7 +277,7 @@ export default function Home() {
         if (lastIdx >= 0 && updated[lastIdx].isBot) {
           updated[lastIdx] = {
             ...updated[lastIdx],
-            content: parsed.content || "...",
+            content: finalContent,
             reasoning: parsed.reasoning,
             isStreaming: false,
           };
@@ -241,12 +297,14 @@ export default function Home() {
         }
       }
     } catch (err) {
+      const errorContent = ` ${err.message || "Erro ao gerar resposta com o modelo."}`;
+
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (lastIdx >= 0 && updated[lastIdx].isBot) {
           updated[lastIdx] = {
-            content: `⚠️ ${err.message || "Erro ao gerar resposta com o modelo."}`,
+            content: errorContent,
             reasoning: "",
             sender: "Osiris",
             isBot: true,
@@ -255,6 +313,8 @@ export default function Home() {
         }
         return updated;
       });
+
+      persistMessage(activeChatId, "system", errorContent);
     } finally {
       setIsLoading(false);
     }
@@ -279,7 +339,7 @@ export default function Home() {
       {/* Área de conteúdo scrollável */}
       <div className="flex-1 overflow-y-auto">
         {/* Header de saudação — só aparece sem mensagens */}
-        {!hasMessages && (
+        {!hasMessages && !isHistoryLoading && (
           <div className="flex min-h-full items-center justify-center px-6 py-12">
             <div className="relative z-10 -mt-14 w-full max-w-180 font-mono">
               <header className="mb-10 text-center">
