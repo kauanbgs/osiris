@@ -45,6 +45,7 @@ export default function Home() {
 
   const messagesEndRef = useRef(null);
   const uploadInputRef = useRef(null);
+  const creatingChatRef = useRef(false);
 
   const now = new Date();
   const hour = now.getHours();
