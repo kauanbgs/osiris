@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import LoginScreen from './src/screens/LoginScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import CadastroScreen from './src/screens/CadastroScreen';
+import MemoriaScreen from './src/screens/MemoriaScreen';
 
 export default function App() {
   const stack = createNativeStackNavigator();
@@ -13,6 +14,7 @@ export default function App() {
         <stack.Screen name="LoginScreen" component={LoginScreen} />
         <stack.Screen name="HomeScreen" component={HomeScreen} />
         <stack.Screen name="Cadastro" component={CadastroScreen} />
+        <stack.Screen name="MemoriaScreen" component={MemoriaScreen} />
       </stack.Navigator>
     </NavigationContainer>
   );
