@@ -9,7 +9,7 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <stack.Navigator initialRouteName="HomeScreen" screenOptions={{ headerShown: false }}>
+      <stack.Navigator initialRouteName="Cadastro" screenOptions={{ headerShown: false }}>
         <stack.Screen name="LoginScreen" component={LoginScreen} />
         <stack.Screen name="HomeScreen" component={HomeScreen} />
         <stack.Screen name="Cadastro" component={CadastroScreen} />
