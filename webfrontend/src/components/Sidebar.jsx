@@ -6,7 +6,6 @@ import {
   Folder,
   House,
   LogOut,
-  MonitorCog,
   Plus,
   Settings,
   TerminalSquare,
@@ -20,14 +19,13 @@ import { useAuth } from "@/contexts/AuthContext";
 const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
   { label: "Workflow", icon: Bot, link: "/workflow" },
-  { label: "Terminal", icon: TerminalSquare, link: "/terminal" },
-  { label: "Arquivos", icon: Folder, link: "/arquivos" },
+  { label: "Terminal", icon: TerminalSquare},
+  { label: "Arquivos", icon: Folder},
 ];
 
 const environmentItems = [
   { label: "Modelos", icon: FileText, link: "/modelos" },
   { label: "Memória", icon: Brain },
-  { label: "Monitoramento", icon: MonitorCog },
   { label: "Configurações", icon: Settings },
 ];
 

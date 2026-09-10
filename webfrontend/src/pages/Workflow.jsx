@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import TerminalNode from "@/components/terminalNode";
 import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
+import FileNode from "@/components/FileNode";
 
 import {
   Menubar,
@@ -42,6 +43,7 @@ import {
 const nodeTypes = {
   terminal: TerminalNode,
   agent: AgentNode,
+  file: FileNode,
 };
 
 const edgeTypes = {
@@ -89,6 +91,40 @@ export default function Workflow() {
           label: "Agent",
 
           mode,
+        },
+
+        dragHandle: ".drag-handle",
+      };
+
+      setNodes((nodes) => [
+        ...nodes,
+        newNode,
+      ]);
+    },
+    [setNodes]
+  );
+
+  const addFileNode = useCallback(
+    () => {
+      const id = crypto.randomUUID();
+
+      const newNode = {
+        id,
+        type: "file",
+
+        position: {
+          x: 250 + Math.random() * 200,
+          y: 150 + Math.random() * 150,
+        },
+
+        data: {
+          label: "File",
+          files: [{
+            fileName: "Exemplo.txt",
+            fileContent: "Hello World"
+          }]
+
+          
         },
 
         dragHandle: ".drag-handle",
@@ -215,11 +251,32 @@ export default function Workflow() {
             </MenubarTrigger>
 
             <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">
-              <PaperclipIcon size={18} />
-            </MenubarTrigger>
+                <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex cursor-pointer items-center justify-center rounded-full p-2 hover:bg-zinc-800/60"
+                  >
+                    <PaperclipIcon size={18} />
+                  </button>
+                </DropdownMenuTrigger>
 
-            <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">
-              <FileTextIcon size={18} />
+                <DropdownMenuContent
+                  align="center"
+                  className="w-52"
+                >
+                  <DropdownMenuItem
+                    onClick={() =>
+                      addFileNode()
+                    }
+                    className="cursor-pointer gap-2"
+                  >
+                    <PaperclipIcon size={16} />
+
+                    File
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </MenubarTrigger>
 
             <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">

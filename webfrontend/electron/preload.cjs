@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld(
     close: () => ipcRenderer.send('window-close'),
     isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
 
+    // FILE SYSTEM
+    writeFile: (filePath, content) =>
+      ipcRenderer.invoke('fs:write-file', { filePath, content }),
+
     // TERMINAL CONTROLS
     terminalCreate: (id, mode) =>
       ipcRenderer.invoke('terminal-create', id, mode),

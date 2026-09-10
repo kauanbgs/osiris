@@ -384,6 +384,24 @@ ipcMain.on('terminal-close', (event, id) => {
 })
 
 // ===============================
+// FILE SYSTEM IPC HANDLERS
+// ===============================
+
+ipcMain.handle('fs:write-file', async (_, { filePath, content }) => {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('Caminho de arquivo inválido.')
+  }
+
+  try {
+    await fs.promises.writeFile(filePath, content, 'utf-8')
+    return { success: true, filePath }
+  } catch (err) {
+    console.error('Erro ao escrever arquivo:', err)
+    throw new Error(`Não foi possível escrever em "${filePath}": ${err.message}`)
+  }
+})
+
+// ===============================
 // WINDOW CONTROLS IPC HANDLERS
 // ===============================
 
