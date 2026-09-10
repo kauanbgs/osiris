@@ -61,7 +61,9 @@ contextBridge.exposeInMainWorld('llama', {
   loadModel: (modelPath) => ipcRenderer.invoke('llama:load-model', modelPath),
   downloadModel: (url, filename) => ipcRenderer.invoke('llama:download-model', { url, filename }),
   cancelDownload: (url) => ipcRenderer.invoke('llama:cancel-download', url),
-  prompt: (text) => ipcRenderer.invoke('llama:prompt', text),
+  prompt: (prompt) => {
+  return ipcRenderer.invoke("llama:prompt", prompt);
+},
   importFile: () => ipcRenderer.invoke('llama:import-file'),
   deleteModel: (modelPath) => ipcRenderer.invoke('llama:delete-model', modelPath),
 

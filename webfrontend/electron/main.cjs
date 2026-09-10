@@ -23,10 +23,15 @@ async function runLlamaPrompt(prompt, onTextChunk) {
     throw new Error('Prompt inválido')
   }
 
-  return await currentSession.prompt(prompt, {
+  return currentSession.prompt(prompt, {
     onTextChunk(chunk) {
-      if (onTextChunk) {
-        onTextChunk(chunk)
+      const text =
+        typeof chunk === 'string'
+          ? chunk
+          : chunk?.text ?? String(chunk ?? '')
+
+      if (text && onTextChunk) {
+        onTextChunk(text)
       }
     }
   })

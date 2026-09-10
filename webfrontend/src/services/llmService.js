@@ -431,25 +431,27 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
 
   // Local model via Electron window.llama
   if (typeof window !== "undefined" && window.llama?.prompt) {
-    let cleanup = null;
-    let accumulated = "";
+  let accumulated = "";
+  let cleanup = null;
 
-    if (window.llama.onStream && onChunk) {
-      cleanup = window.llama.onStream((data) => {
-        if (data.type === "chunk" && data.text) {
-          accumulated += data.text;
-          onChunk(accumulated);
-        }
-      });
-    }
+  if (window.llama.onStream) {
+    cleanup = window.llama.onStream((data) => {
+      if (data.type === "chunk" && data.text) {
+        accumulated += data.text;
 
-    try {
-      const res = await window.llama.prompt(prompt);
-      return res || accumulated;
-    } finally {
-      cleanup?.();
-    }
+        onChunk?.(accumulated);
+      }
+    });
   }
+
+  try {
+    const res = await window.llama.prompt(prompt);
+
+    return accumulated || res || "";
+  } finally {
+    cleanup?.();
+  }
+}
 
   throw new Error(
     "Nenhum modelo selecionado ou disponível. Configure um modelo de Nuvem em 'Modelos' ou inicie um modelo Local."

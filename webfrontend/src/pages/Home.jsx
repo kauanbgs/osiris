@@ -1,6 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowUp, Copy, Cpu, Paperclip, Sparkles, Square, X } from "lucide-react";
+import {
+  ArrowUp,
+  Copy,
+  Cpu,
+  Paperclip,
+  Sparkles,
+  Square,
+  X,
+} from "lucide-react";
 import {
   PromptInput,
   PromptInputAction,
@@ -94,25 +102,36 @@ export default function Home() {
       return;
     }
 
+    if (creatingChatRef.current) {
+      creatingChatRef.current = false;
+      return;
+    }
+
     async function loadMessages() {
       try {
         const response = await sheets.getMessages(id);
         const raw = response.data?.messages || [];
+
         const formatted = raw.map((msg) => {
           const isBot = msg.type !== "user";
+
           const parsed = isBot
             ? parseReasoning(msg.content)
-            : { reasoning: "", content: msg.content };
+            : {
+                reasoning: "",
+                content: msg.content,
+              };
 
           return {
             id: msg.id_message,
-            sender: isBot ? "Osiris" : (user?.name || "Usuário"),
+            sender: isBot ? "Osiris" : user?.name || "Usuário",
             isBot,
             content: parsed.content,
             reasoning: parsed.reasoning,
             isStreaming: false,
           };
         });
+
         setMessages(formatted);
       } catch (error) {
         console.error("Erro ao carregar mensagens do chat:", error);
@@ -144,6 +163,8 @@ export default function Home() {
     // Se estiver no /home geral sem id de chat, cria um novo chat
     if (!currentChatId) {
       try {
+        creatingChatRef.current = true;
+
         const title =
           promptText.length > 30
             ? promptText.slice(0, 30) + "..."
@@ -151,10 +172,15 @@ export default function Home() {
 
         const response = await sheets.postChat({ title });
         const newChat = response.data?.chat || response.data;
+
         if (newChat?.id_chat) {
           currentChatId = newChat.id_chat;
+
           window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
-          navigate(`/home/${currentChatId}`, { replace: true });
+
+          navigate(`/home/${currentChatId}`, {
+            replace: true,
+          });
         }
       } catch (err) {
         console.error("Erro ao criar chat:", err);
@@ -378,21 +404,21 @@ export default function Home() {
           {/* Active Model Indicator */}
           <div className="mb-1.5 flex items-center justify-between px-1 text-[11px] font-mono text-zinc-500">
             <div className="flex items-center gap-1.5">
-              {activeModel?.type === 'cloud' ? (
+              {activeModel?.type === "cloud" ? (
                 <Sparkles size={12} className="text-violet-400" />
               ) : (
                 <Cpu size={12} className="text-violet-400" />
               )}
               <span>
-                Modelo:{' '}
+                Modelo:{" "}
                 <strong className="font-semibold text-zinc-300">
-                  {activeModel?.name || 'Automático'}
+                  {activeModel?.name || "Automático"}
                 </strong>
               </span>
             </div>
             <button
               type="button"
-              onClick={() => navigate('/modelos')}
+              onClick={() => navigate("/modelos")}
               className="text-zinc-500 transition-colors hover:text-violet-400"
             >
               Configurar modelos →
