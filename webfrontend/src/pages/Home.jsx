@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowUp, Copy, Paperclip, Square, X } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ArrowUp, Copy, Cpu, Paperclip, Sparkles, Square, X } from "lucide-react";
 import {
   PromptInput,
   PromptInputAction,
@@ -19,21 +20,24 @@ import {
   ReasoningTrigger,
 } from "@/components/ui/reasoning";
 import { Button } from "@/components/ui/button";
-import api from "@/services/api";
-
-const DEFAULT_MODEL_ID = null;
+import sheets from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { getActiveModel, sendPrompt } from "@/services/llmService";
 
 export default function Home() {
-  const params = new URLSearchParams(window.location.search);
-  const initialChatId = params.get("chat");
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState([]);
-  const [chatId, setChatId] = useState(initialChatId);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [activeModel, setActiveModel] = useState(getActiveModel);
+
   const messagesEndRef = useRef(null);
   const uploadInputRef = useRef(null);
+
   const now = new Date();
   const hour = now.getHours();
   const greeting =
@@ -49,6 +53,16 @@ export default function Home() {
     .replace(",", " ·");
 
   const hasMessages = messages.length > 0;
+
+  useEffect(() => {
+    const handleModelChange = () => {
+      setActiveModel(getActiveModel());
+    };
+    window.addEventListener("osiris:model-changed", handleModelChange);
+    return () => {
+      window.removeEventListener("osiris:model-changed", handleModelChange);
+    };
+  }, []);
 
   function parseReasoning(text = "") {
     const closedMatch = text.match(/<think>([\s\S]*?)<\/think>/i);
@@ -72,6 +86,41 @@ export default function Home() {
       content: text.trim(),
     };
   }
+
+  // Load messages when chatId (id param) changes
+  useEffect(() => {
+    if (!id) {
+      setMessages([]);
+      return;
+    }
+
+    async function loadMessages() {
+      try {
+        const response = await sheets.getMessages(id);
+        const raw = response.data?.messages || [];
+        const formatted = raw.map((msg) => {
+          const isBot = msg.type !== "user";
+          const parsed = isBot
+            ? parseReasoning(msg.content)
+            : { reasoning: "", content: msg.content };
+
+          return {
+            id: msg.id_message,
+            sender: isBot ? "Osiris" : (user?.name || "Usuário"),
+            isBot,
+            content: parsed.content,
+            reasoning: parsed.reasoning,
+            isStreaming: false,
+          };
+        });
+        setMessages(formatted);
+      } catch (error) {
+        console.error("Erro ao carregar mensagens do chat:", error);
+      }
+    }
+
+    loadMessages();
+  }, [id, user?.name]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -136,34 +185,73 @@ export default function Home() {
   async function handleSubmit() {
     if ((!input.trim() && files.length === 0) || isLoading) return;
 
+    const promptText = input.trim();
     const content =
       files.length > 0
-        ? `${input}\n\n📎 ${files.map((f) => f.name).join(", ")}`
-        : input;
+        ? `${promptText}\n\n📎 ${files.map((f) => f.name).join(", ")}`
+        : promptText;
 
-    const userMessage = { content, sender: "Kauan", isBot: false };
-
-    setMessages((prev) => [
-      ...prev,
-      userMessage,
-      { content: "", reasoning: "", sender: "Osiris", isBot: true, isStreaming: true },
-    ]);
     setInput("");
     setFiles([]);
     setIsLoading(true);
 
-    const activeChatId = await ensureChat(content);
+    let currentChatId = id;
 
-    persistMessage(activeChatId, "user", content);
+    // Se estiver no /home geral sem id de chat, cria um novo chat
+    if (!currentChatId) {
+      try {
+        const title =
+          promptText.length > 30
+            ? promptText.slice(0, 30) + "..."
+            : promptText || "Novo chat";
 
-    let accumulatedText = "";
-    let removeStreamListener = null;
+        const response = await sheets.postChat({ title });
+        const newChat = response.data?.chat || response.data;
+        if (newChat?.id_chat) {
+          currentChatId = newChat.id_chat;
+          window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
+          navigate(`/home/${currentChatId}`, { replace: true });
+        }
+      } catch (err) {
+        console.error("Erro ao criar chat:", err);
+      }
+    }
 
-    if (window.llama?.onStream) {
-      removeStreamListener = window.llama.onStream((data) => {
-        if (data.type === "chunk" && data.text) {
-          accumulatedText += data.text;
-          const parsed = parseReasoning(accumulatedText);
+    const userMessage = {
+      content,
+      sender: user?.name || "Usuário",
+      isBot: false,
+    };
+
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        content: "",
+        reasoning: "",
+        sender: "Osiris",
+        isBot: true,
+        isStreaming: true,
+      },
+    ]);
+
+    // Salva mensagem do usuário no banco
+    if (currentChatId) {
+      try {
+        await sheets.postMessage(currentChatId, {
+          type: "user",
+          content,
+        });
+      } catch (err) {
+        console.error("Erro ao salvar mensagem do usuário:", err);
+      }
+    }
+
+    try {
+      const finalBotText = await sendPrompt({
+        prompt: content,
+        onChunk: (accumulated) => {
+          const parsed = parseReasoning(accumulated);
 
           setMessages((prev) => {
             const updated = [...prev];
@@ -178,18 +266,10 @@ export default function Home() {
             }
             return updated;
           });
-        }
+        },
       });
-    }
 
-    try {
-      if (!window.llama?.prompt) {
-        throw new Error("Llama não está disponível.");
-      }
-
-      const resposta = await window.llama.prompt(content);
-      const parsed = parseReasoning(resposta || accumulatedText);
-      const finalContent = parsed.content || "...";
+      const parsed = parseReasoning(finalBotText);
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -205,7 +285,17 @@ export default function Home() {
         return updated;
       });
 
-      persistMessage(activeChatId, "assistant", finalContent);
+      // Salva resposta do assistente no banco
+      if (currentChatId && finalBotText) {
+        try {
+          await sheets.postMessage(currentChatId, {
+            type: "assistant",
+            content: finalBotText,
+          });
+        } catch (err) {
+          console.error("Erro ao salvar resposta do assistente:", err);
+        }
+      }
     } catch (err) {
       const errorContent = ` ${err.message || "Erro ao gerar resposta com o modelo."}`;
 
@@ -226,7 +316,6 @@ export default function Home() {
 
       persistMessage(activeChatId, "system", errorContent);
     } finally {
-      removeStreamListener?.();
       setIsLoading(false);
     }
   }
@@ -256,7 +345,10 @@ export default function Home() {
               <header className="mb-10 text-center">
                 <h1 className="text-[clamp(26px,3vw,38px)] font-semibold tracking-tight text-zinc-200">
                   {greeting},{" "}
-                  <span className="font-bold text-violet-500">Kauan</span>!
+                  <span className="font-bold text-violet-500">
+                    {user?.name || "Usuário"}
+                  </span>
+                  !
                 </h1>
                 <p className="mt-2 text-[11px] font-semibold text-zinc-300">
                   {date}
@@ -271,7 +363,7 @@ export default function Home() {
           <div className="mx-auto w-full max-w-180 space-y-6 px-6 py-6">
             {messages.map((msg, i) => (
               <div
-                key={i}
+                key={msg.id || i}
                 style={{
                   animation: "messageIn 0.3s ease-out both",
                 }}
@@ -288,10 +380,14 @@ export default function Home() {
                       {msg.reasoning && (
                         <Reasoning isStreaming={msg.isStreaming}>
                           <ReasoningTrigger>
-                            {msg.isStreaming && !msg.content ? "Pensando..." : "Raciocínio"}
+                            {msg.isStreaming && !msg.content
+                              ? "Pensando..."
+                              : "Raciocínio"}
                           </ReasoningTrigger>
 
-                          <ReasoningContent markdown>{msg.reasoning}</ReasoningContent>
+                          <ReasoningContent markdown>
+                            {msg.reasoning}
+                          </ReasoningContent>
                         </Reasoning>
                       )}
 
@@ -339,6 +435,30 @@ export default function Home() {
       {/* Input fixo no fundo */}
       <div className="shrink-0 px-6 pb-5 pt-3">
         <div className="mx-auto w-full max-w-180">
+          {/* Active Model Indicator */}
+          <div className="mb-1.5 flex items-center justify-between px-1 text-[11px] font-mono text-zinc-500">
+            <div className="flex items-center gap-1.5">
+              {activeModel?.type === 'cloud' ? (
+                <Sparkles size={12} className="text-violet-400" />
+              ) : (
+                <Cpu size={12} className="text-violet-400" />
+              )}
+              <span>
+                Modelo:{' '}
+                <strong className="font-semibold text-zinc-300">
+                  {activeModel?.name || 'Automático'}
+                </strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/modelos')}
+              className="text-zinc-500 transition-colors hover:text-violet-400"
+            >
+              Configurar modelos →
+            </button>
+          </div>
+
           <PromptInput
             value={input}
             onValueChange={setInput}
@@ -357,6 +477,7 @@ export default function Home() {
                     <Paperclip className="size-4" />
                     <span className="max-w-[120px] truncate">{file.name}</span>
                     <button
+                      type="button"
                       onClick={() => handleRemoveFile(index)}
                       className="hover:bg-secondary/50 rounded-full p-1"
                     >
@@ -368,12 +489,12 @@ export default function Home() {
             )}
 
             <PromptInputTextarea
-              placeholder="Ask me anything..."
+              placeholder="Pergunte qualquer coisa ao Osiris..."
               className="text-white"
             />
 
             <PromptInputActions className="flex items-center justify-between gap-2 pt-2">
-              <PromptInputAction tooltip="Attach files">
+              <PromptInputAction tooltip="Anexar arquivos">
                 <label
                   htmlFor="file-upload"
                   className="hover:bg-secondary-foreground/10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-2xl"
@@ -391,7 +512,7 @@ export default function Home() {
               </PromptInputAction>
 
               <PromptInputAction
-                tooltip={isLoading ? "Stop generation" : "Send message"}
+                tooltip={isLoading ? "Gerando..." : "Enviar mensagem"}
               >
                 <Button
                   variant="default"

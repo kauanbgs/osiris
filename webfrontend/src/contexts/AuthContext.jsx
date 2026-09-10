@@ -1,10 +1,17 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "@/services/api";
+import { auth } from "@/services/api";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("osiris_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -12,17 +19,26 @@ export function AuthProvider({ children }) {
       const token = localStorage.getItem("osiris_token");
 
       if (!token) {
+        setUser(null);
+        localStorage.removeItem("osiris_user");
         setLoading(false);
         return;
       }
 
       try {
-        const response = await api.get("/auth/me");
-
-        setUser(response.data.user);
-      } catch {
-        localStorage.removeItem("osiris_token");
-        setUser(null);
+        const response = await auth.getUser();
+        const userData = response.data?.user || response.data;
+        if (userData) {
+          setUser(userData);
+          localStorage.setItem("osiris_user", JSON.stringify(userData));
+        }
+      } catch (error) {
+        console.error("Erro ao carregar sessão do usuário:", error);
+        if (error.response?.status === 401) {
+          localStorage.removeItem("osiris_token");
+          localStorage.removeItem("osiris_user");
+          setUser(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -32,31 +48,28 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function login(email, password) {
-    const response = await api.post("/auth/login", {
-      email,
-      password,
-    });
+    const response = await auth.login(email, password);
 
-    const { token, user } = response.data;
+    const { token, user: userData } = response.data;
 
     localStorage.setItem("osiris_token", token);
-    setUser(user);
+    if (userData) {
+      localStorage.setItem("osiris_user", JSON.stringify(userData));
+      setUser(userData);
+    }
 
-    return user;
+    return userData;
   }
 
   async function register(name, email, password) {
-    const response = await api.post("/auth/register", {
-      name,
-      email,
-      password,
-    });
+    const response = await auth.register(name, email, password);
 
     return response.data;
   }
 
   function logout() {
     localStorage.removeItem("osiris_token");
+    localStorage.removeItem("osiris_user");
     setUser(null);
   }
 

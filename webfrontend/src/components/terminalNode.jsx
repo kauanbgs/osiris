@@ -5,10 +5,29 @@ export default function TerminalNode({ id, data }) {
   return (
     <div className="w-[560px] overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-950 shadow-2xl">
       <Handle
-        type="target"
+        type="source"
         position={Position.Left}
         className="w-3 h-3 bg-violet-500 border-2 border-zinc-900"
       />
+      <Handle
+        id="top"
+        type="source"
+        position={Position.Top}
+        className="w-3 h-3 bg-violet-500 border-2 border-zinc-900"
+      />  
+      <Handle
+        id="bottom"
+        type="source"
+        position={Position.Bottom}
+        className="w-3 h-3 bg-violet-500 border-2 border-zinc-900"
+      />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        className="w-3 h-3 bg-violet-500 border-2 border-zinc-900"
+      />  
+
 
       {/* Header bar that serves as drag handle */}
       <div className="drag-handle flex h-10 cursor-grab items-center justify-between border-b border-zinc-800 bg-zinc-900/90 px-3.5 select-none active:cursor-grabbing hover:bg-zinc-900 transition-colors">
