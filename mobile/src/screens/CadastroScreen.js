@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +8,9 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ScrollView,
   StyleSheet,
+  StatusBar,
 } from "react-native";
 import { Octicons } from "@expo/vector-icons";
 import DotField from "../components/DotField";
@@ -85,6 +86,8 @@ export default function Cadastro({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      <StatusBar barStyle="light-content" backgroundColor="#121212" />
+
       <DotField
         dotRadius={1.5}
         dotSpacing={22}
@@ -96,156 +99,162 @@ export default function Cadastro({ navigation }) {
         glowColor="#8A56FF"
       />
 
-      <View style={styles.content} pointerEvents="box-none">
-        <Text style={styles.title}>Osíris</Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <Text style={styles.title}>Osíris</Text>
 
-        <View style={styles.card}>
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Octicons
-                name="person"
-                size={24}
-                color="#D8D5DF"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.label}>Nome</Text>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Arthur Marques"
-              placeholderTextColor="#666"
-              autoCapitalize="words"
-              autoCorrect={false}
-              autoComplete="name"
-              value={name}
-              onChangeText={setName}
-              editable={!loading}
-              returnKeyType="next"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Octicons
-                name="mail"
-                size={24}
-                color="#D8D5DF"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.label}>E-mail</Text>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="arthurMarques@gmail.com"
-              placeholderTextColor="#666"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              value={email}
-              onChangeText={setEmail}
-              editable={!loading}
-              returnKeyType="next"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Octicons
-                name="key"
-                size={24}
-                color="#D8D5DF"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.label}>Senha</Text>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Digite sua senha"
-              placeholderTextColor="#666"
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="new-password"
-              value={password}
-              onChangeText={setPassword}
-              editable={!loading}
-              returnKeyType="next"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Octicons
-                name="key"
-                size={24}
-                color="#D8D5DF"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.label}>Confirmar senha</Text>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Digite sua senha novamente"
-              placeholderTextColor="#666"
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              editable={!loading}
-              returnKeyType="done"
-              onSubmitEditing={handleCadastro}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleCadastro}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.buttonText}>Criar</Text>
-
+          <View style={styles.card}>
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
                 <Octicons
-                  name="sign-in"
-                  size={18}
-                  color="#FFFFFF"
-                  style={styles.buttonIcon}
+                  name="person"
+                  size={24}
+                  color="#D8D5DF"
+                  style={styles.icon}
                 />
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.footer}>
-          <Text
-            style={styles.footerText}
-            onPress={() =>
-              !loading && navigation.navigate("LoginScreen")
-            }
-          >
-            Já tem uma conta?{" "}
-          </Text>
+                <Text style={styles.label}>Nome</Text>
+              </View>
 
-          <TouchableOpacity
-            onPress={() =>
-              !loading && navigation.navigate("LoginScreen")
-            }
-            disabled={loading}
-          >
-            <Text style={styles.signUpText}>faça login!</Text>
-          </TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="Arthur Marques"
+                placeholderTextColor="#666"
+                autoCapitalize="words"
+                autoCorrect={false}
+                autoComplete="name"
+                value={name}
+                onChangeText={setName}
+                editable={!loading}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Octicons
+                  name="mail"
+                  size={24}
+                  color="#D8D5DF"
+                  style={styles.icon}
+                />
+
+                <Text style={styles.label}>E-mail</Text>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="arthurMarques@gmail.com"
+                placeholderTextColor="#666"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                value={email}
+                onChangeText={setEmail}
+                editable={!loading}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Octicons
+                  name="key"
+                  size={24}
+                  color="#D8D5DF"
+                  style={styles.icon}
+                />
+
+                <Text style={styles.label}>Senha</Text>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Digite sua senha"
+                placeholderTextColor="#666"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                value={password}
+                onChangeText={setPassword}
+                editable={!loading}
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Octicons
+                  name="key"
+                  size={24}
+                  color="#D8D5DF"
+                  style={styles.icon}
+                />
+
+                <Text style={styles.label}>Confirmar senha</Text>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Digite sua senha novamente"
+                placeholderTextColor="#666"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                editable={!loading}
+                returnKeyType="done"
+                onSubmitEditing={handleCadastro}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleCadastro}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Criar</Text>
+
+                  <Octicons
+                    name="sign-in"
+                    size={18}
+                    color="#FFFFFF"
+                    style={styles.buttonIcon}
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              Já tem uma conta?{" "}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() =>
+                !loading && navigation.navigate("LoginScreen")
+              }
+              disabled={loading}
+            >
+              <Text style={styles.signUpText}>faça login!</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -256,8 +265,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
   },
 
-  content: {
+  scroll: {
     flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+  },
+
+  content: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
@@ -280,7 +297,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
@@ -295,6 +315,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
+  },
+
+  icon: {
+    marginRight: 8,
   },
 
   label: {
