@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  TouchableOpacity,
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,11 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import BottomNav from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
-
-// TROQUE PELO IPv4 REAL DO SEU PC
-const DESKTOP_IP = "10.89.240.32";
-
-const AI_API_URL = `http://${DESKTOP_IP}:8080`;
+import { aiUrl } from "../services/serverConfig";
 
 const colors = {
   background: "#0d0d0d",
@@ -38,6 +35,7 @@ const fontFamily = Platform.select({
 });
 
 async function sendPromptToDesktop(prompt) {
+  const AI_API_URL = aiUrl();
   const response = await fetch(`${AI_API_URL}/api/prompt`, {
     method: "POST",
     headers: {
@@ -66,6 +64,7 @@ async function sendPromptToDesktop(prompt) {
 
 async function checkDesktopConnection() {
   try {
+    const AI_API_URL = aiUrl();
     const response = await fetch(`${AI_API_URL}/api/status`);
 
     if (!response.ok) {
@@ -92,7 +91,7 @@ async function checkDesktopConnection() {
   }
 }
 
-function StatusIndicator({ connected, modelLoaded, modelName }) {
+function StatusIndicator({ connected, modelLoaded, modelName, onPress }) {
   let label = "Desktop offline";
 
   if (connected && !modelLoaded) {
@@ -104,7 +103,7 @@ function StatusIndicator({ connected, modelLoaded, modelName }) {
   }
 
   return (
-    <View style={styles.statusRow}>
+    <TouchableOpacity style={styles.statusRow} onPress={onPress}>
       <View
         style={[
           styles.statusDot,
@@ -116,7 +115,7 @@ function StatusIndicator({ connected, modelLoaded, modelName }) {
       />
 
       <Text style={styles.statusText}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -381,6 +380,7 @@ export default function HomeScreen({ navigation }) {
         connected={desktopConnected}
         modelLoaded={modelLoaded}
         modelName={modelName}
+        onPress={() => navigation.navigate("Configuracoes")}
       />
 
       <KeyboardAvoidingView

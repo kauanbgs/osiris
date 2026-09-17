@@ -9,10 +9,11 @@ import {
   TouchableOpacity,
   StatusBar,
 } from "react-native";
-import { Mail, KeyRound } from "lucide-react-native";
+import { Mail, KeyRound, Settings } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DotField from "../components/DotField";
 import api from "../services/api";
+import { getIP } from "../services/serverConfig";
 
 export default function Login({ navigation }) {
   const [email, setEmail] = useState("");
@@ -48,11 +49,20 @@ export default function Login({ navigation }) {
 
       navigation.replace("HomeScreen");
     } catch (error) {
+      const isTimeout =
+        error.code === "ECONNABORTED" ||
+        String(error.message || "").toLowerCase().includes("timeout");
+
+      const backendMsg =
+        error.response?.data?.error?.message || error.response?.data?.error;
+
       const message =
-        error.response?.data?.error ||
-        (error.request
-          ? "Não foi possível conectar à API. Verifique se ela está rodando e se o endereço do servidor está correto."
-          : error.message) ||
+        (typeof backendMsg === "string" && backendMsg) ||
+        (isTimeout
+          ? `Tempo esgotado ao conectar em ${getIP()}:5000. Verifique se o celular está no mesmo Wi-Fi do PC, se a API está rodando e se o IP em "Configurar servidor" está correto.`
+          : error.request
+            ? "Não foi possível conectar à API. Verifique se ela está rodando e se o endereço do servidor está correto."
+            : error.message) ||
         "Não foi possível realizar o login.";
 
       Alert.alert("Erro", message);
@@ -161,6 +171,15 @@ export default function Login({ navigation }) {
           <Text style={styles.signUpText}>se cadastre!</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity
+        style={styles.serverRow}
+        onPress={() => !loading && navigation.navigate("Configuracoes")}
+        disabled={loading}
+      >
+        <Settings size={16} color="#888888" strokeWidth={2} />
+        <Text style={styles.serverText}>Configurar servidor</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -262,6 +281,20 @@ const styles = StyleSheet.create({
     color: "#BB86FC",
     fontSize: 16,
     fontWeight: "600",
+  },
+
+  serverRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 6,
+    zIndex: 1,
+  },
+
+  serverText: {
+    fontFamily: "JetBrainsMono_400Regular",
+    color: "#888888",
+    fontSize: 14,
   },
 });
 

@@ -1,18 +1,18 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-const API_BASE_URL = "http://10.89.240.59:3000/api/osiris";
+import { apiUrl } from "./serverConfig";
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: apiUrl(),
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
   },
-  timeout: 10000,
+  timeout: 15000,
 });
 
 api.interceptors.request.use(async (config) => {
+  config.baseURL = apiUrl(); // usa sempre o IP atual
   const token = await AsyncStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -27,10 +27,11 @@ const sheets = {
     api.post("/auth/register", user),
   getMe: () =>
     api.get("/auth/me"),
-  getMessages: (id_chat) =>{
-    api.get(`/chat/${id_chat}/messages`)
-  }
+  getMessages: (id_chat) =>
+    api.get(`/chat/${id_chat}/messages`),
+  health: () =>
+    api.get("/health", { timeout: 5000 }),
 };
 export default sheets;
-export { api, API_BASE_URL };
+export { api };
 
