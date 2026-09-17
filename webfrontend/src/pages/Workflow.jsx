@@ -16,6 +16,7 @@ import TerminalNode from "@/components/terminalNode";
 import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
 import FileNode from "@/components/FileNode";
+import WorkflowText from "@/components/workflowText";
 
 import {
   Menubar,
@@ -44,6 +45,7 @@ const nodeTypes = {
   terminal: TerminalNode,
   agent: AgentNode,
   file: FileNode,
+  text: WorkflowText,
 };
 
 const edgeTypes = {
@@ -91,6 +93,34 @@ export default function Workflow() {
           label: "Agent",
 
           mode,
+        },
+
+        dragHandle: ".drag-handle",
+      };
+
+      setNodes((nodes) => [
+        ...nodes,
+        newNode,
+      ]);
+    },
+    [setNodes]
+  );
+
+  const addTextNode = useCallback(
+    () => {
+      const id = crypto.randomUUID();
+
+      const newNode = {
+        id,
+        type: "text",
+
+        position: {
+          x: 250 + Math.random() * 200,
+          y: 150 + Math.random() * 150,
+        },
+
+        data: {
+          label: "Text",
         },
 
         dragHandle: ".drag-handle",
@@ -280,7 +310,32 @@ export default function Workflow() {
             </MenubarTrigger>
 
             <MenubarTrigger className="cursor-pointer rounded-full p-2 hover:bg-zinc-800/60">
-              <CaseSensitiveIcon size={18} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex cursor-pointer items-center justify-center rounded-full p-2 hover:bg-zinc-800/60"
+                  >
+                    <CaseSensitiveIcon size={18} />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent
+                  align="center"
+                  className="w-52"
+                >
+                  <DropdownMenuItem
+                    onClick={() =>
+                      addTextNode()
+                    }
+                    className="cursor-pointer gap-2"
+                  >
+                    <CaseSensitiveIcon size={16} />
+
+                    Text
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </MenubarTrigger>
           </MenubarMenu>
         </Menubar>

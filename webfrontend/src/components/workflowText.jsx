@@ -5,7 +5,6 @@ export default function WorkflowText() {
     <div className="drag-handle group relative w-fit rounded-2xl text-center">
 
       <textarea
-        rows={1}
         placeholder="Digite..."
         className="resize-none outline-none overflow-hidden"
       />
