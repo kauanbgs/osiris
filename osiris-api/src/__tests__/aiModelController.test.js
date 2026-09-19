@@ -11,44 +11,38 @@ const {
 beforeEach(resetDatabaseMock);
 
 describe("AiModelController", () => {
-  it("creates an AI model with extended metadata", async () => {
+  it("creates an AI model with optimized fields", async () => {
     mockQueries([{ insertId: 4 }]);
 
     const response = await request(app).post("/api/osiris/ai-model").set(auth()).send({
       name: "Llama 3.2 1B Instruct",
       provider: "Meta",
-      model_name: "llama-3.2-1b-instruct",
       size: 800,
       status: "available",
       download_url: "https://huggingface.co/example/model.gguf",
-      filename: "model-Q4_K_M.gguf",
       description: "Compact model for local inference",
-      ram_requirement: "4GB",
+      ram_requirement: 4096,
       tags: "chat,lightweight",
-      is_local: true,
     });
 
     expect(response.status).toBe(201);
     expect(response.body.ai_model.id_model).toBe(4);
     expect(response.body.ai_model.download_url).toBe("https://huggingface.co/example/model.gguf");
-    expect(response.body.ai_model.is_local).toBe(true);
+    expect(response.body.ai_model.ram_requirement).toBe(4096);
   });
 
-  it("lists models with extended fields", async () => {
+  it("lists models with optimized fields", async () => {
     mockQueries([[
       {
         id_model: 1,
         name: "SmolLM2",
         provider: "HuggingFace",
-        model_name: "smollm2-1.7b",
         size: 1200,
         status: "available",
         download_url: "https://huggingface.co/example.gguf",
-        filename: "SmolLM2-Q4_K_M.gguf",
         description: "Lightweight model",
-        ram_requirement: "4GB",
+        ram_requirement: 4096,
         tags: "lightweight,chat",
-        is_local: 1,
         created_at: "2026-09-01T00:00:00.000Z",
       },
     ]]);
@@ -58,11 +52,12 @@ describe("AiModelController", () => {
     expect(response.status).toBe(200);
     expect(response.body.ai_models).toHaveLength(1);
     expect(response.body.ai_models[0].download_url).toBe("https://huggingface.co/example.gguf");
+    expect(response.body.ai_models[0].ram_requirement).toBe(4096);
   });
 
-  it("filters models by type=local", async () => {
+  it("filters local models by download_url presence", async () => {
     mockQueries([[
-      { id_model: 1, name: "Local Model", is_local: 1 },
+      { id_model: 1, name: "Local Model", download_url: "https://huggingface.co/model.gguf" },
     ]]);
 
     const response = await request(app)
@@ -73,32 +68,28 @@ describe("AiModelController", () => {
     expect(response.body.ai_models).toHaveLength(1);
   });
 
-  it("fetches a model by id with extended metadata", async () => {
+  it("fetches a model by id with optimized fields", async () => {
     mockQueries([[{
       id_model: 4,
       name: "Llama 3.2 1B",
-      model_name: "llama-3.2-1b",
       status: "available",
       download_url: "https://huggingface.co/example.gguf",
-      filename: "model.gguf",
       description: "Compact model",
-      ram_requirement: "4GB",
+      ram_requirement: 4096,
       tags: "chat",
-      is_local: 1,
     }]]);
 
     const response = await request(app).get("/api/osiris/ai-model/4").set(auth());
 
     expect(response.status).toBe(200);
     expect(response.body.ai_model.id_model).toBe(4);
-    expect(response.body.ai_model.download_url).toBe("https://huggingface.co/example.gguf");
+    expect(response.body.ai_model.ram_requirement).toBe(4096);
   });
 
   it("redirects to download URL with HTTP 302", async () => {
     mockQueries([[{
       id_model: 1,
       name: "SmolLM2",
-      filename: "SmolLM2-Q4_K_M.gguf",
       download_url: "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
       size: 1200,
     }]]);
@@ -113,12 +104,11 @@ describe("AiModelController", () => {
     );
   });
 
-  it("returns JSON download info when redirect=false", async () => {
+  it("returns JSON with derived filename when redirect=false", async () => {
     mockQueries([[{
       id_model: 1,
       name: "SmolLM2",
-      filename: "SmolLM2-Q4_K_M.gguf",
-      download_url: "https://huggingface.co/example.gguf",
+      download_url: "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
       size: 1200,
     }]]);
 
@@ -127,8 +117,8 @@ describe("AiModelController", () => {
       .set(auth());
 
     expect(response.status).toBe(200);
-    expect(response.body.download_url).toBe("https://huggingface.co/example.gguf");
-    expect(response.body.filename).toBe("SmolLM2-Q4_K_M.gguf");
+    expect(response.body.download_url).toBe("https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf");
+    expect(response.body.filename).toBe("SmolLM2-1.7B-Instruct-Q4_K_M.gguf");
     expect(response.body.id_model).toBe(1);
   });
 
@@ -147,7 +137,6 @@ describe("AiModelController", () => {
     mockQueries([[{
       id_model: 2,
       name: "Cloud Model",
-      filename: null,
       download_url: null,
       size: 0,
     }]]);
