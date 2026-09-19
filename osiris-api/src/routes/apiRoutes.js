@@ -30,6 +30,7 @@ router.post("/chat/:id_chat/messages", verifyJWT, MessageController.create,);
 router.post("/ai-model", verifyJWT, AiModelController.create);
 router.get("/ai-model", verifyJWT, AiModelController.list);
 router.get("/ai-model/:id_model", verifyJWT, AiModelController.getById);
+router.get("/ai-model/:id_model/download", verifyJWT, AiModelController.download);
 
 // Agent routes
 router.post("/agent", verifyJWT, AgentController.create);
