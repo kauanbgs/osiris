@@ -1,6 +1,12 @@
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 
+const ALL_FIELDS = `
+  id_model, name, provider, model_name, size, status,
+  download_url, filename, description, ram_requirement,
+  tags, is_local, created_at
+`;
+
 class AiModelController {
   static async create(req, res, next) {
     try {
@@ -10,6 +16,12 @@ class AiModelController {
         model_name,
         size,
         status,
+        download_url,
+        filename,
+        description,
+        ram_requirement,
+        tags,
+        is_local,
       } = req.body;
 
       if (!name || !name.trim()) {
@@ -24,16 +36,25 @@ class AiModelController {
         throw new BadRequestError("Model status is required.");
       }
 
+      const isLocal = is_local !== undefined ? is_local : true;
+
       const [result] = await pool.promise().execute(
         `INSERT INTO ai_model
-          (name, provider, model_name, size, status)
-         VALUES (?, ?, ?, ?, ?)`,
+          (name, provider, model_name, size, status,
+           download_url, filename, description, ram_requirement, tags, is_local)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           name.trim(),
           provider ? provider.trim() : null,
           model_name.trim(),
           size || null,
           status.trim(),
+          download_url ? download_url.trim() : null,
+          filename ? filename.trim() : null,
+          description ? description.trim() : null,
+          ram_requirement ? ram_requirement.trim() : null,
+          tags ? tags.trim() : null,
+          isLocal,
         ],
       );
 
@@ -46,6 +67,12 @@ class AiModelController {
           model_name: model_name.trim(),
           size: size || null,
           status: status.trim(),
+          download_url: download_url ? download_url.trim() : null,
+          filename: filename ? filename.trim() : null,
+          description: description ? description.trim() : null,
+          ram_requirement: ram_requirement ? ram_requirement.trim() : null,
+          tags: tags ? tags.trim() : null,
+          is_local: isLocal,
         },
       });
     } catch (error) {
@@ -55,18 +82,32 @@ class AiModelController {
 
   static async list(req, res, next) {
     try {
-      const [rows] = await pool.promise().execute(
-        `SELECT
-          id_model,
-          name,
-          provider,
-          model_name,
-          size,
-          status,
-          created_at
-         FROM ai_model
-         ORDER BY id_model DESC`,
-      );
+      const { type, provider } = req.query;
+
+      let query = `SELECT ${ALL_FIELDS} FROM ai_model`;
+      const conditions = [];
+      const params = [];
+
+      if (type === "local") {
+        conditions.push("is_local = ?");
+        params.push(1);
+      } else if (type === "cloud") {
+        conditions.push("is_local = ?");
+        params.push(0);
+      }
+
+      if (provider) {
+        conditions.push("provider = ?");
+        params.push(provider);
+      }
+
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(" AND ")}`;
+      }
+
+      query += " ORDER BY id_model DESC";
+
+      const [rows] = await pool.promise().execute(query, params);
 
       return res.status(200).json({
         ai_models: rows,
@@ -81,14 +122,7 @@ class AiModelController {
       const { id_model } = req.params;
 
       const [rows] = await pool.promise().execute(
-        `SELECT
-          id_model,
-          name,
-          provider,
-          model_name,
-          size,
-          status,
-          created_at
+        `SELECT ${ALL_FIELDS}
          FROM ai_model
          WHERE id_model = ?
          LIMIT 1`,
@@ -102,6 +136,50 @@ class AiModelController {
       return res.status(200).json({
         ai_model: rows[0],
       });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async download(req, res, next) {
+    try {
+      const { id_model } = req.params;
+
+      const [rows] = await pool.promise().execute(
+        `SELECT id_model, name, filename, download_url, size
+         FROM ai_model
+         WHERE id_model = ?
+         LIMIT 1`,
+        [id_model],
+      );
+
+      if (!rows[0]) {
+        throw new NotFoundError("AI model not found.");
+      }
+
+      const model = rows[0];
+
+      if (!model.download_url) {
+        throw new BadRequestError(
+          "This model does not have a download URL configured.",
+        );
+      }
+
+      const wantsJson =
+        req.query.redirect === "false" ||
+        (req.headers.accept && req.headers.accept.includes("application/json"));
+
+      if (wantsJson) {
+        return res.status(200).json({
+          id_model: model.id_model,
+          name: model.name,
+          filename: model.filename,
+          download_url: model.download_url,
+          size: model.size,
+        });
+      }
+
+      return res.redirect(302, model.download_url);
     } catch (error) {
       return next(error);
     }
