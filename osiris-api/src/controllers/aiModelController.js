@@ -2,9 +2,9 @@ const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 
 const ALL_FIELDS = `
-  id_model, name, provider, model_name, size, status,
-  download_url, filename, description, ram_requirement,
-  tags, is_local, created_at
+  id_model, name, provider, size, status,
+  download_url, description, ram_requirement,
+  tags, created_at
 `;
 
 class AiModelController {
@@ -13,48 +13,36 @@ class AiModelController {
       const {
         name,
         provider,
-        model_name,
         size,
         status,
         download_url,
-        filename,
         description,
         ram_requirement,
         tags,
-        is_local,
       } = req.body;
 
       if (!name || !name.trim()) {
         throw new BadRequestError("Model name is required.");
       }
 
-      if (!model_name || !model_name.trim()) {
-        throw new BadRequestError("Technical model name is required.");
-      }
-
       if (!status || !status.trim()) {
         throw new BadRequestError("Model status is required.");
       }
 
-      const isLocal = is_local !== undefined ? is_local : true;
-
       const [result] = await pool.promise().execute(
         `INSERT INTO ai_model
-          (name, provider, model_name, size, status,
-           download_url, filename, description, ram_requirement, tags, is_local)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (name, provider, size, status,
+           download_url, description, ram_requirement, tags)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           name.trim(),
           provider ? provider.trim() : null,
-          model_name.trim(),
           size || null,
           status.trim(),
           download_url ? download_url.trim() : null,
-          filename ? filename.trim() : null,
           description ? description.trim() : null,
-          ram_requirement ? ram_requirement.trim() : null,
+          ram_requirement || null,
           tags ? tags.trim() : null,
-          isLocal,
         ],
       );
 
@@ -64,15 +52,12 @@ class AiModelController {
           id_model: result.insertId,
           name: name.trim(),
           provider: provider ? provider.trim() : null,
-          model_name: model_name.trim(),
           size: size || null,
           status: status.trim(),
           download_url: download_url ? download_url.trim() : null,
-          filename: filename ? filename.trim() : null,
           description: description ? description.trim() : null,
-          ram_requirement: ram_requirement ? ram_requirement.trim() : null,
+          ram_requirement: ram_requirement || null,
           tags: tags ? tags.trim() : null,
-          is_local: isLocal,
         },
       });
     } catch (error) {
@@ -89,11 +74,9 @@ class AiModelController {
       const params = [];
 
       if (type === "local") {
-        conditions.push("is_local = ?");
-        params.push(1);
+        conditions.push("download_url IS NOT NULL");
       } else if (type === "cloud") {
-        conditions.push("is_local = ?");
-        params.push(0);
+        conditions.push("download_url IS NULL");
       }
 
       if (provider) {
@@ -146,7 +129,7 @@ class AiModelController {
       const { id_model } = req.params;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_model, name, filename, download_url, size
+        `SELECT id_model, name, download_url, size
          FROM ai_model
          WHERE id_model = ?
          LIMIT 1`,
@@ -165,6 +148,8 @@ class AiModelController {
         );
       }
 
+      const filename = model.download_url.split("/").pop();
+
       const wantsJson =
         req.query.redirect === "false" ||
         (req.headers.accept && req.headers.accept.includes("application/json"));
@@ -173,7 +158,7 @@ class AiModelController {
         return res.status(200).json({
           id_model: model.id_model,
           name: model.name,
-          filename: model.filename,
+          filename: filename,
           download_url: model.download_url,
           size: model.size,
         });
