@@ -13,66 +13,63 @@ CREATE TABLE ai_model (
     id_model INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     provider VARCHAR(100),
-    model_name VARCHAR(50) NOT NULL,
     size INT,
     status VARCHAR(50) NOT NULL,
     download_url TEXT,
-    filename VARCHAR(255),
     description TEXT,
-    ram_requirement VARCHAR(100),
+    ram_requirement INT,
     tags VARCHAR(255),
-    is_local BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO ai_model (name, provider, model_name, size, status, download_url, filename, description, ram_requirement, tags, is_local) VALUES
-('SmolLM2 1.7B Instruct', 'HuggingFace', 'smollm2-1.7b-instruct', 1200, 'available',
+INSERT INTO ai_model (name, provider, size, status, download_url, description, ram_requirement, tags) VALUES
+('SmolLM2 1.7B Instruct', 'HuggingFace', 1200, 'available',
  'https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf',
- 'SmolLM2-1.7B-Instruct-Q4_K_M.gguf', 'Extremely lightweight model for basic tasks and quick responses', '4GB', 'lightweight,chat,fast', TRUE),
+ 'Extremely lightweight model for basic tasks and quick responses', 4096, 'lightweight,chat,fast'),
 
-('Qwen2.5 Coder 1.5B Instruct', 'Alibaba', 'qwen2.5-coder-1.5b-instruct', 1100, 'available',
+('Qwen2.5 Coder 1.5B Instruct', 'Alibaba', 1100, 'available',
  'https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf',
- 'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf', 'Lightweight model specialized in code generation and completion', '4GB', 'code,lightweight,fast', TRUE),
+ 'Lightweight model specialized in code generation and completion', 4096, 'code,lightweight,fast'),
 
-('Qwen2.5 1.5B Instruct', 'Alibaba', 'qwen2.5-1.5b-instruct', 1100, 'available',
+('Qwen2.5 1.5B Instruct', 'Alibaba', 1100, 'available',
  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf',
- 'qwen2.5-1.5b-instruct-q4_k_m.gguf', 'Fast and compact general-purpose chat model', '4GB', 'chat,lightweight,fast', TRUE),
+ 'Fast and compact general-purpose chat model', 4096, 'chat,lightweight,fast'),
 
-('Llama 3.2 1B Instruct', 'Meta', 'llama-3.2-1b-instruct', 800, 'available',
+('Llama 3.2 1B Instruct', 'Meta', 800, 'available',
  'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf',
- 'Llama-3.2-1B-Instruct-Q4_K_M.gguf', 'Compact Meta model for lightweight local inference', '4GB', 'chat,lightweight,meta', TRUE),
+ 'Compact Meta model for lightweight local inference', 4096, 'chat,lightweight,meta'),
 
-('Llama 3.2 3B Instruct', 'Meta', 'llama-3.2-3b-instruct', 2200, 'available',
+('Llama 3.2 3B Instruct', 'Meta', 2200, 'available',
  'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
- 'Llama-3.2-3B-Instruct-Q4_K_M.gguf', 'Balanced Meta model with good quality-to-size ratio', '8GB', 'chat,balanced,meta', TRUE),
+ 'Balanced Meta model with good quality-to-size ratio', 8192, 'chat,balanced,meta'),
 
-('Phi-3.5 Mini Instruct', 'Microsoft', 'phi-3.5-mini-instruct', 2400, 'available',
+('Phi-3.5 Mini Instruct', 'Microsoft', 2400, 'available',
  'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf',
- 'Phi-3.5-mini-instruct-Q4_K_M.gguf', 'Microsoft reasoning model with strong analytical capabilities', '8GB', 'reasoning,balanced,microsoft', TRUE),
+ 'Microsoft reasoning model with strong analytical capabilities', 8192, 'reasoning,balanced,microsoft'),
 
-('Qwen2.5 3B Instruct', 'Alibaba', 'qwen2.5-3b-instruct', 2200, 'available',
+('Qwen2.5 3B Instruct', 'Alibaba', 2200, 'available',
  'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf',
- 'qwen2.5-3b-instruct-q4_k_m.gguf', 'General-purpose balanced model for diverse tasks', '8GB', 'chat,balanced,general', TRUE),
+ 'General-purpose balanced model for diverse tasks', 8192, 'chat,balanced,general'),
 
-('Qwen2.5 Coder 3B Instruct', 'Alibaba', 'qwen2.5-coder-3b-instruct', 2200, 'available',
+('Qwen2.5 Coder 3B Instruct', 'Alibaba', 2200, 'available',
  'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf',
- 'qwen2.5-coder-3b-instruct-q4_k_m.gguf', 'Intermediate code model with enhanced programming capabilities', '8GB', 'code,balanced,programming', TRUE),
+ 'Intermediate code model with enhanced programming capabilities', 8192, 'code,balanced,programming'),
 
-('DeepSeek R1 Distill Qwen 1.5B', 'DeepSeek', 'deepseek-r1-distill-qwen-1.5b', 1100, 'available',
+('DeepSeek R1 Distill Qwen 1.5B', 'DeepSeek', 1100, 'available',
  'https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf',
- 'DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf', 'Lightweight reasoning model distilled from DeepSeek R1', '4GB', 'reasoning,lightweight,deepseek', TRUE),
+ 'Lightweight reasoning model distilled from DeepSeek R1', 4096, 'reasoning,lightweight,deepseek'),
 
-('DeepSeek R1 Distill Qwen 7B', 'DeepSeek', 'deepseek-r1-distill-qwen-7b', 4700, 'available',
+('DeepSeek R1 Distill Qwen 7B', 'DeepSeek', 4700, 'available',
  'https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf',
- 'DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf', 'Advanced reasoning model with deep analytical capabilities', '16GB', 'reasoning,advanced,deepseek', TRUE),
+ 'Advanced reasoning model with deep analytical capabilities', 16384, 'reasoning,advanced,deepseek'),
 
-('Mistral 7B Instruct v0.3', 'Mistral AI', 'mistral-7b-instruct-v0.3', 4700, 'available',
+('Mistral 7B Instruct v0.3', 'Mistral AI', 4700, 'available',
  'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
- 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf', 'High-capacity general model with excellent instruction following', '16GB', 'chat,advanced,powerful', TRUE),
+ 'High-capacity general model with excellent instruction following', 16384, 'chat,advanced,powerful'),
 
-('Gemma 2 2B Instruct', 'Google', 'gemma-2-2b-instruct', 1800, 'available',
+('Gemma 2 2B Instruct', 'Google', 1800, 'available',
  'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf',
- 'gemma-2-2b-it-Q4_K_M.gguf', 'Compact Google model with balanced performance', '6GB', 'chat,compact,google', TRUE);
+ 'Compact Google model with balanced performance', 6144, 'chat,compact,google');
 
 CREATE TABLE permission (
     id_permission INT AUTO_INCREMENT PRIMARY KEY,
