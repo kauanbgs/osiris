@@ -7,6 +7,8 @@ import {
   Paperclip,
   Sparkles,
   Square,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import {
@@ -31,6 +33,28 @@ import { Button } from "@/components/ui/button";
 import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { getActiveModel, sendPrompt } from "@/services/llmService";
+import { useSpeech } from "react-text-to-speech";
+
+// Botão de voz isolado para cada mensagem (necessário para chamar o hook por mensagem)
+function SpeakButton({ text }) {
+  const { speechStatus, start, stop } = useSpeech({ text });
+  const isPlaying = speechStatus === "started";
+
+  return (
+    <button
+      type="button"
+      title={isPlaying ? "Parar leitura" : "Ouvir mensagem"}
+      onClick={isPlaying ? stop : start}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-700/50 hover:text-zinc-200"
+    >
+      {isPlaying ? (
+        <VolumeX className="size-3.5" />
+      ) : (
+        <Volume2 className="size-3.5" />
+      )}
+    </button>
+  );
+}
 
 export default function Home() {
   const { id } = useParams();
@@ -382,6 +406,11 @@ export default function Home() {
                             <Copy className="size-3.5" />
                           </Button>
                         </MessageAction>
+                        {msg.content && !msg.isStreaming && (
+                          <MessageAction tooltip="Ouvir mensagem">
+                            <SpeakButton text={msg.content} />
+                          </MessageAction>
+                        )}
                       </MessageActions>
                     </div>
                   </Message>
