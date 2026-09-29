@@ -60,16 +60,20 @@ function SpeakButton({ text }) {
 
 export default function Home() {
 
-const [memories, setMemories] = useState([
-  {
-    content: "Meu nome é Kauan",
-    category: "Geral"
-  },
-  {
-    content: "Sou um engenheiro",
-    category: "Geral"
+const [memories, setMemories] = useState([]);
+  
+useEffect(() => {
+  async function loadMemories() {
+    try {
+      const response = await sheets.getMemory();
+      setMemories(response.data);
+      console.log("Memórias carregadas:", response.data);
+    } catch (e) {
+      console.error("Erro ao carregar memórias:", e);
+    }
   }
-]);
+  loadMemories();
+}, []);
   
 
   const { id } = useParams();

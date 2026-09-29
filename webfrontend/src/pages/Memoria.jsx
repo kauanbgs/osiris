@@ -1,35 +1,63 @@
-import { useState } from "react";
-import {
-  Brain,
-  Plus,
-  Search,
-  Trash2,
-  Sparkles,
-  Pencil,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { Brain, Plus, Search, Trash2, Sparkles, Pencil } from "lucide-react";
 
+import sheets from "@/services/api";
 export default function MemoryPage() {
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
 
-  // Mock inicial — depois você troca pela API
   const [memories, setMemories] = useState([]);
 
-  function handleSave() {
+  useEffect(() => {
+    async function loadMemories() {
+      try {
+        const response = await sheets.getMemory();
+
+        const data = response.data?.memories || response.data || [];
+
+        setMemories(
+          data.map((memory) => ({
+            ...memory,
+            createdAt: memory.createdAt
+              ? new Date(memory.createdAt)
+              : new Date(),
+          })),
+        );
+      } catch (error) {
+        console.error("Erro ao carregar memórias:", error);
+      }
+    }
+
+    loadMemories();
+  }, []);
+
+  async function handleSave() {
     const value = input.trim();
 
     if (!value) return;
 
-    setMemories((prev) => [
-      {
-        id: crypto.randomUUID(),
+    try {
+      const response = await sheets.saveMemory({
         content: value,
-        createdAt: new Date(),
-      },
-      ...prev,
-    ]);
+        category: "Geral",
+      });
 
-    setInput("");
+      const newMemory = response.data?.memory || response.data;
+
+      setMemories((prev) => [
+        {
+          ...newMemory,
+          createdAt: newMemory.createdAt
+            ? new Date(newMemory.createdAt)
+            : new Date(),
+        },
+        ...prev,
+      ]);
+
+      setInput("");
+    } catch (error) {
+      console.error("Erro ao salvar memória:", error);
+    }
   }
 
   function handleDelete(id) {
@@ -37,13 +65,12 @@ export default function MemoryPage() {
   }
 
   const filteredMemories = memories.filter((memory) =>
-    memory.content.toLowerCase().includes(search.toLowerCase())
+    memory.content.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
     <section className="h-full overflow-y-auto text-white">
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
-
         {/* Header */}
         <header className="mb-8">
           <div className="mb-3 flex items-center gap-3">
@@ -65,7 +92,6 @@ export default function MemoryPage() {
 
         {/* Nova memória */}
         <div className="mb-8 rounded-2xl border border-white/8 bg-zinc-900/50 p-5 shadow-xl shadow-black/10 backdrop-blur">
-
           <div className="mb-4 flex items-center gap-2">
             <Sparkles className="size-4 text-violet-400" />
 
