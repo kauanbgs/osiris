@@ -4,7 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import LoginScreen from './src/screens/LoginScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import CadastroScreen from './src/screens/CadastroScreen';
-import MemoriaScreen from './src/screens/MemoriaScreen';
+import ChatsScreen from './src/screens/ChatsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { loadIP } from './src/services/serverConfig';
 
@@ -22,7 +22,7 @@ export default function App() {
         <stack.Screen name="LoginScreen" component={LoginScreen} />
         <stack.Screen name="HomeScreen" component={HomeScreen} />
         <stack.Screen name="Cadastro" component={CadastroScreen} />
-        <stack.Screen name="MemoriaScreen" component={MemoriaScreen} />
+        <stack.Screen name="Chats" component={ChatsScreen} />
         <stack.Screen name="Configuracoes" component={SettingsScreen} />
       </stack.Navigator>
     </NavigationContainer>

@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import BottomNav from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
+import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
 
 const colors = {
@@ -257,7 +258,7 @@ function TypingIndicator() {
   );
 }
 
-export default function HomeScreen({ navigation }) {
+export default function HomeScreen({ navigation, route }) {
   const [message, setMessage] = useState("");
   const [userName, setUserName] = useState("");
   const [messages, setMessages] = useState([]);
@@ -265,8 +266,10 @@ export default function HomeScreen({ navigation }) {
   const [desktopConnected, setDesktopConnected] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [modelName, setModelName] = useState(null);
+  const [activeChatId, setActiveChatId] = useState(null);
   const listRef = useRef(null);
 
+  // Carrega usuário
   useEffect(() => {
     async function loadUser() {
       try {
@@ -283,9 +286,39 @@ export default function HomeScreen({ navigation }) {
         setUserName("Usuário");
       }
     }
-
     loadUser();
   }, []);
+
+  // Carrega histórico quando a tela ganha foco ou recebe params
+  useEffect(() => {
+    async function loadChatHistory() {
+      // chatId vindo da ChatsScreen tem prioridade
+      const paramChatId = route?.params?.chatId ?? null;
+
+      if (paramChatId === null) {
+        // Novo chat: limpa o estado
+        setMessages([]);
+        setActiveChatId(null);
+        return;
+      }
+
+      try {
+        const chatId = Number(paramChatId);
+        setActiveChatId(chatId);
+        const res = await sheets.getMessages(chatId);
+        const loaded = (res.data?.messages || []).map((m) => ({
+          id: String(m.id_message),
+          role: m.type === "user" ? "user" : "agent",
+          text: m.content,
+        }));
+        setMessages(loaded);
+      } catch (error) {
+        console.warn("Não foi possível carregar histórico:", error?.message);
+      }
+    }
+
+    loadChatHistory();
+  }, [route?.params?.chatId]);
 
   useEffect(() => {
     let mounted = true;
@@ -336,7 +369,30 @@ export default function HomeScreen({ navigation }) {
     setIsAgentTyping(true);
 
     try {
+      // 1. Garante que existe um chat ativo no banco
+      let chatId = activeChatId;
+      if (!chatId) {
+        const title = text.length > 40 ? text.slice(0, 37) + "..." : text;
+        const chatRes = await sheets.createChat(title);
+        chatId = chatRes.data?.chat?.id_chat;
+
+        setActiveChatId(chatId);
+        await AsyncStorage.setItem("@osiris/active_chat_id", String(chatId));
+      }
+
+      // 2. Salva a mensagem do usuário no banco
+      if (chatId) {
+        await sheets.createMessage(chatId, { type: "user", content: text }).catch(() => { });
+      }
+
+      // 3. Envia para a IA no desktop
       const aiResponse = await sendPromptToDesktop(text);
+
+      // 4. Salva a resposta da IA no banco
+      if (chatId) {
+        await sheets.createMessage(chatId, { type: "assistant", content: aiResponse }).catch(() => { });
+      }
+
       const agentMessage = {
         id: `${Date.now()}-agent`,
         role: "agent",
@@ -344,7 +400,6 @@ export default function HomeScreen({ navigation }) {
       };
 
       setMessages((previous) => [...previous, agentMessage]);
-
       setDesktopConnected(true);
     } catch (error) {
       console.error("Erro ao falar com desktop:", error);
@@ -417,7 +472,15 @@ export default function HomeScreen({ navigation }) {
           disabled={isAgentTyping}
         />
 
-        <BottomNav onPressItem={(key) => console.log("nav:", key)} />
+        <BottomNav
+          activeKey="home"
+          onPressItem={(key) => {
+            if (key === "chats") navigation.navigate("Chats");
+            else if (key === "folder") navigation.navigate("folder");
+            else if (key === "settings") navigation.navigate("Configuracoes");
+            else console.log("nav:", key);
+          }}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
