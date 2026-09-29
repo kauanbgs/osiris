@@ -6,6 +6,7 @@ const MessageController = require("../controllers/messageController");
 const AiModelController = require("../controllers/aiModelController");
 const AgentController = require("../controllers/agentController");
 const ToolController = require("../controllers/toolController");
+const MemoryController = require("../controllers/memoryController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 
@@ -51,5 +52,12 @@ router.get("/tool", verifyJWT, ToolController.list);
 router.get("/tool/:id_tool", verifyJWT, ToolController.getById);
 router.put("/tool/:id_tool", verifyJWT, ToolController.update);
 router.delete("/tool/:id_tool", verifyJWT, ToolController.delete);
+
+// Memory routes
+router.post("/memory", verifyJWT, MemoryController.create);
+router.get("/memory", verifyJWT, MemoryController.list);
+router.get("/memory/:id_memory", verifyJWT, MemoryController.getById);
+router.put("/memory/:id_memory", verifyJWT, MemoryController.update);
+router.delete("/memory/:id_memory", verifyJWT, MemoryController.delete);
 
 module.exports = router;
