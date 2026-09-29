@@ -387,92 +387,213 @@ async function streamAnthropic({ model, apiKey, prompt, history = [], onChunk, s
   return fullText;
 }
 
+function formatMemoryForPrompt(memory) {
+  if (!memory) {
+    return "";
+  }
+
+  if (typeof memory === "string") {
+    return memory.trim();
+  }
+
+  if (!Array.isArray(memory)) {
+    return "";
+  }
+
+  return memory
+    .filter(
+      (item) =>
+        item &&
+        typeof item.content === "string" &&
+        item.content.trim()
+    )
+    .map((item) => {
+      const category = item.category || "geral";
+
+      return `- [${category}] ${item.content.trim()}`;
+    })
+    .join("\n");
+} 
+
 // Unified LLM Request Runner
-export async function sendPrompt({ prompt, history = [], onChunk, signal, activeModelOverride }) {
-  const activeModel = activeModelOverride || getActiveModel();
+export async function sendPrompt({
+  prompt,
+  history = [],
+  memory = [],
+  onChunk,
+  signal,
+  activeModelOverride
+}) {
+  
+  const activeModel =
+    activeModelOverride || getActiveModel();
+
+  const memoryText =
+    formatMemoryForPrompt(memory);
+
+  const promptWithMemory = memoryText
+    ? `
+CONTEXTO PERSISTENTE DO USUÁRIO:
+
+${memoryText}
+
+Use essas informações apenas quando forem relevantes.
+Não trate essas memórias como uma nova mensagem do usuário.
+Não mencione a memória explicitamente sem necessidade.
+
+MENSAGEM ATUAL DO USUÁRIO:
+
+${prompt}
+`.trim()
+    : prompt;
 
   if (activeModel.type === "cloud") {
     const keys = getStoredCloudKeys();
-    const apiKey = keys[activeModel.provider]?.trim();
+
+    const apiKey =
+      keys[activeModel.provider]?.trim();
 
     if (!apiKey) {
-      const providerObj = CLOUD_PROVIDERS.find((p) => p.id === activeModel.provider);
+      const providerObj =
+        CLOUD_PROVIDERS.find(
+          (p) =>
+            p.id === activeModel.provider
+        );
+
       throw new Error(
-        `Chave de API do ${providerObj?.name || activeModel.provider} não configurada. Vá em Modelos -> Nuvem para adicionar sua chave.`
+        `Chave de API do ${
+          providerObj?.name ||
+          activeModel.provider
+        } não configurada. Vá em Modelos -> Nuvem para adicionar sua chave.`
       );
     }
 
-    if (activeModel.provider === "google") {
+    if (
+      activeModel.provider === "google"
+    ) {
       return streamGoogleGemini({
-        model: activeModel.model || "gemini-3.6-flash",
+        model:
+          activeModel.model ||
+          "gemini-3.6-flash",
+
         apiKey,
-        prompt,
+
+        prompt: promptWithMemory,
+
         history,
         onChunk,
-        signal,
+        signal
       });
     }
 
-    if (activeModel.provider === "openai") {
+    if (
+      activeModel.provider === "openai"
+    ) {
       return streamOpenAICompatible({
-        endpoint: "https://api.openai.com/v1/chat/completions",
-        model: activeModel.model || "gpt-4o",
+        endpoint:
+          "https://api.openai.com/v1/chat/completions",
+
+        model:
+          activeModel.model ||
+          "gpt-4o",
+
         apiKey,
-        prompt,
+
+        prompt: promptWithMemory,
+
         history,
         onChunk,
-        signal,
+        signal
       });
     }
 
-    if (activeModel.provider === "groq") {
+    if (
+      activeModel.provider === "groq"
+    ) {
       return streamOpenAICompatible({
-        endpoint: "https://api.groq.com/openai/v1/chat/completions",
-        model: activeModel.model || "llama-3.3-70b-versatile",
+        endpoint:
+          "https://api.groq.com/openai/v1/chat/completions",
+
+        model:
+          activeModel.model ||
+          "llama-3.3-70b-versatile",
+
         apiKey,
-        prompt,
+
+        prompt: promptWithMemory,
+
         history,
         onChunk,
-        signal,
+        signal
       });
     }
 
-    if (activeModel.provider === "anthropic") {
+    if (
+      activeModel.provider ===
+      "anthropic"
+    ) {
       return streamAnthropic({
-        model: activeModel.model || "claude-3-5-sonnet-20241022",
+        model:
+          activeModel.model ||
+          "claude-3-5-sonnet-20241022",
+
         apiKey,
-        prompt,
+
+        prompt: promptWithMemory,
+
         history,
         onChunk,
-        signal,
+        signal
       });
     }
   }
 
-  // Local model via Electron window.llama
-  if (typeof window !== "undefined" && window.llama?.prompt) {
-  let accumulated = "";
-  let cleanup = null;
+  // MODELO LOCAL
+  if (
+    typeof window !== "undefined" &&
+    window.llama?.prompt
+  ) {
+    let accumulated = "";
+    let cleanup = null;
 
-  if (window.llama.onStream) {
-    cleanup = window.llama.onStream((data) => {
-      if (data.type === "chunk" && data.text) {
-        accumulated += data.text;
+    if (window.llama.onStream) {
+      cleanup =
+        window.llama.onStream(
+          (data) => {
+            if (
+              data.type === "chunk" &&
+              data.text
+            ) {
+              accumulated +=
+                data.text;
 
-        onChunk?.(accumulated);
-      }
-    });
+              onChunk?.(
+                accumulated
+              );
+            }
+          }
+        );
+    }
+
+    try {
+      console.log("Memory: ", memory)
+      const res =
+        await window.llama.prompt({
+          prompt: promptWithMemory,
+          history,
+          memory
+        });
+        
+
+      return (
+        accumulated ||
+        res ||
+        ""
+      );
+    } finally {
+      cleanup?.();
+    }
   }
-
-  try {
-    // Para Llama local, podemos passar um objeto com history e prompt
-    const res = await window.llama.prompt({ prompt, history });
-
-    return accumulated || res || "";
-  } finally {
-    cleanup?.();
-  }
-}
 
   throw new Error(
     "Nenhum modelo selecionado ou disponível. Configure um modelo de Nuvem em 'Modelos' ou inicie um modelo Local."

@@ -59,6 +59,19 @@ function SpeakButton({ text }) {
 }
 
 export default function Home() {
+
+const [memories, setMemories] = useState([
+  {
+    content: "Meu nome é Kauan",
+    category: "Geral"
+  },
+  {
+    content: "Sou um engenheiro",
+    category: "Geral"
+  }
+]);
+  
+
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -351,6 +364,7 @@ export default function Home() {
       const finalBotText = await sendPrompt({
         prompt: content,
         history,
+        memory: memories,
         onChunk: (accumulated) => {
           const parsed = parseReasoning(accumulated);
 
