@@ -4,6 +4,8 @@ import {
   ArrowUp,
   Copy,
   Cpu,
+  Mic,
+  MicOff,
   Paperclip,
   Sparkles,
   Square,
@@ -66,8 +68,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState([]);
   const [activeModel, setActiveModel] = useState(getActiveModel);
+  const [isListening, setIsListening] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
   const uploadInputRef = useRef(null);
   const creatingChatRef = useRef(false);
 
@@ -86,6 +90,102 @@ export default function Home() {
     .replace(",", " ·");
 
   const hasMessages = messages.length > 0;
+
+  // Speech-to-text com auto-restart (Chromium/Electron para mesmo com continuous=true)
+  const shouldStopRef = useRef(false);
+  const accumulatedTextRef = useRef("");
+
+  function startRecognition(SpeechRecognition, baseText) {
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "pt-BR";
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = true;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      let interimTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          accumulatedTextRef.current += result[0].transcript + " ";
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+
+      setInput(
+        (baseText ? baseText + " " : "") +
+          accumulatedTextRef.current +
+          interimTranscript
+      );
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error === "aborted") return;
+      // Erros transitórios (no-speech, network): reinicia
+      if (!shouldStopRef.current) {
+        setTimeout(() => startRecognition(SpeechRecognition, baseText), 200);
+      } else {
+        setIsListening(false);
+      }
+    };
+
+    // onend dispara sempre que o Chromium encerra (silêncio, ruído, etc.)
+    // Se o usuário não pediu pra parar, reinicia automaticamente
+    recognition.onend = () => {
+      if (!shouldStopRef.current) {
+        setTimeout(() => startRecognition(SpeechRecognition, baseText), 100);
+      } else {
+        setIsListening(false);
+      }
+    };
+
+    recognition.start();
+  }
+
+  async function handleMicToggle() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Seu navegador não suporta reconhecimento de voz.");
+      return;
+    }
+
+    if (isListening) {
+      shouldStopRef.current = true;
+      recognitionRef.current?.stop();
+      accumulatedTextRef.current = "";
+      return;
+    }
+
+    // Solicita permissão do microfone explicitamente antes de iniciar
+    // (necessário no Electron para o Chromium registrar a permissão)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Fecha o stream imediatamente — só queríamos a permissão
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      alert("Permissão de microfone negada. Verifique as configurações do sistema.");
+      return;
+    }
+
+    shouldStopRef.current = false;
+    accumulatedTextRef.current = "";
+    const baseText = input;
+    startRecognition(SpeechRecognition, baseText);
+  }
+
+  useEffect(() => {
+    return () => {
+      shouldStopRef.current = true;
+      recognitionRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const handleModelChange = () => {
@@ -490,23 +590,49 @@ export default function Home() {
             />
 
             <PromptInputActions className="flex items-center justify-between gap-2 pt-2">
-              <PromptInputAction tooltip="Anexar arquivos">
-                <label
-                  htmlFor="file-upload"
-                  className="hover:bg-secondary-foreground/10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-2xl"
-                >
-                  <input
-                    ref={uploadInputRef}
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <Paperclip className="text-white size-5" />
-                </label>
-              </PromptInputAction>
+              {/* Botões do lado esquerdo */}
+              <div className="flex items-center gap-1">
+                <PromptInputAction tooltip="Anexar arquivos">
+                  <label
+                    htmlFor="file-upload"
+                    className="hover:bg-secondary-foreground/10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-2xl"
+                  >
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      multiple
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <Paperclip className="text-white size-5" />
+                  </label>
+                </PromptInputAction>
 
+                <PromptInputAction
+                  tooltip={isListening ? "Parar gravação" : "Falar mensagem"}
+                >
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    onClick={handleMicToggle}
+                    className={`h-8 w-8 rounded-full transition-all ${
+                      isListening
+                        ? "bg-red-500/20 text-red-400 animate-pulse ring-1 ring-red-500/40"
+                        : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    {isListening ? (
+                      <MicOff className="size-4" />
+                    ) : (
+                      <Mic className="size-4" />
+                    )}
+                  </Button>
+                </PromptInputAction>
+              </div>
+
+              {/* Botão de envio à direita */}
               <PromptInputAction
                 tooltip={isLoading ? "Gerando..." : "Enviar mensagem"}
               >
