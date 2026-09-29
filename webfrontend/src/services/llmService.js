@@ -203,16 +203,22 @@ export async function testProviderKey(providerId, apiKey) {
 }
 
 // Stream Cloud Provider Call
-async function streamGoogleGemini({ model, apiKey, prompt, onChunk, signal }) {
+async function streamGoogleGemini({ model, apiKey, prompt, history = [], onChunk, signal }) {
   const modelToUse = model || "gemini-3.6-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+  const contents = [
+    ...history.map((msg) => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }],
+    })),
+    { role: "user", parts: [{ text: prompt }] },
+  ];
 
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    }),
+    body: JSON.stringify({ contents }),
     signal,
   });
 
@@ -256,7 +262,12 @@ async function streamGoogleGemini({ model, apiKey, prompt, onChunk, signal }) {
   return fullText;
 }
 
-async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, onChunk, signal, headers = {} }) {
+async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, history = [], onChunk, signal, headers = {} }) {
+  const messages = [
+    ...history.map((msg) => ({ role: msg.role, content: msg.content })),
+    { role: "user", content: prompt },
+  ];
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -266,7 +277,7 @@ async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, onChunk
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: prompt }],
+      messages,
       stream: true,
     }),
     signal,
@@ -312,7 +323,12 @@ async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, onChunk
   return fullText;
 }
 
-async function streamAnthropic({ model, apiKey, prompt, onChunk, signal }) {
+async function streamAnthropic({ model, apiKey, prompt, history = [], onChunk, signal }) {
+  const messages = [
+    ...history.map((msg) => ({ role: msg.role, content: msg.content })),
+    { role: "user", content: prompt },
+  ];
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -324,7 +340,7 @@ async function streamAnthropic({ model, apiKey, prompt, onChunk, signal }) {
     body: JSON.stringify({
       model,
       max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
+      messages,
       stream: true,
     }),
     signal,
@@ -372,7 +388,7 @@ async function streamAnthropic({ model, apiKey, prompt, onChunk, signal }) {
 }
 
 // Unified LLM Request Runner
-export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride }) {
+export async function sendPrompt({ prompt, history = [], onChunk, signal, activeModelOverride }) {
   const activeModel = activeModelOverride || getActiveModel();
 
   if (activeModel.type === "cloud") {
@@ -391,6 +407,7 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
         model: activeModel.model || "gemini-3.6-flash",
         apiKey,
         prompt,
+        history,
         onChunk,
         signal,
       });
@@ -402,6 +419,7 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
         model: activeModel.model || "gpt-4o",
         apiKey,
         prompt,
+        history,
         onChunk,
         signal,
       });
@@ -413,6 +431,7 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
         model: activeModel.model || "llama-3.3-70b-versatile",
         apiKey,
         prompt,
+        history,
         onChunk,
         signal,
       });
@@ -423,6 +442,7 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
         model: activeModel.model || "claude-3-5-sonnet-20241022",
         apiKey,
         prompt,
+        history,
         onChunk,
         signal,
       });
@@ -445,7 +465,8 @@ export async function sendPrompt({ prompt, onChunk, signal, activeModelOverride 
   }
 
   try {
-    const res = await window.llama.prompt(prompt);
+    // Para Llama local, podemos passar um objeto com history e prompt
+    const res = await window.llama.prompt({ prompt, history });
 
     return accumulated || res || "";
   } finally {

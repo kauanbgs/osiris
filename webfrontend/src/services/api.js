@@ -21,6 +21,8 @@ const sheets = {
   getUser: () => api.get("/auth/me"),
   postChat: (chat) => api.post("/chat", chat),
   getChats: () => api.get("/chat"),
+  updateChat: (id_chat, data) => api.put(`/chat/${id_chat}`, data),
+  deleteChat: (id_chat) => api.delete(`/chat/${id_chat}`),
   postMessage: (id_chat, message) => api.post(`/chat/${id_chat}/messages`, message),
   getMessages: (id_chat) => api.get(`/chat/${id_chat}/messages`),
 }

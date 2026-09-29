@@ -8,6 +8,7 @@ import Workflow from "./pages/Workflow";
 import Modelos from "./pages/Modelos";
 import DefaultLayout from "./layouts/DefaultLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Memoria from "./pages/Memoria";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="/modelos" element={<Modelos />} />
               <Route path="/arquivos" element={<Arquivos />} />
               <Route path="/workflow" element={<Workflow />} />
+              <Route path="/memoria" element={<Memoria />} />
             </Route>
           </Route>
 

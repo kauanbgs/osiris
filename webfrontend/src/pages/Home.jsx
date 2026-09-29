@@ -343,8 +343,14 @@ export default function Home() {
     }
 
     try {
+      const history = messages.map((m) => ({
+        role: m.isBot ? "assistant" : "user",
+        content: m.content || "",
+      }));
+
       const finalBotText = await sendPrompt({
         prompt: content,
+        history,
         onChunk: (accumulated) => {
           const parsed = parseReasoning(accumulated);
 

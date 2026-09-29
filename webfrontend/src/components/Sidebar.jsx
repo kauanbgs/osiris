@@ -1,31 +1,36 @@
 import {
   Bot,
   Brain,
+  Check,
   CircleDot,
   FileText,
   Folder,
   House,
   LogOut,
+  Pencil,
   Plus,
   Settings,
   TerminalSquare,
+  Trash2,
   User,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
   { label: "Workflow", icon: Bot, link: "/workflow" },
-  { label: "Terminal", icon: TerminalSquare},
-  { label: "Arquivos", icon: Folder},
+  { label: "Terminal", icon: TerminalSquare },
+  { label: "Arquivos", icon: Folder },
 ];
 
 const environmentItems = [
   { label: "Modelos", icon: FileText, link: "/modelos" },
-  { label: "Memória", icon: Brain },
+  { label: "Memória", icon: Brain, link: "/memoria" },
   { label: "Configurações", icon: Settings },
 ];
 
@@ -64,13 +69,142 @@ function NavGroup({ title, items }) {
                     : "text-zinc-400 group-hover:text-zinc-200"
                 }`}
               />
-
               <span>{item.label}</span>
             </button>
           );
         })}
       </nav>
     </section>
+  );
+}
+
+function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState("idle");
+  const [renameValue, setRenameValue] = useState(chat.title ?? "");
+  const inputRef = useRef(null);
+
+  const chatId = chat.id_chat ?? chat.id;
+
+  useEffect(() => {
+    if (mode === "rename") {
+      inputRef.current?.select();
+    }
+  }, [mode]);
+
+  async function handleRename() {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === (chat.title ?? "")) {
+      setMode("idle");
+      return;
+    }
+    try {
+      await sheets.updateChat(chatId, { title: trimmed });
+      onRenamed(chatId, trimmed);
+    } catch (e) {
+      console.error("Erro ao renomear chat:", e);
+    }
+    setMode("idle");
+  }
+
+  async function handleDelete() {
+    try {
+      await sheets.deleteChat(chatId);
+      onDeleted(chatId);
+    } catch (e) {
+      console.error("Erro ao deletar chat:", e);
+    }
+    setMode("idle");
+  }
+
+  if (mode === "rename") {
+    return (
+      <div className="flex h-8 w-full items-center gap-1 rounded-md bg-zinc-800/80 px-2">
+        <input
+          ref={inputRef}
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleRename();
+            if (e.key === "Escape") setMode("idle");
+          }}
+          onBlur={handleRename}
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-100 outline-none"
+        />
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); handleRename(); }}
+          className="text-violet-400 hover:text-violet-300"
+        >
+          <Check size={13} />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); setMode("idle"); }}
+          className="text-zinc-500 hover:text-zinc-300"
+        >
+          <X size={13} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        className={`group flex h-8 w-full items-center gap-2 rounded-md px-2 transition-colors ${
+          isActive
+            ? "bg-zinc-800/80 text-zinc-100 font-medium"
+            : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+        }`}
+      >
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={() => navigate(`/home/${chatId}`)}
+        >
+          <CircleDot
+            size={8}
+            className={`shrink-0 ${isActive ? "text-violet-400" : "text-zinc-600"}`}
+          />
+          <span className="truncate text-[12px]">{chat.title ?? "Chat sem título"}</span>
+        </button>
+
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            title="Renomear"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRenameValue(chat.title ?? "");
+              setMode("rename");
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+          >
+            <Pencil size={11} />
+          </button>
+          <button
+            type="button"
+            title="Deletar"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMode("confirmDelete");
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-700 hover:text-red-400"
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </div>
+
+      {mode === "confirmDelete" && (
+        <ConfirmDeleteModal
+          title={chat.title ?? "Chat sem título"}
+          onConfirm={handleDelete}
+          onCancel={() => setMode("idle")}
+        />
+      )}
+    </>
   );
 }
 
@@ -93,23 +227,14 @@ export default function Sidebar() {
 
   useEffect(() => {
     loadChats();
-
-    const handleChatsUpdated = () => {
-      loadChats();
-    };
-
+    const handleChatsUpdated = () => loadChats();
     window.addEventListener("osiris:chats-updated", handleChatsUpdated);
-    return () => {
-      window.removeEventListener("osiris:chats-updated", handleChatsUpdated);
-    };
+    return () => window.removeEventListener("osiris:chats-updated", handleChatsUpdated);
   }, []);
 
   async function handleCreateChat() {
     try {
-      const response = await sheets.postChat({
-        title: "Novo chat",
-      });
-
+      const response = await sheets.postChat({ title: "Novo chat" });
       const newChat = response.data?.chat || response.data;
       if (newChat?.id_chat) {
         setChats((prev) => [newChat, ...prev]);
@@ -121,25 +246,37 @@ export default function Sidebar() {
     }
   }
 
+  function handleChatDeleted(chatId) {
+    setChats((prev) => prev.filter((c) => (c.id_chat ?? c.id) !== chatId));
+    if (location.pathname === `/home/${chatId}`) {
+      navigate("/home");
+    }
+    window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
+  }
+
+  function handleChatRenamed(chatId, newTitle) {
+    setChats((prev) =>
+      prev.map((c) =>
+        (c.id_chat ?? c.id) === chatId ? { ...c, title: newTitle } : c
+      )
+    );
+  }
+
   function handleLogout() {
     logout();
     navigate("/login", { replace: true });
   }
 
-  const userInitial = user?.name
-    ? user.name.trim().charAt(0).toUpperCase()
-    : null;
+  const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : null;
 
   return (
     <aside className="flex h-full w-56 flex-col border-r border-zinc-900 bg-[#121212] px-2.5 pb-3 pt-2 font-sans text-zinc-200 z-10 select-none">
-      {/* Brand Header */}
       <div className="mb-6 flex h-8 shrink-0 items-center gap-2 px-1">
         <span className="font-mono text-xl font-bold tracking-tight text-zinc-100">
           OSIRIS
         </span>
       </div>
 
-      {/* Navigation & Chat lists */}
       <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
         <NavGroup title="Workspace" items={workspaceItems} />
         <NavGroup title="Ambiente" items={environmentItems} />
@@ -149,7 +286,6 @@ export default function Sidebar() {
             <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500">
               Chats
             </h2>
-
             <button
               type="button"
               aria-label="Novo chat"
@@ -164,42 +300,26 @@ export default function Sidebar() {
           <div className="space-y-0.5">
             {chats.map((chat) => {
               const chatId = chat.id_chat ?? chat.id;
-              const chatTitle = chat.title ?? chat.name ?? "Chat sem título";
               const isActive = location.pathname === `/home/${chatId}`;
-
               return (
-                <button
+                <ChatItem
                   key={chatId}
-                  type="button"
-                  onClick={() => navigate(`/home/${chatId}`)}
-                  className={`group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
-                    isActive
-                      ? "bg-zinc-800/80 text-zinc-100 font-medium"
-                      : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-                  }`}
-                >
-                  <CircleDot
-                    size={8}
-                    className={isActive ? "text-violet-400" : "text-zinc-600"}
-                  />
-
-                  <span className="truncate text-[12px]">
-                    {chatTitle}
-                  </span>
-                </button>
+                  chat={chat}
+                  isActive={isActive}
+                  onDeleted={handleChatDeleted}
+                  onRenamed={handleChatRenamed}
+                />
               );
             })}
           </div>
         </section>
       </div>
 
-      {/* User profile footer */}
       <div className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-zinc-900/80 pt-3">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600/20 font-mono text-xs font-bold text-violet-300 ring-1 ring-violet-500/30">
             {userInitial ? userInitial : <User size={15} className="text-zinc-400" />}
           </div>
-
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] font-medium text-zinc-200" title={user?.name || "Usuário"}>
               {user?.name || "Usuário"}

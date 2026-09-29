@@ -61,9 +61,9 @@ contextBridge.exposeInMainWorld('llama', {
   loadModel: (modelPath) => ipcRenderer.invoke('llama:load-model', modelPath),
   downloadModel: (url, filename) => ipcRenderer.invoke('llama:download-model', { url, filename }),
   cancelDownload: (url) => ipcRenderer.invoke('llama:cancel-download', url),
-  prompt: (prompt) => {
-  return ipcRenderer.invoke("llama:prompt", prompt);
-},
+  prompt: (payload) => {
+    return ipcRenderer.invoke("llama:prompt", payload);
+  },
   importFile: () => ipcRenderer.invoke('llama:import-file'),
   deleteModel: (modelPath) => ipcRenderer.invoke('llama:delete-model', modelPath),
 
@@ -77,10 +77,6 @@ contextBridge.exposeInMainWorld('llama', {
     const listener = (_event, data) => callback(data)
     ipcRenderer.on('llama:download-complete', listener)
     return () => ipcRenderer.removeListener('llama:download-complete', listener)
-  },
-
-  prompt: (prompt) => {
-    return ipcRenderer.invoke("llama:prompt", prompt);
   },
 
   onStream: (callback) => {
