@@ -5,6 +5,10 @@ const fs = require('fs')
 const pty = require('node-pty')
 const express = require('express')
 
+// Habilita Web Speech API e acesso ao microfone no Chromium do Electron
+app.commandLine.appendSwitch('enable-features', 'WebSpeechAPI')
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 const terminals = new Map()
 
 // Llama.cpp State
@@ -59,6 +63,18 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false
     }
+  })
+
+  // Concede permissão de microfone automaticamente (request handler + check handler)
+  // O check handler é síncrono e bloqueia antes mesmo do request chegar
+  const allowedPerms = ['media', 'microphone', 'camera', 'audioCapture', 'videoCapture', 'mediaKeySystem']
+
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowedPerms.includes(permission))
+  })
+
+  win.webContents.session.setPermissionCheckHandler((_wc, permission) => {
+    return allowedPerms.includes(permission)
   })
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production'
