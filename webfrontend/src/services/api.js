@@ -27,6 +27,8 @@ const sheets = {
   getMessages: (id_chat) => api.get(`/chat/${id_chat}/messages`),
   saveMemory: (data) => api.post("/memory", data),
   getMemory: () => api.get("/memory"),
+  updateMemory: (id_memory, data) => api.put(`/memory/${id_memory}`, data),
+  deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
 }
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),

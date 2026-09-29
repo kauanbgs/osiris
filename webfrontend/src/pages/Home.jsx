@@ -66,8 +66,8 @@ useEffect(() => {
   async function loadMemories() {
     try {
       const response = await sheets.getMemory();
-      setMemories(response.data);
-      console.log("Memórias carregadas:", response.data);
+      console.log("Memórias carregadas:", response.data.memories);
+      setMemories(response.data.memories);
     } catch (e) {
       console.error("Erro ao carregar memórias:", e);
     }
@@ -414,6 +414,16 @@ useEffect(() => {
         } catch (err) {
           console.error("Erro ao salvar resposta do assistente:", err);
         }
+      }
+
+      // Recarrega memórias para atualizar estado caso uma nova memória local tenha sido salva
+      try {
+        const memRes = await sheets.getMemory();
+        if (memRes?.data?.memories) {
+          setMemories(memRes.data.memories);
+        }
+      } catch (memErr) {
+        console.error("Erro ao recarregar memórias:", memErr);
       }
     } catch (err) {
       setMessages((prev) => {

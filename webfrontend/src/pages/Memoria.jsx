@@ -60,8 +60,26 @@ export default function MemoryPage() {
     }
   }
 
-  function handleDelete(id) {
-    setMemories((prev) => prev.filter((memory) => memory.id !== id));
+  async function handleDelete(id_memory) {
+    try {
+      setMemories((prev) => prev.filter((memory) => memory.id_memory !== id_memory));
+      await sheets.deleteMemory(id_memory);
+    } catch (error) {
+      console.error("Erro ao deletar memória:", error);
+    }
+  }
+
+  async function handleUpdate(id_memory, content) {
+    try {
+      setMemories((prev) =>
+        prev.map((memory) =>
+          memory.id_memory === id_memory ? { ...memory, content } : memory,
+        ),
+      );
+      await sheets.updateMemory(id_memory, content);
+    } catch (error) {
+      console.error("Erro ao atualizar memória:", error);
+    }
   }
 
   const filteredMemories = memories.filter((memory) =>
@@ -219,7 +237,7 @@ export default function MemoryPage() {
             <div className="grid gap-3">
               {filteredMemories.map((memory) => (
                 <article
-                  key={memory.id}
+                  key={memory.id_memory}
                   className="
                     group
                     rounded-xl
@@ -267,7 +285,7 @@ export default function MemoryPage() {
 
                       <button
                         type="button"
-                        onClick={() => handleDelete(memory.id)}
+                        onClick={() => handleDelete(memory.id_memory)}
                         className="flex size-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-red-500/10 hover:text-red-400"
                       >
                         <Trash2 className="size-3.5" />

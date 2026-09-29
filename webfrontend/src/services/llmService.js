@@ -1,3 +1,5 @@
+import sheets from "./api";
+
 export const CLOUD_PROVIDERS = [
   {
     id: "google",
@@ -416,6 +418,265 @@ function formatMemoryForPrompt(memory) {
 } 
 
 // Unified LLM Request Runner
+async function analyzeLocalMemory(prompt) {
+  if (
+    typeof window === "undefined" ||
+    !window.llama?.prompt
+  ) {
+    console.log("[MEMORY] llama não disponível");
+    return null;
+  }
+
+  const memoryPrompt = `
+Você é um sistema de memória.
+
+Analise APENAS a mensagem do usuário abaixo.
+
+MENSAGEM:
+${prompt}
+
+Decida se existe alguma informação pessoal, preferência, gosto,
+objetivo, projeto, estudo ou informação duradoura sobre o usuário
+que será útil em conversas futuras.
+
+DEVE SALVAR exemplos:
+- "Meu nome é João"
+- "Eu prefiro respostas curtas"
+- "Eu trabalho com Node.js"
+- "Estou estudando React"
+- "Meu projeto usa MySQL"
+- "Eu gosto de jogos de terror"
+- "Quero aprender inglês"
+
+NÃO DEVE SALVAR exemplos:
+- "Como faço um SELECT?"
+- "Explique isso"
+- "Obrigado"
+- "Continua"
+- "Corrija esse código"
+
+Responda EXCLUSIVAMENTE com JSON válido.
+
+Quando houver memória:
+
+{
+  "should_save": true,
+  "content": "O usuário prefere respostas curtas.",
+  "importance": 8
+}
+
+Quando não houver:
+
+{
+  "should_save": false,
+  "content": null,
+  "importance": null
+}
+
+Não escreva markdown.
+Não use \`\`\`.
+Não explique sua resposta.
+`.trim();
+
+  try {
+    console.log(
+      "[MEMORY] Analisando:",
+      prompt
+    );
+
+    const response =
+      await window.llama.prompt({
+        prompt: memoryPrompt,
+        history: []
+      });
+
+    console.log(
+      "[MEMORY] Resposta bruta:",
+      response
+    );
+
+    if (!response) {
+      console.log(
+        "[MEMORY] Modelo não retornou nada"
+      );
+
+      return null;
+    }
+
+    // Pode ser string OU objeto dependendo
+    // de como seu preload/IPC está implementado.
+    let responseText;
+
+    if (typeof response === "string") {
+      responseText = response;
+    } else if (
+      typeof response?.text === "string"
+    ) {
+      responseText = response.text;
+    } else if (
+      typeof response?.content === "string"
+    ) {
+      responseText = response.content;
+    } else if (
+      typeof response?.response === "string"
+    ) {
+      responseText = response.response;
+    } else {
+      responseText = JSON.stringify(response);
+    }
+
+    console.log(
+      "[MEMORY] Texto processado:",
+      responseText
+    );
+
+    const cleaned = responseText
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    // Tenta encontrar o JSON caso o modelo
+    // tenha colocado texto antes/depois.
+    const firstBrace =
+      cleaned.indexOf("{");
+
+    const lastBrace =
+      cleaned.lastIndexOf("}");
+
+    if (
+      firstBrace === -1 ||
+      lastBrace === -1
+    ) {
+      console.log(
+        "[MEMORY] Nenhum JSON encontrado:",
+        cleaned
+      );
+
+      return null;
+    }
+
+    const jsonText =
+      cleaned.slice(
+        firstBrace,
+        lastBrace + 1
+      );
+
+    console.log(
+      "[MEMORY] JSON:",
+      jsonText
+    );
+
+    const parsed =
+      JSON.parse(jsonText);
+
+    console.log(
+      "[MEMORY] Resultado:",
+      parsed
+    );
+
+    return parsed;
+  } catch (error) {
+    console.error(
+      "[MEMORY] Erro ao analisar:",
+      error
+    );
+
+    return null;
+  }
+}
+
+async function saveLocalMemory(prompt) {
+  try {
+    console.log(
+      "[MEMORY] Iniciando análise..."
+    );
+
+    const result =
+      await analyzeLocalMemory(prompt);
+
+    console.log(
+      "[MEMORY] Resultado da análise:",
+      result
+    );
+
+    if (!result) {
+      console.log(
+        "[MEMORY] Análise não retornou resultado"
+      );
+
+      return;
+    }
+
+    if (!result.should_save) {
+      console.log(
+        "[MEMORY] Modelo decidiu não salvar"
+      );
+
+      return;
+    }
+
+    if (
+      typeof result.content !== "string" ||
+      !result.content.trim()
+    ) {
+      console.log(
+        "[MEMORY] Conteúdo inválido:",
+        result.content
+      );
+
+      return;
+    }
+
+    const importance = Math.min(
+      10,
+      Math.max(
+        1,
+        Number(result.importance) || 5
+      )
+    );
+
+    const memoryData = {
+      content: result.content.trim(),
+      importance
+    };
+
+    console.log(
+      "[MEMORY] Enviando para API:",
+      memoryData
+    );
+
+    const response =
+      await sheets.saveMemory(
+        memoryData
+      );
+
+    console.log(
+      "[MEMORY] Salva com sucesso:",
+      response
+    );
+
+    return response;
+  } catch (error) {
+    console.error(
+      "[MEMORY] Erro ao salvar memória:"
+    );
+
+    console.error(error);
+
+    if (error?.response) {
+      console.error(
+        "[MEMORY] Status:",
+        error.response.status
+      );
+
+      console.error(
+        "[MEMORY] Backend:",
+        error.response.data
+      );
+    }
+  }
+}
+
 export async function sendPrompt({
   prompt,
   history = [],
@@ -424,7 +685,6 @@ export async function sendPrompt({
   signal,
   activeModelOverride
 }) {
-  
   const activeModel =
     activeModelOverride || getActiveModel();
 
@@ -446,6 +706,10 @@ MENSAGEM ATUAL DO USUÁRIO:
 ${prompt}
 `.trim()
     : prompt;
+
+  // ============================================
+  // MODELOS CLOUD
+  // ============================================
 
   if (activeModel.type === "cloud") {
     const keys = getStoredCloudKeys();
@@ -549,51 +813,83 @@ ${prompt}
   }
 
   // MODELO LOCAL
-  if (
-    typeof window !== "undefined" &&
-    window.llama?.prompt
-  ) {
-    let accumulated = "";
-    let cleanup = null;
+if (
+  typeof window !== "undefined" &&
+  window.llama?.prompt
+) {
+  let accumulated = "";
+  let cleanup = null;
 
-    if (window.llama.onStream) {
-      cleanup =
-        window.llama.onStream(
-          (data) => {
-            if (
-              data.type === "chunk" &&
-              data.text
-            ) {
-              accumulated +=
-                data.text;
+  if (window.llama.onStream) {
+    cleanup =
+      window.llama.onStream(
+        (data) => {
+          if (
+            data.type === "chunk" &&
+            data.text
+          ) {
+            accumulated += data.text;
 
-              onChunk?.(
-                accumulated
-              );
-            }
+            onChunk?.(
+              accumulated
+            );
           }
-        );
-    }
-
-    try {
-      console.log("Memory: ", memory)
-      const res =
-        await window.llama.prompt({
-          prompt: promptWithMemory,
-          history,
-          memory
-        });
-        
-
-      return (
-        accumulated ||
-        res ||
-        ""
+        }
       );
-    } finally {
-      cleanup?.();
-    }
   }
+
+  let res = "";
+
+  try {
+    // ==============================
+    // RESPOSTA PRINCIPAL
+    // ==============================
+
+    res =
+      await window.llama.prompt({
+        prompt: promptWithMemory,
+        history
+      });
+
+    console.log(
+      "[CHAT] Resposta principal finalizada"
+    );
+  } finally {
+    // Muito importante:
+    // encerra o listener da resposta
+    // principal ANTES de pedir análise
+    // de memória.
+    cleanup?.();
+  }
+
+  // ==============================
+  // MEMÓRIA AUTOMÁTICA
+  // ==============================
+
+  try {
+    console.log(
+      "[MEMORY] Verificando mensagem:",
+      prompt
+    );
+
+    await saveLocalMemory(prompt);
+  } catch (error) {
+    console.error(
+      "[MEMORY] Falha:",
+      error
+    );
+  }
+
+  // ==============================
+  // RETORNO DA RESPOSTA
+  // ==============================
+
+  return (
+    accumulated ||
+    res ||
+    ""
+  );
+}
 
   throw new Error(
     "Nenhum modelo selecionado ou disponível. Configure um modelo de Nuvem em 'Modelos' ou inicie um modelo Local."
