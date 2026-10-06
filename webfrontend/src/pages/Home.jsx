@@ -2,13 +2,18 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowUp,
+  Check,
+  Code2,
   Copy,
   Cpu,
+  FileText,
+  Lightbulb,
   Mic,
   MicOff,
   Paperclip,
   Sparkles,
   Square,
+  Terminal,
   Volume2,
   VolumeX,
   X,
@@ -36,8 +41,9 @@ import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { getActiveModel, sendPrompt } from "@/services/llmService";
 import { useSpeech } from "react-text-to-speech";
+import { copyToClipboard } from "@/lib/utils";
 
-// Botão de voz isolado para cada mensagem (necessário para chamar o hook por mensagem)
+// Botão de voz isolado para cada mensagem
 function SpeakButton({ text }) {
   const { speechStatus, start, stop } = useSpeech({ text });
   const isPlaying = speechStatus === "started";
@@ -55,6 +61,38 @@ function SpeakButton({ text }) {
         <Volume2 className="size-3.5" />
       )}
     </button>
+  );
+}
+
+// Botão de copiar mensagem com feedback visual
+function CopyMessageButton({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!text) return;
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <MessageAction tooltip={copied ? "Copiado!" : "Copiar"}>
+      <Button
+        variant="ghost"
+        size="icon"
+        type="button"
+        className={`h-7 w-7 transition-colors ${
+          copied
+            ? "text-emerald-400 hover:text-emerald-300"
+            : "text-zinc-500 hover:text-zinc-200"
+        }`}
+        onClick={handleCopy}
+      >
+        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      </Button>
+    </MessageAction>
   );
 }
 
@@ -143,7 +181,6 @@ useEffect(() => {
 
     recognition.onerror = (e) => {
       if (e.error === "aborted") return;
-      // Erros transitórios (no-speech, network): reinicia
       if (!shouldStopRef.current) {
         setTimeout(() => startRecognition(SpeechRecognition, baseText), 200);
       } else {
@@ -151,8 +188,6 @@ useEffect(() => {
       }
     };
 
-    // onend dispara sempre que o Chromium encerra (silêncio, ruído, etc.)
-    // Se o usuário não pediu pra parar, reinicia automaticamente
     recognition.onend = () => {
       if (!shouldStopRef.current) {
         setTimeout(() => startRecognition(SpeechRecognition, baseText), 100);
@@ -180,11 +215,8 @@ useEffect(() => {
       return;
     }
 
-    // Solicita permissão do microfone explicitamente antes de iniciar
-    // (necessário no Electron para o Chromium registrar a permissão)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Fecha o stream imediatamente — só queríamos a permissão
       stream.getTracks().forEach((t) => t.stop());
     } catch {
       alert("Permissão de microfone negada. Verifique as configurações do sistema.");
@@ -416,7 +448,6 @@ useEffect(() => {
         }
       }
 
-      // Recarrega memórias para atualizar estado caso uma nova memória local tenha sido salva
       try {
         const memRes = await sheets.getMemory();
         if (memRes?.data?.memories) {
@@ -459,6 +490,29 @@ useEffect(() => {
     }
   }
 
+  const promptSuggestions = [
+    {
+      icon: Code2,
+      label: "Explicar código",
+      prompt: "Pode me ajudar a entender e otimizar este código?",
+    },
+    {
+      icon: FileText,
+      label: "Criar um resumo",
+      prompt: "Escreva um resumo conciso com os pontos principais sobre ",
+    },
+    {
+      icon: Terminal,
+      label: "Escrever um script",
+      prompt: "Crie um script em Python para automatizar ",
+    },
+    {
+      icon: Lightbulb,
+      label: "Ideias de projeto",
+      prompt: "Me dê ideias criativas de projetos usando IA e React ",
+    },
+  ];
+
   return (
     <section className="relative flex h-full flex-col overflow-hidden text-white">
       {/* Área de conteúdo scrollável */}
@@ -466,8 +520,8 @@ useEffect(() => {
         {/* Header de saudação — só aparece sem mensagens */}
         {!hasMessages && (
           <div className="flex min-h-full items-center justify-center px-6 py-12">
-            <div className="relative z-10 -mt-14 w-full max-w-180 font-mono">
-              <header className="mb-10 text-center">
+            <div className="relative z-10 -mt-10 w-full max-w-180">
+              <header className="mb-8 text-center">
                 <h1 className="text-[clamp(26px,3vw,38px)] font-semibold tracking-tight text-zinc-200">
                   {greeting},{" "}
                   <span className="font-bold text-violet-500">
@@ -475,10 +529,33 @@ useEffect(() => {
                   </span>
                   !
                 </h1>
-                <p className="mt-2 text-[11px] font-semibold text-zinc-300">
+                <p className="mt-2 text-[11px] font-semibold font-mono text-zinc-400">
                   {date}
                 </p>
               </header>
+
+              {/* Sugestões de Prompt */}
+              <div className="grid grid-cols-2 gap-3">
+                {promptSuggestions.map((item, index) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setInput(item.prompt)}
+                      className="group flex flex-col gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 text-left transition-all hover:border-violet-500/40 hover:bg-zinc-800/60"
+                    >
+                      <div className="flex items-center gap-2 text-violet-400 group-hover:text-violet-300">
+                        <Icon className="size-4" />
+                        <span className="text-xs font-semibold">{item.label}</span>
+                      </div>
+                      <p className="text-xs text-zinc-400 line-clamp-1 group-hover:text-zinc-300">
+                        {item.prompt}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -500,7 +577,7 @@ useEffect(() => {
                       className="bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20"
                     />
 
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1 space-y-3 min-w-0">
                       {/* Reasoning */}
                       {msg.reasoning && (
                         <Reasoning isStreaming={msg.isStreaming}>
@@ -516,43 +593,42 @@ useEffect(() => {
                         </Reasoning>
                       )}
 
+                      {/* Streaming spinner/indicator while thinking with no text yet */}
+                      {msg.isStreaming && !msg.content && !msg.reasoning && (
+                        <div className="flex items-center gap-2 text-xs text-zinc-400 py-1 font-mono">
+                          <span className="h-2 w-2 rounded-full bg-violet-500 animate-ping" />
+                          <span>Pensando...</span>
+                        </div>
+                      )}
+
                       {/* Resposta */}
                       {msg.content && (
                         <MessageContent
                           markdown
-                          className="bg-transparent text-white"
+                          className="text-zinc-100"
                         >
                           {msg.content}
                         </MessageContent>
                       )}
 
                       {/* Actions */}
-                      <MessageActions>
-                        <MessageAction tooltip="Copiar">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-zinc-500 hover:text-zinc-200"
-                            onClick={() =>
-                              navigator.clipboard.writeText(msg.content)
-                            }
-                          >
-                            <Copy className="size-3.5" />
-                          </Button>
-                        </MessageAction>
-                        {msg.content && !msg.isStreaming && (
-                          <MessageAction tooltip="Ouvir mensagem">
-                            <SpeakButton text={msg.content} />
-                          </MessageAction>
-                        )}
-                      </MessageActions>
+                      {msg.content && (
+                        <MessageActions className="pt-1">
+                          <CopyMessageButton text={msg.content} />
+                          {!msg.isStreaming && (
+                            <MessageAction tooltip="Ouvir mensagem">
+                              <SpeakButton text={msg.content} />
+                            </MessageAction>
+                          )}
+                        </MessageActions>
+                      )}
                     </div>
                   </Message>
                 ) : (
                   <Message className="justify-end">
-                    <MessageContent className="bg-transparent text-white">
+                    <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-violet-600/20 border border-violet-500/30 px-4 py-2.5 text-sm text-zinc-100 shadow-sm leading-relaxed whitespace-pre-wrap break-words">
                       {msg.content}
-                    </MessageContent>
+                    </div>
                   </Message>
                 )}
               </div>

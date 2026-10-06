@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { ChevronDownIcon } from "lucide-react"
+import { ChevronDownIcon, Brain } from "lucide-react"
 import React, {
   createContext,
   useContext,
@@ -57,7 +57,7 @@ function Reasoning({
         isOpen,
         onOpenChange: handleOpenChange,
       }}>
-      <div className={className}>{children}</div>
+      <div className={cn("my-1", className)}>{children}</div>
     </ReasoningContext.Provider>
   );
 }
@@ -71,13 +71,18 @@ function ReasoningTrigger({
 
   return (
     <button
-      className={cn("flex cursor-pointer items-center gap-2", className)}
+      type="button"
+      className={cn(
+        "flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200 select-none",
+        className
+      )}
       onClick={() => onOpenChange(!isOpen)}
       {...props}>
-      <span className="text-primary">{children}</span>
+      <Brain className="size-3.5 text-violet-400" />
+      <span>{children}</span>
       <div
-        className={cn("transform transition-transform", isOpen ? "rotate-180" : "")}>
-        <ChevronDownIcon className="size-4" />
+        className={cn("transform transition-transform duration-200", isOpen ? "rotate-180" : "")}>
+        <ChevronDownIcon className="size-3.5" />
       </div>
     </button>
   );
@@ -121,14 +126,14 @@ function ReasoningContent({
   return (
     <div
       ref={contentRef}
-      className={cn("overflow-hidden transition-[max-height] duration-150 ease-out", className)}
+      className={cn("overflow-hidden transition-[max-height] duration-200 ease-out", className)}
       style={{
         maxHeight: isOpen ? contentRef.current?.scrollHeight : "0px",
       }}
       {...props}>
       <div
         ref={innerRef}
-        className={cn("text-muted-foreground prose prose-sm dark:prose-invert", contentClassName)}>
+        className={cn("my-2 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3.5 text-xs text-zinc-400 leading-relaxed", contentClassName)}>
         {content}
       </div>
     </div>
