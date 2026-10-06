@@ -33,7 +33,11 @@ export const CLOUD_PROVIDERS = [
     placeholder: "Cole sua chave sk-ant-...",
     getKeyUrl: "https://console.anthropic.com/settings/keys",
     models: [
-      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", default: true },
+      {
+        id: "claude-3-5-sonnet-20241022",
+        name: "Claude 3.5 Sonnet",
+        default: true,
+      },
       { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
       { id: "claude-3-opus-20240229", name: "Claude 3 Opus" },
     ],
@@ -69,7 +73,11 @@ export function getActiveModel() {
     if (saved) {
       const parsed = JSON.parse(saved);
       // If user had previous gemini-2.5-flash saved, upgrade it to gemini-3.6-flash
-      if (parsed.provider === "google" && (parsed.model === "gemini-2.5-flash" || parsed.model === "gemini-2.0-flash")) {
+      if (
+        parsed.provider === "google" &&
+        (parsed.model === "gemini-2.5-flash" ||
+          parsed.model === "gemini-2.0-flash")
+      ) {
         parsed.model = "gemini-3.6-flash";
         parsed.name = "Google (Gemini) - Gemini 3.6 Flash";
         localStorage.setItem("osiris_active_model", JSON.stringify(parsed));
@@ -84,7 +92,8 @@ export function getActiveModel() {
   const keys = getStoredCloudKeys();
   for (const provider of CLOUD_PROVIDERS) {
     if (keys[provider.id]) {
-      const defModel = provider.models.find((m) => m.default) || provider.models[0];
+      const defModel =
+        provider.models.find((m) => m.default) || provider.models[0];
       return {
         type: "cloud",
         provider: provider.id,
@@ -102,7 +111,9 @@ export function getActiveModel() {
 
 export function setActiveModel(modelConfig) {
   localStorage.setItem("osiris_active_model", JSON.stringify(modelConfig));
-  window.dispatchEvent(new CustomEvent("osiris:model-changed", { detail: modelConfig }));
+  window.dispatchEvent(
+    new CustomEvent("osiris:model-changed", { detail: modelConfig }),
+  );
 }
 
 // Test Provider API Key
@@ -120,14 +131,18 @@ export async function testProviderKey(providerId, apiKey) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Hello, respond with 'OK'" }] }],
+          contents: [
+            { role: "user", parts: [{ text: "Hello, respond with 'OK'" }] },
+          ],
         }),
-      }
+      },
     );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Erro ${res.status}: Verifique sua chave Google.`);
+      throw new Error(
+        err.error?.message || `Erro ${res.status}: Verifique sua chave Google.`,
+      );
     }
 
     return true;
@@ -149,7 +164,9 @@ export async function testProviderKey(providerId, apiKey) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Erro ${res.status}: Verifique sua chave OpenAI.`);
+      throw new Error(
+        err.error?.message || `Erro ${res.status}: Verifique sua chave OpenAI.`,
+      );
     }
 
     return true;
@@ -171,7 +188,9 @@ export async function testProviderKey(providerId, apiKey) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Erro ${res.status}: Verifique sua chave Groq.`);
+      throw new Error(
+        err.error?.message || `Erro ${res.status}: Verifique sua chave Groq.`,
+      );
     }
 
     return true;
@@ -195,7 +214,10 @@ export async function testProviderKey(providerId, apiKey) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Erro ${res.status}: Verifique sua chave Anthropic.`);
+      throw new Error(
+        err.error?.message ||
+          `Erro ${res.status}: Verifique sua chave Anthropic.`,
+      );
     }
 
     return true;
@@ -205,7 +227,14 @@ export async function testProviderKey(providerId, apiKey) {
 }
 
 // Stream Cloud Provider Call
-async function streamGoogleGemini({ model, apiKey, prompt, history = [], onChunk, signal }) {
+async function streamGoogleGemini({
+  model,
+  apiKey,
+  prompt,
+  history = [],
+  onChunk,
+  signal,
+}) {
   const modelToUse = model || "gemini-3.6-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
@@ -226,7 +255,10 @@ async function streamGoogleGemini({ model, apiKey, prompt, history = [], onChunk
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Erro ${response.status} ao conectar com Google Gemini.`);
+    throw new Error(
+      err.error?.message ||
+        `Erro ${response.status} ao conectar com Google Gemini.`,
+    );
   }
 
   const reader = response.body.getReader();
@@ -264,7 +296,16 @@ async function streamGoogleGemini({ model, apiKey, prompt, history = [], onChunk
   return fullText;
 }
 
-async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, history = [], onChunk, signal, headers = {} }) {
+async function streamOpenAICompatible({
+  endpoint,
+  model,
+  apiKey,
+  prompt,
+  history = [],
+  onChunk,
+  signal,
+  headers = {},
+}) {
   const messages = [
     ...history.map((msg) => ({ role: msg.role, content: msg.content })),
     { role: "user", content: prompt },
@@ -287,7 +328,9 @@ async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, history
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Erro ${response.status} na API de IA.`);
+    throw new Error(
+      err.error?.message || `Erro ${response.status} na API de IA.`,
+    );
   }
 
   const reader = response.body.getReader();
@@ -325,7 +368,14 @@ async function streamOpenAICompatible({ endpoint, model, apiKey, prompt, history
   return fullText;
 }
 
-async function streamAnthropic({ model, apiKey, prompt, history = [], onChunk, signal }) {
+async function streamAnthropic({
+  model,
+  apiKey,
+  prompt,
+  history = [],
+  onChunk,
+  signal,
+}) {
   const messages = [
     ...history.map((msg) => ({ role: msg.role, content: msg.content })),
     { role: "user", content: prompt },
@@ -350,7 +400,10 @@ async function streamAnthropic({ model, apiKey, prompt, history = [], onChunk, s
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Erro ${response.status} ao conectar com Anthropic.`);
+    throw new Error(
+      err.error?.message ||
+        `Erro ${response.status} ao conectar com Anthropic.`,
+    );
   }
 
   const reader = response.body.getReader();
@@ -404,10 +457,7 @@ function formatMemoryForPrompt(memory) {
 
   return memory
     .filter(
-      (item) =>
-        item &&
-        typeof item.content === "string" &&
-        item.content.trim()
+      (item) => item && typeof item.content === "string" && item.content.trim(),
     )
     .map((item) => {
       const category = item.category || "geral";
@@ -415,10 +465,9 @@ function formatMemoryForPrompt(memory) {
       return `- [${category}] ${item.content.trim()}`;
     })
     .join("\n");
-} 
+}
 
 // Unified LLM Request Runner
-
 
 export async function sendPrompt({
   prompt,
@@ -426,13 +475,11 @@ export async function sendPrompt({
   memory = [],
   onChunk,
   signal,
-  activeModelOverride
+  activeModelOverride,
 }) {
-  const activeModel =
-    activeModelOverride || getActiveModel();
+  const activeModel = activeModelOverride || getActiveModel();
 
-  const memoryText =
-    formatMemoryForPrompt(memory);
+  const memoryText = formatMemoryForPrompt(memory);
 
   const promptWithMemory = memoryText
     ? `
@@ -457,31 +504,23 @@ ${prompt}
   if (activeModel.type === "cloud") {
     const keys = getStoredCloudKeys();
 
-    const apiKey =
-      keys[activeModel.provider]?.trim();
+    const apiKey = keys[activeModel.provider]?.trim();
 
     if (!apiKey) {
-      const providerObj =
-        CLOUD_PROVIDERS.find(
-          (p) =>
-            p.id === activeModel.provider
-        );
+      const providerObj = CLOUD_PROVIDERS.find(
+        (p) => p.id === activeModel.provider,
+      );
 
       throw new Error(
         `Chave de API do ${
-          providerObj?.name ||
-          activeModel.provider
-        } não configurada. Vá em Modelos -> Nuvem para adicionar sua chave.`
+          providerObj?.name || activeModel.provider
+        } não configurada. Vá em Modelos -> Nuvem para adicionar sua chave.`,
       );
     }
 
-    if (
-      activeModel.provider === "google"
-    ) {
+    if (activeModel.provider === "google") {
       return streamGoogleGemini({
-        model:
-          activeModel.model ||
-          "gemini-3.6-flash",
+        model: activeModel.model || "gemini-3.6-flash",
 
         apiKey,
 
@@ -489,20 +528,15 @@ ${prompt}
 
         history,
         onChunk,
-        signal
+        signal,
       });
     }
 
-    if (
-      activeModel.provider === "openai"
-    ) {
+    if (activeModel.provider === "openai") {
       return streamOpenAICompatible({
-        endpoint:
-          "https://api.openai.com/v1/chat/completions",
+        endpoint: "https://api.openai.com/v1/chat/completions",
 
-        model:
-          activeModel.model ||
-          "gpt-4o",
+        model: activeModel.model || "gpt-4o",
 
         apiKey,
 
@@ -510,20 +544,15 @@ ${prompt}
 
         history,
         onChunk,
-        signal
+        signal,
       });
     }
 
-    if (
-      activeModel.provider === "groq"
-    ) {
+    if (activeModel.provider === "groq") {
       return streamOpenAICompatible({
-        endpoint:
-          "https://api.groq.com/openai/v1/chat/completions",
+        endpoint: "https://api.groq.com/openai/v1/chat/completions",
 
-        model:
-          activeModel.model ||
-          "llama-3.3-70b-versatile",
+        model: activeModel.model || "llama-3.3-70b-versatile",
 
         apiKey,
 
@@ -531,18 +560,13 @@ ${prompt}
 
         history,
         onChunk,
-        signal
+        signal,
       });
     }
 
-    if (
-      activeModel.provider ===
-      "anthropic"
-    ) {
+    if (activeModel.provider === "anthropic") {
       return streamAnthropic({
-        model:
-          activeModel.model ||
-          "claude-3-5-sonnet-20241022",
+        model: activeModel.model || "claude-3-5-sonnet-20241022",
 
         apiKey,
 
@@ -550,91 +574,54 @@ ${prompt}
 
         history,
         onChunk,
-        signal
+        signal,
       });
     }
   }
 
   // MODELO LOCAL
-if (
-  typeof window !== "undefined" &&
-  window.llama?.prompt
-) {
-  let accumulated = "";
-  let cleanup = null;
+  if (typeof window !== "undefined" && window.llama?.prompt) {
+    let accumulated = "";
+    let cleanup = null;
 
-  if (window.llama.onStream) {
-    cleanup =
-      window.llama.onStream(
-        (data) => {
-          if (
-            data.type === "chunk" &&
-            data.text
-          ) {
-            accumulated += data.text;
-
-            onChunk?.(
-              accumulated
-            );
-          }
+    if (window.llama.onStream && onChunk) {
+      cleanup = window.llama.onStream((data) => {
+        if (data.type === "chunk" && data.text) {
+          accumulated += data.text;
+          onChunk(accumulated);
         }
-      );
-  }
+      });
+    }
 
-  let res = "";
+    let res = "";
 
-  try {
-    // ==============================
-    // RESPOSTA PRINCIPAL
-    // ==============================
+    try {
+      // ==============================
+      // RESPOSTA PRINCIPAL
+      // ==============================
 
-    res =
-      await window.llama.prompt({
+      res = await window.llama.prompt({
         prompt: promptWithMemory,
-        history
+        history,
       });
 
-    console.log(
-      "[CHAT] Resposta principal finalizada"
-    );
-  } finally {
-    // Muito importante:
-    // encerra o listener da resposta
-    // principal ANTES de pedir análise
-    // de memória.
-    cleanup?.();
+      console.log("[CHAT] Resposta principal finalizada");
+    } finally {
+      // Muito importante:
+      // encerra o listener da resposta
+      // principal ANTES de pedir análise
+      // de memória.
+      cleanup?.();
+    }
+
+    // ==============================
+    // RETORNO DA RESPOSTA
+    // ==============================
+
+    return accumulated || res || "";
   }
-
-  // ==============================
-  // MEMÓRIA AUTOMÁTICA
-  // ==============================
-
-  try {
-    console.log(
-      "[MEMORY] Verificando mensagem:",
-      prompt
-    );
-
-    await saveLocalMemory(prompt);
-  } catch (error) {
-    console.error(
-      "[MEMORY] Falha:",
-      error
-    );
-  }
-
-  // ==============================
-  // RETORNO DA RESPOSTA
-  // ==============================
-
-  return (
-    accumulated ||
-    res ||
-    ""
-  );
-}
 
   throw new Error(
-    "Nenhum modelo selecionado ou disponível. Configure um modelo de Nuvem em 'Modelos' ou inicie um modelo Local."
+    "Nenhum modelo selecionado ou disponível. Configure um modelo de Nuvem em 'Modelos' ou inicie um modelo Local.",
   );
 }

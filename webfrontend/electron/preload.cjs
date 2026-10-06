@@ -1,82 +1,79 @@
-const {
-  contextBridge,
-  ipcRenderer
-} = require('electron')
+const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld(
-  'electronAPI',
-  {
-    // WINDOW CONTROLS
-    minimize: () => ipcRenderer.send('window-minimize'),
-    maximize: () => ipcRenderer.send('window-maximize'),
-    close: () => ipcRenderer.send('window-close'),
-    isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+contextBridge.exposeInMainWorld("electronAPI", {
+  // WINDOW CONTROLS
+  minimize: () => ipcRenderer.send("window-minimize"),
+  maximize: () => ipcRenderer.send("window-maximize"),
+  close: () => ipcRenderer.send("window-close"),
+  isMaximized: () => ipcRenderer.invoke("window-is-maximized"),
 
-    // FILE SYSTEM
-    writeFile: (filePath, content) =>
-      ipcRenderer.invoke('fs:write-file', { filePath, content }),
+  // FILE SYSTEM
+  writeFile: (filePath, content) =>
+    ipcRenderer.invoke("fs:write-file", { filePath, content }),
 
-    // TERMINAL CONTROLS
-    terminalCreate: (id, mode) =>
-      ipcRenderer.invoke('terminal-create', id, mode),
+  // TERMINAL CONTROLS
+  terminalCreate: (id, mode) => ipcRenderer.invoke("terminal-create", id, mode),
 
-    terminalWrite: (id, data) =>
-      ipcRenderer.send('terminal-write', id, data),
+  terminalWrite: (id, data) => ipcRenderer.send("terminal-write", id, data),
 
-    terminalResize: (id, cols, rows) =>
-      ipcRenderer.send('terminal-resize', { id, cols, rows }),
+  terminalResize: (id, cols, rows) =>
+    ipcRenderer.send("terminal-resize", { id, cols, rows }),
 
-    terminalClose: (id) =>
-      ipcRenderer.send('terminal-close', id),
+  routeAgent: (prompt) => ipcRenderer.invoke("agent:route", prompt),
 
-    onTerminalData: (callback) => {
-      const listener = (_event, id, data) => {
-        callback(id, data)
-      }
+  terminalClose: (id) => ipcRenderer.send("terminal-close", id),
 
-      ipcRenderer.on('terminal-data', listener)
+  onTerminalData: (callback) => {
+    const listener = (_event, id, data) => {
+      callback(id, data);
+    };
 
-      return () => {
-        ipcRenderer.removeListener('terminal-data', listener)
-      }
-    },
+    ipcRenderer.on("terminal-data", listener);
 
-    onTerminalExit: (callback) => {
-      const listener = (_event, id, exitCode) => {
-        callback(id, exitCode)
-      }
+    return () => {
+      ipcRenderer.removeListener("terminal-data", listener);
+    };
+  },
 
-      ipcRenderer.on('terminal-exit', listener)
+  onTerminalExit: (callback) => {
+    const listener = (_event, id, exitCode) => {
+      callback(id, exitCode);
+    };
 
-      return () => {
-        ipcRenderer.removeListener('terminal-exit', listener)
-      }
-    }
-  }
-)
+    ipcRenderer.on("terminal-exit", listener);
 
-contextBridge.exposeInMainWorld('llama', {
-  getStatus: () => ipcRenderer.invoke('llama:get-status'),
-  listLocalModels: () => ipcRenderer.invoke('llama:list-local-models'),
-  loadModel: (modelPath) => ipcRenderer.invoke('llama:load-model', modelPath),
-  downloadModel: (url, filename) => ipcRenderer.invoke('llama:download-model', { url, filename }),
-  cancelDownload: (url) => ipcRenderer.invoke('llama:cancel-download', url),
+    return () => {
+      ipcRenderer.removeListener("terminal-exit", listener);
+    };
+  },
+});
+
+contextBridge.exposeInMainWorld("llama", {
+  getStatus: () => ipcRenderer.invoke("llama:get-status"),
+  listLocalModels: () => ipcRenderer.invoke("llama:list-local-models"),
+  loadModel: (modelPath) => ipcRenderer.invoke("llama:load-model", modelPath),
+  downloadModel: (url, filename) =>
+    ipcRenderer.invoke("llama:download-model", { url, filename }),
+  cancelDownload: (url) => ipcRenderer.invoke("llama:cancel-download", url),
   prompt: (payload) => {
     return ipcRenderer.invoke("llama:prompt", payload);
   },
-  importFile: () => ipcRenderer.invoke('llama:import-file'),
-  deleteModel: (modelPath) => ipcRenderer.invoke('llama:delete-model', modelPath),
+  importFile: () => ipcRenderer.invoke("llama:import-file"),
+  deleteModel: (modelPath) =>
+    ipcRenderer.invoke("llama:delete-model", modelPath),
 
   onDownloadProgress: (callback) => {
-    const listener = (_event, data) => callback(data)
-    ipcRenderer.on('llama:download-progress', listener)
-    return () => ipcRenderer.removeListener('llama:download-progress', listener)
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("llama:download-progress", listener);
+    return () =>
+      ipcRenderer.removeListener("llama:download-progress", listener);
   },
 
   onDownloadComplete: (callback) => {
-    const listener = (_event, data) => callback(data)
-    ipcRenderer.on('llama:download-complete', listener)
-    return () => ipcRenderer.removeListener('llama:download-complete', listener)
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("llama:download-complete", listener);
+    return () =>
+      ipcRenderer.removeListener("llama:download-complete", listener);
   },
 
   onStream: (callback) => {
@@ -87,10 +84,7 @@ contextBridge.exposeInMainWorld('llama', {
     ipcRenderer.on("llama:stream", listener);
 
     return () => {
-      ipcRenderer.removeListener(
-        "llama:stream",
-        listener
-      );
+      ipcRenderer.removeListener("llama:stream", listener);
     };
   },
-})
+});

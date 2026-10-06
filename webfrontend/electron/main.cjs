@@ -4,6 +4,8 @@ const os = require("os");
 const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
+const { routeTask } = require("./router.js");
+
 
 // Habilita Web Speech API e acesso ao microfone no Chromium do Electron
 app.commandLine.appendSwitch("enable-features", "WebSpeechAPI");
@@ -581,3 +583,17 @@ function startAiServer() {
     );
   });
 }
+
+
+ipcMain.handle(
+  "agent:route",
+  async (_event, prompt) => {
+    try {
+      return await routeTask(prompt);
+    } catch (error) {
+      console.error("[JEV ROUTER]", error);
+
+      return "main";
+    }
+  },
+);
