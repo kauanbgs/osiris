@@ -68,15 +68,9 @@ export async function executeAgentNode({
     signal,
   });
 
-  // 5. Escrever o output de volta nos arquivos que possuem filePath
-  //    (ou seja, arquivos que vieram do disco, não de exemplos mock)
-  const filesWithPath = files.filter((f) => f.filePath);
-
-  if (filesWithPath.length > 0) {
-    await Promise.all(
-      filesWithPath.map((file) => writeFileToDisk(file.filePath, result))
-    );
-  }
+  // NOTA: A escrita em disco é feita pelo agentNode.jsx após parsear o JSON
+  // estruturado da resposta. Não escrever aqui para evitar corromper os
+  // arquivos de entrada com o JSON bruto do LLM.
 
   return result;
 }

@@ -1,6 +1,5 @@
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
-const MemoryController = require("./memoryController");
 
 class MessageController {
   static async create(req, res, next) {
@@ -53,14 +52,6 @@ class MessageController {
    VALUES (?, ?, ?, ?)`,
         [type, normalizedContent, id_chat, fk_id_model ?? null],
       );
-
-      if (type === "user") {
-        MemoryController.analyzeAndSave(userId, normalizedContent).catch(
-          (error) => {
-            console.error("Erro na memória automática:", error);
-          },
-        );
-      }
 
       return res.status(201).json({
         message: "Message created successfully.",

@@ -473,6 +473,8 @@ ipcMain.on("terminal-close", (event, id) => {
 // FILE SYSTEM IPC HANDLERS
 // ===============================
 
+
+
 ipcMain.handle("fs:write-file", async (_, { filePath, content }) => {
   if (!filePath || typeof filePath !== "string") {
     throw new Error("Caminho de arquivo inválido.");
