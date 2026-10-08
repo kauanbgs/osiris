@@ -7,6 +7,7 @@ const AiModelController = require("../controllers/aiModelController");
 const AgentController = require("../controllers/agentController");
 const ToolController = require("../controllers/toolController");
 const MemoryController = require("../controllers/memoryController");
+const WorkflowController = require("../controllers/workflowController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 
@@ -14,24 +15,32 @@ router.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+// User routes
 router.post("/auth/register", UserController.register);
 router.post("/auth/login", UserController.login);
 router.post("/auth/logout", verifyJWT, UserController.logout);
 router.get("/auth/me", verifyJWT, UserController.profile);
 
+// Chat routes
 router.post("/chat", verifyJWT, ChatController.create);
 router.get("/chat", verifyJWT, ChatController.list);
 router.get("/chat/:id_chat", verifyJWT, ChatController.getById);
 router.put("/chat/:id_chat", verifyJWT, ChatController.update);
 router.delete("/chat/:id_chat", verifyJWT, ChatController.delete);
 
-router.get("/chat/:id_chat/messages", verifyJWT, MessageController.listByChat,);
-router.post("/chat/:id_chat/messages", verifyJWT, MessageController.create,);
+// Message routes
+router.get("/chat/:id_chat/messages", verifyJWT, MessageController.listByChat);
+router.post("/chat/:id_chat/messages", verifyJWT, MessageController.create);
 
+// AI model routes
 router.post("/ai-model", verifyJWT, AiModelController.create);
 router.get("/ai-model", verifyJWT, AiModelController.list);
 router.get("/ai-model/:id_model", verifyJWT, AiModelController.getById);
-router.get("/ai-model/:id_model/download", verifyJWT, AiModelController.download);
+router.get(
+  "/ai-model/:id_model/download",
+  verifyJWT,
+  AiModelController.download,
+);
 
 // Agent routes
 router.post("/agent", verifyJWT, AgentController.create);
@@ -42,7 +51,11 @@ router.delete("/agent/:id_agent", verifyJWT, AgentController.delete);
 
 // Agent tools management
 router.post("/agent/:id_agent/tool", verifyJWT, AgentController.addTool);
-router.delete("/agent/:id_agent/tool/:id_tool", verifyJWT, AgentController.removeTool);
+router.delete(
+  "/agent/:id_agent/tool/:id_tool",
+  verifyJWT,
+  AgentController.removeTool,
+);
 
 // Agent execution
 router.post("/agent/:id_agent/execute", verifyJWT, AgentController.execute);
@@ -60,5 +73,12 @@ router.get("/memory", verifyJWT, MemoryController.list);
 router.get("/memory/:id_memory", verifyJWT, MemoryController.getById);
 router.put("/memory/:id_memory", verifyJWT, MemoryController.update);
 router.delete("/memory/:id_memory", verifyJWT, MemoryController.delete);
+
+// Workflow routes
+router.post("/workflow", verifyJWT, WorkflowController.create);
+router.get("/workflow", verifyJWT, WorkflowController.list);
+router.get("/workflow/:id_workflow", verifyJWT, WorkflowController.getById);
+router.put("/workflow/:id_workflow", verifyJWT, WorkflowController.update);
+router.delete("/workflow/:id_workflow", verifyJWT, WorkflowController.delete);
 
 module.exports = router;
