@@ -6,6 +6,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import CadastroScreen from './src/screens/CadastroScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import MemoriaScreen from './src/screens/MemoriaScreen';
 import { loadIP } from './src/services/serverConfig';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
         <stack.Screen name="Cadastro" component={CadastroScreen} />
         <stack.Screen name="Chats" component={ChatsScreen} />
         <stack.Screen name="Configuracoes" component={SettingsScreen} />
+        <stack.Screen name="Memoria" component={MemoriaScreen} />
       </stack.Navigator>
     </NavigationContainer>
   );

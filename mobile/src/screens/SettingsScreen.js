@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -58,6 +59,34 @@ export default function SettingsScreen({ navigation }) {
     }
   }
 
+  async function handleOpenMemory() {
+    try {
+      // A tela de configurações também pode ser aberta antes do login.
+      // Verifica a sessão antes de navegar para uma tela protegida.
+      await sheets.getMe();
+      navigation.navigate("Memoria");
+    } catch (error) {
+      if (error.response?.status === 401) {
+        Alert.alert(
+          "Sessão necessária",
+          "Entre na sua conta para acessar a memória.",
+          [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Fazer login",
+              onPress: () => navigation.reset({
+                index: 0,
+                routes: [{ name: "LoginScreen" }],
+              }),
+            },
+          ],
+        );
+        return;
+      }
+      Alert.alert("Erro", "Não foi possível validar sua sessão. Verifique a conexão com o servidor.");
+    }
+  }
+
   function handleLogout() {
     Alert.alert("Sair da conta", "Tem certeza que deseja sair?", [
       { text: "Cancelar", style: "cancel" },
@@ -89,43 +118,60 @@ export default function SettingsScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Conexão</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Configurações do Sistema</Text>
 
-        <Text style={styles.label}>IP do desktop</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="192.168.100.202"
-          placeholderTextColor="#666"
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={ip}
-          onChangeText={setIp}
-          returnKeyType="done"
-          onSubmitEditing={handleSave}
-        />
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Celular</Text>
+          <Text style={styles.sectionDescription}>
+            Use o celular como tela desktop para conectar ao Osiris.
+          </Text>
 
-        <TouchableOpacity style={styles.button} onPress={handleSave}>
-          <Text style={styles.buttonText}>Salvar</Text>
-        </TouchableOpacity>
+          <Text style={styles.label}>IP do desktop</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="192.168.100.202"
+            placeholderTextColor="#666"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={ip}
+            onChangeText={setIp}
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+          />
+
+          <TouchableOpacity style={styles.button} onPress={handleSave}>
+            <Text style={styles.buttonText}>Salvar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.testButton]}
+            onPress={handleTest}
+            disabled={testing}
+          >
+            <Text style={styles.buttonText}>
+              {testing ? "Testando..." : "Testar conexão"}
+            </Text>
+          </TouchableOpacity>
+
+          {status ? <Text style={styles.hint}>{status}</Text> : null}
+          <Text style={styles.hint}>Atual: {getIP()}</Text>
+        </View>
 
         <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={handleTest}
-          disabled={testing}
+          style={styles.sectionCard}
+          activeOpacity={0.8}
+          onPress={handleOpenMemory}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir memória do usuário"
         >
-          <Text style={styles.buttonText}>
-            {testing ? "Testando..." : "Testar conexão"}
+          <Text style={styles.sectionTitle}>Memória</Text>
+          <Text style={styles.memoryTitle}>Memória do usuário</Text>
+          <Text style={styles.sectionDescription}>
+            Memórias definidas pelo usuário para melhorar sua experiência.
           </Text>
+          <Text style={styles.memoryAction}>Clique para mais informações ›</Text>
         </TouchableOpacity>
-
-        {status ? <Text style={styles.hint}>{status}</Text> : null}
-
-        <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>← Voltar</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.hint}>Atual: {getIP()}</Text>
 
         <View style={styles.divider} />
 
@@ -135,7 +181,7 @@ export default function SettingsScreen({ navigation }) {
         >
           <Text style={styles.logoutText}>Sair da conta</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       <BottomNav
         activeKey="settings"
@@ -156,15 +202,45 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
-    justifyContent: "center",
+    paddingBottom: 24,
   },
   title: {
-    fontSize: 28,
+    fontSize: 22,
     color: "#FFFFFF",
     fontWeight: "bold",
-    marginBottom: 24,
+    marginBottom: 18,
+    textAlign: "center",
+  },
+  sectionCard: {
+    backgroundColor: "#171717",
+    borderWidth: 1,
+    borderColor: "#292929",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  sectionDescription: {
+    color: "#9A9A9A",
+    fontSize: 12,
+    marginBottom: 14,
+  },
+  memoryTitle: {
+    color: "#DDDDDD",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  memoryAction: {
+    color: "#D0D0D0",
+    fontSize: 12,
+    marginTop: 6,
   },
   label: {
     fontSize: 16,
