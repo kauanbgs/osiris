@@ -8,6 +8,7 @@ const AgentController = require("../controllers/agentController");
 const ToolController = require("../controllers/toolController");
 const MemoryController = require("../controllers/memoryController");
 const WorkflowController = require("../controllers/workflowController");
+const NodeController = require("../controllers/nodeController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 
@@ -80,5 +81,17 @@ router.get("/workflow", verifyJWT, WorkflowController.list);
 router.get("/workflow/:id_workflow", verifyJWT, WorkflowController.getById);
 router.put("/workflow/:id_workflow", verifyJWT, WorkflowController.update);
 router.delete("/workflow/:id_workflow", verifyJWT, WorkflowController.delete);
+
+// Node routes
+router.post("/node", verifyJWT, NodeController.create);
+router.get("/node", verifyJWT, NodeController.list);
+router.get("/node/:id_node", verifyJWT, NodeController.getById);
+router.put("/node/:id_node", verifyJWT, NodeController.update);
+router.delete("/node/:id_node", verifyJWT, NodeController.delete);
+router.get(
+  "/workflow/:id_workflow/nodes",
+  verifyJWT,
+  NodeController.listByWorkflow,
+);
 
 module.exports = router;
