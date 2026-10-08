@@ -105,10 +105,6 @@ CREATE TABLE agent (
     execution_log VARCHAR(50) NOT NULL,
     system_prompt TEXT NOT NULL,
     fk_id_model INT,
-    FOREIGN KEY (fk_id_user)
-        REFERENCES `user`(id_user)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
     FOREIGN KEY (fk_id_model)
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
@@ -231,13 +227,8 @@ CREATE TABLE model_installation (
     local_path VARCHAR(500),
     download_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fk_id_model INT,
-    fk_id_user INT,
     FOREIGN KEY (fk_id_model)
         REFERENCES ai_model(id_model)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
-    FOREIGN KEY (fk_id_user)
-        REFERENCES `user`(id_user)
         ON DELETE SET NULL
         ON UPDATE CASCADE
 );
@@ -374,4 +365,3 @@ CREATE TABLE usage_metrics (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 );
-
