@@ -9,6 +9,7 @@ const ToolController = require("../controllers/toolController");
 const MemoryController = require("../controllers/memoryController");
 const WorkflowController = require("../controllers/workflowController");
 const NodeController = require("../controllers/nodeController");
+const ConnectionController = require("../controllers/connectionController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 
@@ -92,6 +93,20 @@ router.get(
   "/workflow/:id_workflow/nodes",
   verifyJWT,
   NodeController.listByWorkflow,
+);
+
+// Connection routes
+router.post("/connection", verifyJWT, ConnectionController.create);
+router.get("/connection", verifyJWT, ConnectionController.list);
+router.get(
+  "/connection/:id_connection",
+  verifyJWT,
+  ConnectionController.getById,
+);
+router.delete(
+  "/connection/:id_connection",
+  verifyJWT,
+  ConnectionController.delete,
 );
 
 module.exports = router;
