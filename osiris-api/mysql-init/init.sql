@@ -104,7 +104,6 @@ CREATE TABLE agent (
     objective TEXT NOT NULL,
     execution_log VARCHAR(50) NOT NULL,
     system_prompt TEXT NOT NULL,
-    fk_id_user INT,
     fk_id_model INT,
     FOREIGN KEY (fk_id_user)
         REFERENCES `user`(id_user)
