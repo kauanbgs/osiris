@@ -4,7 +4,6 @@ const os = require("os");
 const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
-const { routeTask } = require("./router.js");
 
 
 // Habilita Web Speech API e acesso ao microfone no Chromium do Electron
@@ -493,6 +492,42 @@ ipcMain.handle("fs:write-file", async (_, { filePath, content }) => {
   }
 });
 
+ipcMain.handle(
+  "fs:select-file",
+  async () => {
+    const result =
+      await dialog.showOpenDialog({
+        properties: ["openFile"],
+      });
+
+    if (
+      result.canceled ||
+      !result.filePaths.length
+    ) {
+      return null;
+    }
+
+    const filePath =
+      result.filePaths[0];
+
+    const content =
+      await fs.promises.readFile(
+        filePath,
+        "utf-8"
+      );
+
+    return {
+      fileName:
+        require("path").basename(
+          filePath
+        ),
+
+      filePath,
+
+      fileContent: content,
+    };
+  }
+);
 // ===============================
 // WINDOW CONTROLS IPC HANDLERS
 // ===============================
@@ -583,17 +618,3 @@ function startAiServer() {
     );
   });
 }
-
-
-ipcMain.handle(
-  "agent:route",
-  async (_event, prompt) => {
-    try {
-      return await routeTask(prompt);
-    } catch (error) {
-      console.error("[JEV ROUTER]", error);
-
-      return "main";
-    }
-  },
-);

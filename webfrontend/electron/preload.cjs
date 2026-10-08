@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // FILE SYSTEM
   writeFile: (filePath, content) =>
     ipcRenderer.invoke("fs:write-file", { filePath, content }),
+  selectFile: () =>
+    ipcRenderer.invoke(
+      "fs:select-file"
+    ),
 
   // TERMINAL CONTROLS
   terminalCreate: (id, mode) => ipcRenderer.invoke("terminal-create", id, mode),
@@ -18,8 +22,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   terminalResize: (id, cols, rows) =>
     ipcRenderer.send("terminal-resize", { id, cols, rows }),
-
-  routeAgent: (prompt) => ipcRenderer.invoke("agent:route", prompt),
 
   terminalClose: (id) => ipcRenderer.send("terminal-close", id),
 

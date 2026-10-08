@@ -235,46 +235,93 @@ ${file.fileContent ?? ""}
         finalInstruction = `
 ${instruction}
 
-Você pode modificar arquivos que estão conectados na saída deste agente.
+Você é um agente com capacidade REAL de modificar os arquivos conectados a este node.
 
 ARQUIVOS ATUAIS DO FILE NODE DE SAÍDA:
 
 ${currentFilesText}
 
-Quando a tarefa exigir criar, alterar ou excluir arquivos,
-responda SOMENTE com JSON válido.
+Quando o pedido do usuário envolver criar, modificar, reescrever ou excluir
+um arquivo, você DEVE realizar a alteração através de "fileOperations".
 
-Formato obrigatório:
+Responda SOMENTE com JSON válido.
+
+FORMATO OBRIGATÓRIO:
 
 {
   "fileOperations": [
     {
       "action": "update",
-      "fileName": "src/App.jsx",
-      "content": "conteúdo completo do arquivo"
+      "fileName": "nome-exato-do-arquivo",
+      "content": "conteúdo COMPLETO e FINAL que deverá existir no arquivo"
     }
   ],
-  "message": "Resumo opcional do que foi feito"
+  "message": "Resumo curto do que foi feito"
 }
 
-Ações permitidas:
+AÇÕES:
 
-- "create": cria um arquivo novo
-- "update": atualiza um arquivo existente
+- "create": cria um novo arquivo
+- "update": substitui completamente o conteúdo de um arquivo existente
 - "delete": exclui um arquivo
 
-REGRAS IMPORTANTES:
+REGRAS OBRIGATÓRIAS:
 
-1. Para "create" e "update", envie o conteúdo COMPLETO do arquivo.
-2. Nunca envie somente trechos ou diffs.
-3. Não use markdown.
-4. Não use blocos com crases.
-5. Não escreva texto fora do JSON.
-6. Se não precisar alterar arquivos, use:
+1. Se o usuário pedir uma alteração em um arquivo existente, use "update".
+
+2. O campo "fileName" deve corresponder EXATAMENTE ao nome do arquivo
+   apresentado em ARQUIVOS ATUAIS.
+
+3. Para "create" e "update", "content" deve conter o conteúdo REAL,
+   COMPLETO e FINAL do arquivo.
+
+4. NUNCA coloque em "content" uma descrição do que foi feito.
+
+ERRADO:
+{
+  "action": "update",
+  "fileName": "oi.txt",
+  "content": "Calculadora com soma, subtração, multiplicação e divisão."
+}
+
+CORRETO:
+{
+  "action": "update",
+  "fileName": "oi.txt",
+  "content": "def somar(a, b):\\n    return a + b\\n\\ndef subtrair(a, b):\\n    return a - b"
+}
+
+5. Se o usuário pedir código, "content" DEVE conter o código-fonte real.
+
+6. A extensão atual do arquivo não muda essa regra.
+   Se o usuário pedir código Python dentro de oi.txt, escreva código Python
+   completo dentro de oi.txt.
+
+7. Não retorne pseudocódigo quando o usuário pedir uma implementação.
+
+8. Não envie somente trechos, explicações ou diffs.
+
+9. Não use Markdown.
+
+10. Não use blocos com crases.
+
+11. Não escreva absolutamente nada fora do JSON.
+
+12. "message" serve SOMENTE para informar ao usuário o que foi feito.
+    O conteúdo de "message" NUNCA deve ser usado como conteúdo do arquivo.
+
+13. Se nenhum arquivo precisar ser alterado, use:
+
 {
   "fileOperations": [],
   "message": "sua resposta"
 }
+
+Antes de responder, verifique:
+- O pedido exige alteração de arquivo?
+- Se sim, existe uma operação em fileOperations?
+- O content contém o arquivo completo?
+- Se foi solicitado código, content contém código executável real?
 `;
       }
 
