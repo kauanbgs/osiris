@@ -1,7 +1,41 @@
+import { Route, Routes } from "react-router-dom";
+import TitleBar from "./components/TitleBar";
+import Login from "./pages/Login";
+import Cadastro from "./pages/Cadastro";
+import Home from "./pages/Home";
+import Arquivos from "./pages/Arquivos";
+import Workflow from "./pages/Workflow";
+import Modelos from "./pages/Modelos";
+import DefaultLayout from "./layouts/DefaultLayout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Memoria from "./pages/Memoria";
+import Workflows from "./pages/Workflows";
+
 export default function App() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold underline">Hello World</h1>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#141414] select-none">
+      <TitleBar />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/cadastro" element={<Cadastro />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route element={<DefaultLayout />}>
+              <Route path="/home" element={<Home />} />
+              <Route path="/home/:id" element={<Home />} />
+              <Route path="/modelos" element={<Modelos />} />
+              <Route path="/arquivos" element={<Arquivos />} />
+              <Route path="/workflow" element={<Workflow />} />
+              <Route path="/workflows" element={<Workflows/>} />
+              <Route path="/memoria" element={<Memoria />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </div>
     </div>
   );
 }

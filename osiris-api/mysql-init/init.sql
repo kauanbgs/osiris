@@ -375,3 +375,4 @@ CREATE TABLE usage_metrics (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 );
+
