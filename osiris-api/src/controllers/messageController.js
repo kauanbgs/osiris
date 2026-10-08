@@ -21,7 +21,8 @@ class MessageController {
       const [chatRows] = await pool.promise().execute(
         `SELECT id_chat
          FROM chat
-         WHERE id_chat = ? AND fk_id_user = ?
+         WHERE id_chat = ?
+           AND fk_id_user = ?
          LIMIT 1`,
         [id_chat, userId],
       );
@@ -48,8 +49,8 @@ class MessageController {
 
       const [result] = await pool.promise().execute(
         `INSERT INTO messages
-    (type, content, fk_id_chat, fk_id_model)
-   VALUES (?, ?, ?, ?)`,
+          (type, content, fk_id_chat, fk_id_model)
+         VALUES (?, ?, ?, ?)`,
         [type, normalizedContent, id_chat, fk_id_model ?? null],
       );
 
@@ -76,7 +77,8 @@ class MessageController {
       const [chatRows] = await pool.promise().execute(
         `SELECT id_chat
          FROM chat
-         WHERE id_chat = ? AND fk_id_user = ?
+         WHERE id_chat = ?
+           AND fk_id_user = ?
          LIMIT 1`,
         [id_chat, userId],
       );
