@@ -1,4 +1,5 @@
 const pool = require("../db/connect");
+const { BadRequestError, NotFoundError } = require("../errors");
 
 class WorkflowController {
   static async create(req, res, next) {
@@ -7,15 +8,11 @@ class WorkflowController {
       const userId = req.userId;
 
       if (!name || !name.trim()) {
-        return res.status(400).json({
-          error: "O nome do workflow é obrigatório.",
-        });
+        throw new BadRequestError("Workflow name is required.");
       }
 
       if (!description || !description.trim()) {
-        return res.status(400).json({
-          error: "A descrição do workflow é obrigatória.",
-        });
+        throw new BadRequestError("Workflow description is required.");
       }
 
       const [result] = await pool.promise().execute(
@@ -26,7 +23,7 @@ class WorkflowController {
       );
 
       return res.status(201).json({
-        message: "Workflow criado com sucesso.",
+        message: "Workflow created successfully.",
         workflow: {
           id_workflow: result.insertId,
           name: name.trim(),
@@ -75,15 +72,14 @@ class WorkflowController {
             description,
             fk_id_user
          FROM workflows
-         WHERE id_workflow = ? AND fk_id_user = ?
+         WHERE id_workflow = ?
+           AND fk_id_user = ?
          LIMIT 1`,
         [id_workflow, userId],
       );
 
       if (!rows[0]) {
-        return res.status(404).json({
-          error: "Workflow não encontrado.",
-        });
+        throw new NotFoundError("Workflow not found.");
       }
 
       return res.status(200).json({
@@ -101,37 +97,32 @@ class WorkflowController {
       const userId = req.userId;
 
       if (!name || !name.trim()) {
-        return res.status(400).json({
-          error: "O nome do workflow é obrigatório.",
-        });
+        throw new BadRequestError("Workflow name is required.");
       }
 
       if (!description || !description.trim()) {
-        return res.status(400).json({
-          error: "A descrição do workflow é obrigatória.",
-        });
+        throw new BadRequestError("Workflow description is required.");
       }
 
       const [result] = await pool.promise().execute(
         `UPDATE workflows
-       SET name = ?, description = ?
-       WHERE id_workflow = ? AND fk_id_user = ?`,
+         SET name = ?, description = ?
+         WHERE id_workflow = ?
+           AND fk_id_user = ?`,
         [name.trim(), description.trim(), id_workflow, userId],
       );
 
       if (result.affectedRows === 0) {
-        return res.status(404).json({
-          error: "Workflow não encontrado.",
-        });
+        throw new NotFoundError("Workflow not found.");
       }
 
       return res.status(200).json({
-        message: "Workflow atualizado com sucesso.",
+        message: "Workflow updated successfully.",
         workflow: {
           id_workflow: Number(id_workflow),
           name: name.trim(),
           description: description.trim(),
-          fk_id_user: userId,
+          fk_id_user: Number(userId),
         },
       });
     } catch (error) {
@@ -146,18 +137,17 @@ class WorkflowController {
 
       const [result] = await pool.promise().execute(
         `DELETE FROM workflows
-         WHERE id_workflow = ? AND fk_id_user = ?`,
+         WHERE id_workflow = ?
+           AND fk_id_user = ?`,
         [id_workflow, userId],
       );
 
       if (result.affectedRows === 0) {
-        return res.status(404).json({
-          error: "Workflow não encontrado.",
-        });
+        throw new NotFoundError("Workflow not found.");
       }
 
       return res.status(200).json({
-        message: "Workflow excluído com sucesso.",
+        message: "Workflow deleted successfully.",
       });
     } catch (error) {
       return next(error);

@@ -11,10 +11,12 @@ class ChatController {
         throw new BadRequestError("Chat title is required.");
       }
 
-      const [result] = await pool.promise().execute(
-        "INSERT INTO chat (title, fk_id_user) VALUES (?, ?)",
-        [title.trim(), userId],
-      );
+      const [result] = await pool
+        .promise()
+        .execute("INSERT INTO chat (title, fk_id_user) VALUES (?, ?)", [
+          title.trim(),
+          userId,
+        ]);
 
       return res.status(201).json({
         message: "Chat created successfully.",
@@ -34,7 +36,10 @@ class ChatController {
       const userId = req.userId;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_chat, title, fk_id_user
+        `SELECT
+            id_chat,
+            title,
+            fk_id_user
          FROM chat
          WHERE fk_id_user = ?
          ORDER BY id_chat DESC`,
@@ -55,9 +60,13 @@ class ChatController {
       const userId = req.userId;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_chat, title, fk_id_user
+        `SELECT
+            id_chat,
+            title,
+            fk_id_user
          FROM chat
-         WHERE id_chat = ? AND fk_id_user = ?
+         WHERE id_chat = ?
+           AND fk_id_user = ?
          LIMIT 1`,
         [id_chat, userId],
       );
@@ -87,15 +96,14 @@ class ChatController {
       const normalizedTitle = title.trim();
 
       if (normalizedTitle.length > 255) {
-        throw new BadRequestError(
-          "Chat title must not exceed 255 characters.",
-        );
+        throw new BadRequestError("Chat title must not exceed 255 characters.");
       }
 
       const [result] = await pool.promise().execute(
         `UPDATE chat
          SET title = ?
-         WHERE id_chat = ? AND fk_id_user = ?`,
+         WHERE id_chat = ?
+           AND fk_id_user = ?`,
         [normalizedTitle, id_chat, userId],
       );
 
@@ -129,7 +137,8 @@ class ChatController {
       const [rows] = await connection.execute(
         `SELECT id_chat
          FROM chat
-         WHERE id_chat = ? AND fk_id_user = ?
+         WHERE id_chat = ?
+           AND fk_id_user = ?
          LIMIT 1
          FOR UPDATE`,
         [id_chat, userId],
@@ -139,19 +148,18 @@ class ChatController {
         throw new NotFoundError("Chat not found.");
       }
 
-      // The current schema uses ON DELETE SET NULL for these relationships.
-      // Remove dependent records explicitly so deleting a chat does not leave
-      // messages or file associations without a parent chat.
+      await connection.execute("DELETE FROM messages WHERE fk_id_chat = ?", [
+        id_chat,
+      ]);
+
+      await connection.execute("DELETE FROM file_chat WHERE fk_id_chat = ?", [
+        id_chat,
+      ]);
+
       await connection.execute(
-        "DELETE FROM messages WHERE fk_id_chat = ?",
-        [id_chat],
-      );
-      await connection.execute(
-        "DELETE FROM file_chat WHERE fk_id_chat = ?",
-        [id_chat],
-      );
-      await connection.execute(
-        "DELETE FROM chat WHERE id_chat = ? AND fk_id_user = ?",
+        `DELETE FROM chat
+         WHERE id_chat = ?
+           AND fk_id_user = ?`,
         [id_chat, userId],
       );
 
