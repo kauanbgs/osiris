@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from "react-native";
+import * as Speech from "expo-speech";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -133,22 +134,28 @@ function GreetingHeader({ userName = "Usuário" }) {
 
 function MessageBubble({ role, text }) {
   const isUser = role === "user";
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const btnScale = useRef(new Animated.Value(1)).current;
 
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(anim, {
       toValue: 1,
-
       duration: 260,
-
       useNativeDriver: true,
     }).start();
   }, [anim]);
 
+  // Para fala quando o componente desmontar
+  useEffect(() => {
+    return () => {
+      if (isSpeaking) Speech.stop();
+    };
+  }, [isSpeaking]);
+
   const animatedStyle = {
     opacity: anim,
-
     transform: [
       {
         translateY: anim.interpolate({
@@ -156,7 +163,6 @@ function MessageBubble({ role, text }) {
           outputRange: [12, 0],
         }),
       },
-
       {
         scale: anim.interpolate({
           inputRange: [0, 1],
@@ -166,22 +172,58 @@ function MessageBubble({ role, text }) {
     ],
   };
 
+  const handleTTS = () => {
+    // Animação de pulso no botão
+    Animated.sequence([
+      Animated.timing(btnScale, { toValue: 0.8, duration: 100, useNativeDriver: true }),
+      Animated.timing(btnScale, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]).start();
+
+    if (isSpeaking) {
+      Speech.stop();
+      setIsSpeaking(false);
+    } else {
+      setIsSpeaking(true);
+      Speech.speak(text, {
+        language: "pt-BR",
+        pitch: 1.0,
+        rate: 0.95,
+        onDone: () => setIsSpeaking(false),
+        onStopped: () => setIsSpeaking(false),
+        onError: () => setIsSpeaking(false),
+      });
+    }
+  };
+
   return (
     <Animated.View
       style={[
         styles.bubbleRow,
-
         isUser ? styles.bubbleRowUser : styles.bubbleRowAgent,
-
         animatedStyle,
       ]}
     >
-      <View
-        style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}
-      >
-        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-          {text}
-        </Text>
+      <View style={styles.bubbleWrapper}>
+        <View
+          style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}
+        >
+          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+            {text}
+          </Text>
+        </View>
+        {!isUser && (
+          <TouchableOpacity
+            onPress={handleTTS}
+            style={styles.ttsButton}
+            activeOpacity={0.7}
+          >
+            <Animated.View style={[styles.ttsInner, { transform: [{ scale: btnScale }] }, isSpeaking && styles.ttsInnerActive]}>
+              <Text style={[styles.ttsIcon, isSpeaking && styles.ttsIconActive]}>
+                {isSpeaking ? "⏹" : "🔊"}
+              </Text>
+            </Animated.View>
+          </TouchableOpacity>
+        )}
       </View>
     </Animated.View>
   );
@@ -549,8 +591,12 @@ const styles = StyleSheet.create({
   bubbleRowAgent: {
     justifyContent: "flex-start",
   },
+  bubbleWrapper: {
+    maxWidth: "82%",
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
   bubble: {
-    maxWidth: "80%",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
@@ -564,6 +610,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.bubbleAgentBorder,
     borderBottomLeftRadius: 4,
+  },
+  ttsButton: {
+    marginTop: 5,
+    alignSelf: "flex-start",
+  },
+  ttsInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: "#1e1e1e",
+    borderWidth: 1,
+    borderColor: "#2e2e2e",
+  },
+  ttsInnerActive: {
+    backgroundColor: "#1a1030",
+    borderColor: colors.purple,
+  },
+  ttsIcon: {
+    fontSize: 13,
+  },
+  ttsIconActive: {
+    fontSize: 13,
   },
   bubbleText: {
     fontFamily,
