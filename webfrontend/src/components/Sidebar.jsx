@@ -25,7 +25,7 @@ const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
   { label: "Workflow", icon: Bot, link: "/workflow" },
   { label: "Terminal", icon: TerminalSquare },
-  { label: "Arquivos", icon: Folder },
+  { label: "Arquivos", icon: Folder, link: "/arquivos" },
 ];
 
 const environmentItems = [

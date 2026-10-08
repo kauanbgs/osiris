@@ -528,6 +528,105 @@ ipcMain.handle(
     };
   }
 );
+
+// ======================================================
+// ESCOLHER PASTA
+// ======================================================
+
+ipcMain.handle("fs:select-folder", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+  });
+
+  if (result.canceled || !result.filePaths.length) {
+    return null;
+  }
+
+  const folderPath = result.filePaths[0];
+
+  async function readDirectory(directoryPath) {
+    const entries = await fs.promises.readdir(directoryPath, {
+      withFileTypes: true,
+    });
+
+    const items = [];
+
+    for (const entry of entries) {
+      // Ignora algumas pastas pesadas/desnecessárias.
+      if (
+        entry.name === "node_modules" ||
+        entry.name === ".git" ||
+        entry.name === "dist" ||
+        entry.name === "build"
+      ) {
+        continue;
+      }
+
+      const fullPath = path.join(directoryPath, entry.name);
+
+      if (entry.isDirectory()) {
+        items.push({
+          name: entry.name,
+          path: fullPath,
+          type: "folder",
+          children: await readDirectory(fullPath),
+        });
+      } else {
+        items.push({
+          name: entry.name,
+          path: fullPath,
+          type: "file",
+        });
+      }
+    }
+
+    // Pastas primeiro, depois arquivos.
+    items.sort((a, b) => {
+      if (a.type === b.type) {
+        return a.name.localeCompare(b.name);
+      }
+
+      return a.type === "folder" ? -1 : 1;
+    });
+
+    return items;
+  }
+
+  const tree = await readDirectory(folderPath);
+
+  return {
+    folderName: path.basename(folderPath),
+    folderPath,
+    tree,
+  };
+});
+
+// ======================================================
+// LER ARQUIVO
+// ======================================================
+
+ipcMain.handle("fs:read-file", async (_, filePath) => {
+  if (!filePath || typeof filePath !== "string") {
+    throw new Error("Caminho inválido.");
+  }
+
+  try {
+    const content = await fs.promises.readFile(filePath, "utf-8");
+
+    return {
+      fileName: path.basename(filePath),
+      filePath,
+      fileContent: content,
+    };
+  } catch (err) {
+    console.error("Erro ao ler arquivo:", err);
+
+    throw new Error(
+      `Não foi possível ler "${filePath}": ${err.message}`,
+    );
+  }
+});
+
 // ===============================
 // WINDOW CONTROLS IPC HANDLERS
 // ===============================
