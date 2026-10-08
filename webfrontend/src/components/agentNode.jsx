@@ -233,96 +233,39 @@ ${file.fileContent ?? ""}
             : "Nenhum arquivo existe atualmente no FileNode de saída.";
 
         finalInstruction = `
-${instruction}
+Você é um agente que edita arquivos.
 
-Você é um agente com capacidade REAL de modificar os arquivos conectados a este node.
-
-ARQUIVOS ATUAIS DO FILE NODE DE SAÍDA:
-
+ARQUIVOS:
 ${currentFilesText}
 
-Quando o pedido do usuário envolver criar, modificar, reescrever ou excluir
-um arquivo, você DEVE realizar a alteração através de "fileOperations".
+PEDIDO:
+${instruction}
 
-Responda SOMENTE com JSON válido.
+Execute completamente o pedido no arquivo.
 
-FORMATO OBRIGATÓRIO:
-
+Responda SOMENTE neste JSON:
 {
   "fileOperations": [
     {
       "action": "update",
-      "fileName": "nome-exato-do-arquivo",
-      "content": "conteúdo COMPLETO e FINAL que deverá existir no arquivo"
+      "fileName": "nome exato",
+      "content": "arquivo completo"
     }
   ],
-  "message": "Resumo curto do que foi feito"
+  "message": "resumo curto"
 }
 
-AÇÕES:
-
-- "create": cria um novo arquivo
-- "update": substitui completamente o conteúdo de um arquivo existente
-- "delete": exclui um arquivo
-
-REGRAS OBRIGATÓRIAS:
-
-1. Se o usuário pedir uma alteração em um arquivo existente, use "update".
-
-2. O campo "fileName" deve corresponder EXATAMENTE ao nome do arquivo
-   apresentado em ARQUIVOS ATUAIS.
-
-3. Para "create" e "update", "content" deve conter o conteúdo REAL,
-   COMPLETO e FINAL do arquivo.
-
-4. NUNCA coloque em "content" uma descrição do que foi feito.
-
-ERRADO:
-{
-  "action": "update",
-  "fileName": "oi.txt",
-  "content": "Calculadora com soma, subtração, multiplicação e divisão."
-}
-
-CORRETO:
-{
-  "action": "update",
-  "fileName": "oi.txt",
-  "content": "def somar(a, b):\\n    return a + b\\n\\ndef subtrair(a, b):\\n    return a - b"
-}
-
-5. Se o usuário pedir código, "content" DEVE conter o código-fonte real.
-
-6. A extensão atual do arquivo não muda essa regra.
-   Se o usuário pedir código Python dentro de oi.txt, escreva código Python
-   completo dentro de oi.txt.
-
-7. Não retorne pseudocódigo quando o usuário pedir uma implementação.
-
-8. Não envie somente trechos, explicações ou diffs.
-
-9. Não use Markdown.
-
-10. Não use blocos com crases.
-
-11. Não escreva absolutamente nada fora do JSON.
-
-12. "message" serve SOMENTE para informar ao usuário o que foi feito.
-    O conteúdo de "message" NUNCA deve ser usado como conteúdo do arquivo.
-
-13. Se nenhum arquivo precisar ser alterado, use:
-
-{
-  "fileOperations": [],
-  "message": "sua resposta"
-}
-
-Antes de responder, verifique:
-- O pedido exige alteração de arquivo?
-- Se sim, existe uma operação em fileOperations?
-- O content contém o arquivo completo?
-- Se foi solicitado código, content contém código executável real?
-`;
+REGRAS:
+- action é sempre "update".
+- Use exatamente o nome de um arquivo existente.
+- content deve conter o arquivo COMPLETO e FINAL.
+- Implemente tudo que o usuário pediu.
+- Código deve ser real, funcional e executável.
+- Nunca use pseudocódigo, TODO, placeholders ou comentários no lugar da implementação.
+- Não omita partes do código.
+- Não crie campos extras no JSON.
+- Se não precisar editar: {"fileOperations":[],"message":"resposta"}
+- Responda apenas JSON válido.`;
       }
 
       const result = await executeAgentNode({
@@ -404,14 +347,20 @@ Antes de responder, verifique:
                 continue;
               }
 
-              console.log("[agentNode] Escrevendo arquivo:", originalFile.filePath);
+              console.log(
+                "[agentNode] Escrevendo arquivo:",
+                originalFile.filePath,
+              );
 
               try {
                 await window.electronAPI.writeFile(
                   originalFile.filePath,
                   operation.content,
                 );
-                console.log("[agentNode] Arquivo salvo com sucesso:", originalFile.filePath);
+                console.log(
+                  "[agentNode] Arquivo salvo com sucesso:",
+                  originalFile.filePath,
+                );
               } catch (writeErr) {
                 console.error("[agentNode] Erro ao salvar arquivo:", writeErr);
               }
