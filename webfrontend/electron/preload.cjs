@@ -10,10 +10,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // FILE SYSTEM
   writeFile: (filePath, content) =>
     ipcRenderer.invoke("fs:write-file", { filePath, content }),
+  // Arquivo individual
   selectFile: () =>
-    ipcRenderer.invoke(
-      "fs:select-file"
-    ),
+    ipcRenderer.invoke("fs:select-file"),
+
+  // Pasta inteira
+  selectFolder: () =>
+    ipcRenderer.invoke("fs:select-folder"),
+
+  // Ler conteúdo de um arquivo
+  readFile: (filePath) =>
+    ipcRenderer.invoke("fs:read-file", filePath),
 
   // TERMINAL CONTROLS
   terminalCreate: (id, mode) => ipcRenderer.invoke("terminal-create", id, mode),
