@@ -10,8 +10,10 @@ const MemoryController = require("../controllers/memoryController");
 const WorkflowController = require("../controllers/workflowController");
 const NodeController = require("../controllers/nodeController");
 const ConnectionController = require("../controllers/connectionController");
+const FileController = require("../controllers/fileController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
+const upload = require("../middlewares/upload");
 
 router.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
@@ -108,5 +110,23 @@ router.delete(
   verifyJWT,
   ConnectionController.delete,
 );
+
+// File routes (standard & Notion CT18/RF10 aliases)
+router.post(
+  "/file",
+  verifyJWT,
+  upload.single("file"),
+  FileController.upload,
+);
+router.post(
+  "/arquivos",
+  verifyJWT,
+  upload.single("arquivo"),
+  FileController.upload,
+);
+router.get("/file", verifyJWT, FileController.list);
+router.get("/file/:id_file", verifyJWT, FileController.getById);
+router.get("/file/:id_file/download", verifyJWT, FileController.download);
+router.delete("/file/:id_file", verifyJWT, FileController.delete);
 
 module.exports = router;

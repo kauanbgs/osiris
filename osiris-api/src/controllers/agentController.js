@@ -1,5 +1,6 @@
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
+const AgentExecutionService = require("../services/agentExecutionService");
 
 class AgentController {
   /**
@@ -441,22 +442,27 @@ class AgentController {
         ["running", id_agent],
       );
 
-      // TODO: Integrate with actual AI model execution
-      // For now, return a mock response
-      const response = {
-        agent_id: agent.id_agent,
-        agent_name: agent.name,
+      // Execute agent through autonomous execution engine
+      const executionResult = await AgentExecutionService.run({
+        agent,
         input: input.trim(),
-        output: `Agent "${agent.name}" executed with objective: ${agent.objective}. (Mock response - AI integration pending)`,
-        model_used: agent.model_name || "No model configured",
-        execution_time: new Date().toISOString(),
-      };
+      });
 
       // Update execution log back to 'idle'
       await pool.promise().execute(
         `UPDATE agent SET execution_log = ? WHERE id_agent = ?`,
         ["idle", id_agent],
       );
+
+      const response = {
+        agent_id: agent.id_agent,
+        agent_name: agent.name,
+        input: input.trim(),
+        output: executionResult.output,
+        model_used: agent.model_name || "No model configured",
+        execution_time: new Date().toISOString(),
+        metrics: executionResult.metrics,
+      };
 
       return res.status(200).json({
         message: "Agent executed successfully.",
