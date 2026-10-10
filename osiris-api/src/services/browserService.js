@@ -103,6 +103,9 @@ class BrowserService {
       if (!targetElement) {
         throw new NotFoundError(`Element matching selector '${selector}' was not found.`);
       }
+      if (targetElement.disabled) {
+        throw new BadRequestError(`Element matching selector '${selector}' is disabled.`);
+      }
     } else {
       targetElement = {
         selector: `point(${x},${y})`,

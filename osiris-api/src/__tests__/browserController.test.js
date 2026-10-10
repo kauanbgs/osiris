@@ -143,4 +143,47 @@ describe("BrowserController", () => {
     expect(clickRes.status).toBe(404);
     expect(clickRes.body.error.message).toContain("was not found");
   });
+
+  it("clicks on interactive button without redirect and returns event confirmation", async () => {
+    const createRes = await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(1))
+      .send({});
+    const sessionId = createRes.body.session.id_session;
+
+    const clickRes = await request(app)
+      .post("/api/osiris/browser/click")
+      .set(auth(1))
+      .send({
+        id_session: sessionId,
+        selector: "button#submit",
+      });
+
+    expect(clickRes.status).toBe(200);
+    expect(clickRes.body.clicked_element.selector).toBe("button#submit");
+    expect(clickRes.body.navigation_triggered).toBe(false);
+  });
+
+  it("rejects clicking disabled element with 400", async () => {
+    const createRes = await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(1))
+      .send({});
+    const sessionId = createRes.body.session.id_session;
+
+    // Add disabled element to session
+    const session = BrowserService.getSession(sessionId, 1);
+    session.dom_tree.elements.push({ selector: "button#disabled-btn", disabled: true, text: "Disabled" });
+
+    const clickRes = await request(app)
+      .post("/api/osiris/browser/click")
+      .set(auth(1))
+      .send({
+        id_session: sessionId,
+        selector: "button#disabled-btn",
+      });
+
+    expect(clickRes.status).toBe(400);
+    expect(clickRes.body.error.message).toContain("is disabled");
+  });
 });
