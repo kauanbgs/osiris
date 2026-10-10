@@ -12,6 +12,8 @@ const WorkflowController = require("../controllers/workflowController");
 const NodeController = require("../controllers/nodeController");
 const ConnectionController = require("../controllers/connectionController");
 const FileController = require("../controllers/fileController");
+const SystemController = require("../controllers/systemController");
+const BrowserController = require("../controllers/browserController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -23,6 +25,7 @@ router.get("/health", (req, res) => {
 // User routes
 router.post("/auth/register", UserController.register);
 router.post("/auth/login", UserController.login);
+router.post("/auth/google", UserController.googleAuth);
 router.post("/auth/logout", verifyJWT, UserController.logout);
 router.get("/auth/me", verifyJWT, UserController.profile);
 
@@ -40,6 +43,9 @@ router.post("/chat/:id_chat/messages", verifyJWT, MessageController.create);
 // AI model routes
 router.post("/ai-model", verifyJWT, AiModelController.create);
 router.get("/ai-model", verifyJWT, AiModelController.list);
+router.post("/ai-model/scan", verifyJWT, AiModelController.scanModels);
+router.get("/ai-model/installed", verifyJWT, AiModelController.listInstalled);
+router.get("/ai-model/recommend", verifyJWT, AiModelController.recommendModels);
 router.get("/ai-model/:id_model", verifyJWT, AiModelController.getById);
 router.get(
   "/ai-model/:id_model/download",
@@ -153,5 +159,18 @@ router.get("/file", verifyJWT, FileController.list);
 router.get("/file/:id_file", verifyJWT, FileController.getById);
 router.get("/file/:id_file/download", verifyJWT, FileController.download);
 router.delete("/file/:id_file", verifyJWT, FileController.delete);
+
+// System telemetry & metrics collection
+router.get("/system/info", verifyJWT, SystemController.getInfo);
+router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
+router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
+router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard);
+
+// Browser navigation engine & interaction for agents
+router.post("/browser/session", verifyJWT, BrowserController.createSession);
+router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSession);
+router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
+router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
+router.post("/browser/click", verifyJWT, BrowserController.click);
 
 module.exports = router;
