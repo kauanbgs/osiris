@@ -23,6 +23,7 @@ router.get("/health", (req, res) => {
 // User routes
 router.post("/auth/register", UserController.register);
 router.post("/auth/login", UserController.login);
+router.post("/auth/google", UserController.googleAuth);
 router.post("/auth/logout", verifyJWT, UserController.logout);
 router.get("/auth/me", verifyJWT, UserController.profile);
 

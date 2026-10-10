@@ -74,4 +74,40 @@ describe("UserController", () => {
     expect(res.status).toBe(401);
     expect(res.body.error.message).toBe("Token not provided.");
   });
+
+  it("logs in an existing user via Google Auth", async () => {
+    mockQueries([[
+      { id_user: 3, name: "Google Dev", email: "google@example.com" },
+    ]]);
+
+    const response = await request(app)
+      .post("/api/osiris/auth/google")
+      .send({ email: "google@example.com", name: "Google Dev" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.token).toBeDefined();
+    expect(response.body.user.email).toBe("google@example.com");
+  });
+
+  it("auto-provisions a new user via Google Auth", async () => {
+    mockQueries([[]], [{ insertId: 10 }]);
+
+    const response = await request(app)
+      .post("/api/osiris/auth/google")
+      .send({ email: "newuser@example.com", name: "New Google User" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.token).toBeDefined();
+    expect(response.body.user.id_user).toBe(10);
+    expect(response.body.user.email).toBe("newuser@example.com");
+  });
+
+  it("rejects Google auth when email is missing", async () => {
+    const response = await request(app)
+      .post("/api/osiris/auth/google")
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe("Google email is required.");
+  });
 });

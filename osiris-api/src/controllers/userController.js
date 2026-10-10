@@ -85,6 +85,75 @@ class UserController {
     }
   }
 
+  static async googleAuth(req, res, next) {
+    try {
+      const { credential, email: bodyEmail, name: bodyName } = req.body;
+
+      let email = bodyEmail;
+      let name = bodyName;
+
+      if (credential) {
+        try {
+          const decoded = jwt.decode(credential);
+          if (decoded && decoded.email) {
+            email = decoded.email;
+            name = name || decoded.name || decoded.given_name || "Google User";
+          }
+        } catch {
+          // fallback to body fields
+        }
+      }
+
+      if (!email || typeof email !== "string" || !email.trim()) {
+        throw new BadRequestError("Google email is required.");
+      }
+
+      email = email.trim().toLowerCase();
+      name = (name || email.split("@")[0] || "User").trim();
+
+      const [rows] = await pool.promise().execute(
+        "SELECT id_user, name, email FROM user WHERE email = ? LIMIT 1",
+        [email],
+      );
+
+      let user = rows[0];
+      let isNew = false;
+
+      if (!user) {
+        const randomPassword = crypto.randomBytes(16).toString("hex");
+        const passwordHash = await bcrypt.hash(randomPassword, SALT_ROUNDS);
+
+        const [insertResult] = await pool.promise().execute(
+          "INSERT INTO user (name, email, password) VALUES (?, ?, ?)",
+          [name, email, passwordHash],
+        );
+
+        user = {
+          id_user: insertResult.insertId,
+          name,
+          email,
+        };
+        isNew = true;
+      }
+
+      const jti = crypto.randomUUID();
+      const token = jwt.sign({ jti }, process.env.JWT_SECRET, {
+        subject: String(user.id_user),
+        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+      });
+
+      return res.status(isNew ? 201 : 200).json({
+        message: isNew
+          ? "User registered and logged in via Google successfully."
+          : "Google login successful.",
+        user: { id_user: user.id_user, name: user.name, email: user.email },
+        token,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async profile(req, res, next) {
     try {
       const [rows] = await pool.promise().execute(
