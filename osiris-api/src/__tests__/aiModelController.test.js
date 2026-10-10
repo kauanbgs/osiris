@@ -150,4 +150,59 @@ describe("AiModelController", () => {
       "This model does not have a download URL configured.",
     );
   });
+
+  it("scans models directory and matches installed files", async () => {
+    const fs = require("fs");
+    const path = require("path");
+    const modelsDir = path.resolve(__dirname, "../../models");
+    if (!fs.existsSync(modelsDir)) {
+      fs.mkdirSync(modelsDir, { recursive: true });
+    }
+    const dummyGguf = path.join(modelsDir, "Llama-3.2-1B-Instruct-Q4_K_M.gguf");
+    fs.writeFileSync(dummyGguf, "dummy binary");
+
+    mockQueries(
+      [[{
+        id_model: 4,
+        name: "Llama 3.2 1B Instruct",
+        download_url: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      }]],
+      [[]], // check if in model_installation
+      [{ insertId: 1 }], // insert into model_installation
+    );
+
+    const res = await request(app)
+      .post("/api/osiris/ai-model/scan")
+      .set(auth())
+      .send({});
+
+    fs.unlinkSync(dummyGguf);
+
+    expect(res.status).toBe(200);
+    expect(res.body.scanned_files_count).toBeGreaterThanOrEqual(1);
+    expect(res.body.matched_models_count).toBe(1);
+    expect(res.body.installed[0].id_model).toBe(4);
+  });
+
+  it("lists all installed models from model_installation", async () => {
+    mockQueries([[
+      {
+        id_installation: 1,
+        installation_status: "installed",
+        local_path: "/models/llama.gguf",
+        fk_id_model: 4,
+        name: "Llama 3.2 1B",
+        provider: "Meta",
+        ram_requirement: 4096,
+      },
+    ]]);
+
+    const res = await request(app)
+      .get("/api/osiris/ai-model/installed")
+      .set(auth());
+
+    expect(res.status).toBe(200);
+    expect(res.body.installed_models).toHaveLength(1);
+    expect(res.body.installed_models[0].name).toBe("Llama 3.2 1B");
+  });
 });
