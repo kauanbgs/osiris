@@ -12,6 +12,7 @@ const WorkflowController = require("../controllers/workflowController");
 const NodeController = require("../controllers/nodeController");
 const ConnectionController = require("../controllers/connectionController");
 const FileController = require("../controllers/fileController");
+const SystemController = require("../controllers/systemController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -154,5 +155,10 @@ router.get("/file", verifyJWT, FileController.list);
 router.get("/file/:id_file", verifyJWT, FileController.getById);
 router.get("/file/:id_file/download", verifyJWT, FileController.download);
 router.delete("/file/:id_file", verifyJWT, FileController.delete);
+
+// System telemetry & metrics collection
+router.get("/system/info", verifyJWT, SystemController.getInfo);
+router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
+router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
 
 module.exports = router;
