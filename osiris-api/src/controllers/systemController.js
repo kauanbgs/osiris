@@ -106,6 +106,66 @@ class SystemController {
       return next(error);
     }
   }
+
+  static async getDashboard(req, res, next) {
+    try {
+      const userId = Number(req.userId);
+
+      const [summaryRows] = await pool.promise().execute(
+        `SELECT
+          COUNT(*) AS total_requests,
+          COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+          COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+          COALESCE(ROUND(AVG(response_time), 2), 0) AS avg_response_time_ms,
+          COALESCE(ROUND(AVG(cpu_usage), 2), 0) AS avg_cpu_usage,
+          COALESCE(ROUND(AVG(ram_usage), 2), 0) AS avg_ram_usage
+         FROM usage_metrics
+         WHERE fk_id_user = ?`,
+        [userId],
+      );
+
+      const [timelineRows] = await pool.promise().execute(
+        `SELECT
+          DATE(created_at) AS date,
+          COUNT(*) AS requests,
+          COALESCE(SUM(input_tokens), 0) AS input_tokens,
+          COALESCE(SUM(output_tokens), 0) AS output_tokens,
+          COALESCE(ROUND(AVG(response_time), 2), 0) AS avg_response_time
+         FROM usage_metrics
+         WHERE fk_id_user = ?
+         GROUP BY DATE(created_at)
+         ORDER BY date ASC
+         LIMIT 30`,
+        [userId],
+      );
+
+      const [modelRows] = await pool.promise().execute(
+        `SELECT
+          m.id_model,
+          m.name AS model_name,
+          COUNT(u.id_metric) AS requests,
+          COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS total_tokens,
+          COALESCE(ROUND(AVG(u.response_time), 2), 0) AS avg_response_time
+         FROM ai_model m
+         INNER JOIN usage_metrics u ON m.id_model = u.fk_id_model
+         WHERE u.fk_id_user = ?
+         GROUP BY m.id_model, m.name
+         ORDER BY total_tokens DESC`,
+        [userId],
+      );
+
+      const liveSysInfo = SystemService.getSystemInfo();
+
+      return res.status(200).json({
+        summary: summaryRows[0] || {},
+        timeline: timelineRows,
+        models: modelRows,
+        live_hardware: liveSysInfo,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 }
 
 module.exports = SystemController;

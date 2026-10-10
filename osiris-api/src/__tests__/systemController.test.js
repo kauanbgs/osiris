@@ -75,4 +75,33 @@ describe("SystemController", () => {
     expect(res.body.metrics).toHaveLength(1);
     expect(res.body.metrics[0].id_metric).toBe(1);
   });
+
+  it("returns aggregated dashboard metrics for charts and analytics", async () => {
+    const mockSummary = {
+      total_requests: 12,
+      total_input_tokens: 1500,
+      total_output_tokens: 3000,
+      avg_response_time_ms: 350.5,
+      avg_cpu_usage: 22.4,
+      avg_ram_usage: 55.1,
+    };
+    const mockTimeline = [
+      { date: "2026-10-09", requests: 12, input_tokens: 1500, output_tokens: 3000 },
+    ];
+    const mockModels = [
+      { id_model: 2, model_name: "Llama 3.2", requests: 12, total_tokens: 4500 },
+    ];
+
+    mockQueries([[mockSummary]], [mockTimeline], [mockModels]);
+
+    const res = await request(app)
+      .get("/api/osiris/system/metrics/dashboard")
+      .set(auth(1));
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary.total_requests).toBe(12);
+    expect(res.body.timeline).toHaveLength(1);
+    expect(res.body.models).toHaveLength(1);
+    expect(res.body.live_hardware.memory).toBeDefined();
+  });
 });

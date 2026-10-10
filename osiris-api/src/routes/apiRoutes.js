@@ -160,5 +160,6 @@ router.delete("/file/:id_file", verifyJWT, FileController.delete);
 router.get("/system/info", verifyJWT, SystemController.getInfo);
 router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
 router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
+router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard);
 
 module.exports = router;
