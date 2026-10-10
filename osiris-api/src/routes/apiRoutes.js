@@ -7,6 +7,7 @@ const AiModelController = require("../controllers/aiModelController");
 const AgentController = require("../controllers/agentController");
 const ToolController = require("../controllers/toolController");
 const MemoryController = require("../controllers/memoryController");
+const MemoryIAController = require("../controllers/memoryIAController");
 const WorkflowController = require("../controllers/workflowController");
 const NodeController = require("../controllers/nodeController");
 const ConnectionController = require("../controllers/connectionController");
@@ -63,6 +64,30 @@ router.delete(
 
 // Agent execution
 router.post("/agent/:id_agent/execute", verifyJWT, AgentController.execute);
+
+// Agent memory management
+router.post("/agent/:id_agent/memory", verifyJWT, MemoryIAController.create);
+router.get("/agent/:id_agent/memory", verifyJWT, MemoryIAController.list);
+router.get(
+  "/agent/:id_agent/memory/context",
+  verifyJWT,
+  MemoryIAController.getContext,
+);
+router.get(
+  "/agent/:id_agent/memory/:id_memory",
+  verifyJWT,
+  MemoryIAController.getById,
+);
+router.put(
+  "/agent/:id_agent/memory/:id_memory",
+  verifyJWT,
+  MemoryIAController.update,
+);
+router.delete(
+  "/agent/:id_agent/memory/:id_memory",
+  verifyJWT,
+  MemoryIAController.delete,
+);
 
 // Tool routes
 router.post("/tool", verifyJWT, ToolController.create);
