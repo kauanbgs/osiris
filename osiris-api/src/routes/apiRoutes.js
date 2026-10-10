@@ -44,6 +44,7 @@ router.post("/ai-model", verifyJWT, AiModelController.create);
 router.get("/ai-model", verifyJWT, AiModelController.list);
 router.post("/ai-model/scan", verifyJWT, AiModelController.scanModels);
 router.get("/ai-model/installed", verifyJWT, AiModelController.listInstalled);
+router.get("/ai-model/recommend", verifyJWT, AiModelController.recommendModels);
 router.get("/ai-model/:id_model", verifyJWT, AiModelController.getById);
 router.get(
   "/ai-model/:id_model/download",

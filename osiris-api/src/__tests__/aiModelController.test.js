@@ -205,4 +205,36 @@ describe("AiModelController", () => {
     expect(res.body.installed_models).toHaveLength(1);
     expect(res.body.installed_models[0].name).toBe("Llama 3.2 1B");
   });
+
+  it("evaluates hardware resources and recommends compatible models", async () => {
+    mockQueries([[
+      {
+        id_model: 1,
+        name: "SmolLM2 1.7B",
+        provider: "HuggingFace",
+        ram_requirement: 2048,
+        tags: "chat, light",
+        status: "available",
+      },
+      {
+        id_model: 2,
+        name: "DeepSeek R1 70B",
+        provider: "DeepSeek",
+        ram_requirement: 64000,
+        tags: "reasoning, heavy",
+        status: "available",
+      },
+    ]]);
+
+    const res = await request(app)
+      .get("/api/osiris/ai-model/recommend?task=chat&target_ram_mb=16384&target_free_ram_mb=8192")
+      .set(auth());
+
+    expect(res.status).toBe(200);
+    expect(res.body.hardware_snapshot.total_ram_mb).toBe(16384);
+    expect(res.body.primary_recommendation).toBeDefined();
+    expect(res.body.primary_recommendation.id_model).toBe(1);
+    expect(res.body.primary_recommendation.compatibility).toBe("optimal");
+    expect(res.body.recommendations).toHaveLength(2);
+  });
 });

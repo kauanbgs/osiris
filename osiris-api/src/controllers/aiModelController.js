@@ -1,6 +1,7 @@
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 const ModelScanService = require("../services/modelScanService");
+const ModelRecommendationService = require("../services/modelRecommendationService");
 
 const ALL_FIELDS = `
   id_model, name, provider, size, status,
@@ -259,6 +260,28 @@ class AiModelController {
       );
 
       return res.status(200).json({ installed_models: rows });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async recommendModels(req, res, next) {
+    try {
+      const { task, target_ram_mb, target_free_ram_mb } = req.query;
+
+      const [models] = await pool.promise().execute(
+        `SELECT id_model, name, provider, size, status, download_url, description, ram_requirement, tags
+         FROM ai_model
+         WHERE status = 'available' OR status IS NULL`,
+      );
+
+      const result = ModelRecommendationService.evaluateModels(models, {
+        task,
+        target_ram_mb: target_ram_mb ? Number(target_ram_mb) : undefined,
+        target_free_ram_mb: target_free_ram_mb ? Number(target_free_ram_mb) : undefined,
+      });
+
+      return res.status(200).json(result);
     } catch (error) {
       return next(error);
     }
