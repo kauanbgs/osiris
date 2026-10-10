@@ -85,6 +85,7 @@ describe("AgentController", () => {
     const response = await request(app).post("/api/osiris/agent/5/execute").set(auth()).send({ input: "Summarize this" });
 
     expect(response.status).toBe(200);
-    expect(response.body.execution.output).toContain("Mock response");
+    expect(response.body.execution.output).toContain(agent.name);
+    expect(response.body.execution.metrics.input_tokens).toBeGreaterThan(0);
   });
 });
