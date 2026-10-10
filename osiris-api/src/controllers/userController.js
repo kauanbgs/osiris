@@ -1,7 +1,9 @@
+const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("../db/connect");
 const emailAlreadyExists = require("../services/validateEmail");
+const { revokeToken } = require("../services/tokenService");
 const {
   validateRegistration,
   validateLogin,
@@ -67,7 +69,8 @@ class UserController {
         throw new UnauthorizedError("Invalid email or password.");
       }
 
-      const token = jwt.sign({}, process.env.JWT_SECRET, {
+      const jti = crypto.randomUUID();
+      const token = jwt.sign({ jti }, process.env.JWT_SECRET, {
         subject: String(user.id_user),
         expiresIn: process.env.JWT_EXPIRES_IN || "1h",
       });
@@ -101,11 +104,15 @@ class UserController {
 
   static async logout(req, res, next) {
     try {
-      // Since we're using stateless JWT, logout is handled client-side
-      // by removing the token from storage
-      // This endpoint confirms the logout action
+      const token = req.token || (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null);
+      const payload = req.tokenPayload || (token ? jwt.decode(token) : null);
+
+      if (token) {
+        await revokeToken(token, payload?.exp, req.userId);
+      }
+
       return res.status(200).json({
-        message: "Logout successful. Token should be removed from client.",
+        message: "Logout successful. Token revoked.",
       });
     } catch (error) {
       return next(error);

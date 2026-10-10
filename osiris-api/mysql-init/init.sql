@@ -367,3 +367,17 @@ CREATE TABLE usage_metrics (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 );
+
+CREATE TABLE revoked_token (
+    id_revocation INT AUTO_INCREMENT PRIMARY KEY,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fk_id_user INT,
+    INDEX idx_token_hash (token_hash),
+    INDEX idx_expires_at (expires_at),
+    FOREIGN KEY (fk_id_user)
+        REFERENCES `user`(id_user)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);

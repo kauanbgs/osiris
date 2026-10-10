@@ -48,16 +48,30 @@ describe("UserController", () => {
     expect(response.body.token).toEqual(expect.any(String));
   });
 
-  it("returns the authenticated profile and confirms logout", async () => {
-    mockQueries([[
-      { id_user: 1, name: "Ada", email: "ada@example.com" },
-    ]]);
+  it("returns the authenticated profile and confirms logout with token revocation", async () => {
+    mockQueries(
+      [[{ id_user: 1, name: "Ada", email: "ada@example.com" }]],
+      [{ insertId: 1 }], // insert into revoked_token
+    );
 
-    const profile = await request(app).get("/api/osiris/auth/me").set(auth());
+    const userAuth = auth(1);
+    const profile = await request(app).get("/api/osiris/auth/me").set(userAuth);
     expect(profile.status).toBe(200);
     expect(profile.body.user.id_user).toBe(1);
 
-    const logout = await request(app).post("/api/osiris/auth/logout").set(auth());
+    const logout = await request(app).post("/api/osiris/auth/logout").set(userAuth);
     expect(logout.status).toBe(200);
+    expect(logout.body.message).toContain("Token revoked");
+
+    // Subsequent call with the revoked token must be rejected with 401
+    const secondCall = await request(app).get("/api/osiris/auth/me").set(userAuth);
+    expect(secondCall.status).toBe(401);
+    expect(secondCall.body.error.message).toBe("Token has been revoked.");
+  });
+
+  it("rejects token without Bearer prefix", async () => {
+    const res = await request(app).get("/api/osiris/auth/me").set({ Authorization: "InvalidToken" });
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toBe("Token not provided.");
   });
 });
