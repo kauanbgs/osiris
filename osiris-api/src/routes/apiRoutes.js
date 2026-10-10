@@ -13,6 +13,7 @@ const NodeController = require("../controllers/nodeController");
 const ConnectionController = require("../controllers/connectionController");
 const FileController = require("../controllers/fileController");
 const SystemController = require("../controllers/systemController");
+const BrowserController = require("../controllers/browserController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -164,5 +165,12 @@ router.get("/system/info", verifyJWT, SystemController.getInfo);
 router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
 router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
 router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard);
+
+// Browser navigation engine & interaction for agents
+router.post("/browser/session", verifyJWT, BrowserController.createSession);
+router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSession);
+router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
+router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
+router.post("/browser/click", verifyJWT, BrowserController.click);
 
 module.exports = router;
