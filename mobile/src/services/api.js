@@ -64,6 +64,9 @@ const sheets = {
   createTool: (payload) => api.post("/tool", payload),
   updateTool: (id_tool, payload) => api.put(`/tool/${id_tool}`, payload),
   deleteTool: (id_tool) => api.delete(`/tool/${id_tool}`),
+
+  // ── Files ──────────────────────────────────────────────────────────
+  listFiles: () => api.get("/file"),
 };
 
 export default sheets;
