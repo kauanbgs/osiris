@@ -381,3 +381,20 @@ CREATE TABLE revoked_token (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 );
+
+
+CREATE TABLE agent_execution_log (
+    id_execution INT AUTO_INCREMENT PRIMARY KEY,
+    fk_id_agent INT NOT NULL,
+    status ENUM('running', 'paused', 'cancelled', 'completed', 'error') NOT NULL DEFAULT 'running',
+    input TEXT,
+    output LONGTEXT,
+    input_tokens INT DEFAULT 0,
+    output_tokens INT DEFAULT 0,
+    response_time_ms INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fk_id_agent)
+        REFERENCES agent(id_agent)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
