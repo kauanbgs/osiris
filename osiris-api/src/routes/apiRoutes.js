@@ -60,6 +60,13 @@ router.get("/agent/:id_agent", verifyJWT, AgentController.getById);
 router.put("/agent/:id_agent", verifyJWT, AgentController.update);
 router.delete("/agent/:id_agent", verifyJWT, AgentController.delete);
 
+// Execution log
+router.get(
+  "/agent/:id_agent/execution-log",
+  verifyJWT,
+  AgentController.getExecutionLog,
+);
+
 // Agent tools management
 router.post("/agent/:id_agent/tool", verifyJWT, AgentController.addTool);
 router.delete(
@@ -70,6 +77,9 @@ router.delete(
 
 // Agent execution
 router.post("/agent/:id_agent/execute", verifyJWT, AgentController.execute);
+router.post("/agent/:id_agent/pause", verifyJWT, AgentController.pause);
+router.post("/agent/:id_agent/resume", verifyJWT, AgentController.resume);
+router.post("/agent/:id_agent/cancel", verifyJWT, AgentController.cancel);
 
 // Agent memory management
 router.post("/agent/:id_agent/memory", verifyJWT, MemoryIAController.create);
@@ -143,12 +153,7 @@ router.delete(
 );
 
 // File routes (standard & Notion CT18/RF10 aliases)
-router.post(
-  "/file",
-  verifyJWT,
-  upload.single("file"),
-  FileController.upload,
-);
+router.post("/file", verifyJWT, upload.single("file"), FileController.upload);
 router.post(
   "/arquivos",
   verifyJWT,
@@ -164,12 +169,24 @@ router.delete("/file/:id_file", verifyJWT, FileController.delete);
 router.get("/system/info", verifyJWT, SystemController.getInfo);
 router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
 router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
-router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard);
+router.get(
+  "/system/metrics/dashboard",
+  verifyJWT,
+  SystemController.getDashboard,
+);
 
 // Browser navigation engine & interaction for agents
 router.post("/browser/session", verifyJWT, BrowserController.createSession);
-router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSession);
-router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
+router.get(
+  "/browser/session/:id_session",
+  verifyJWT,
+  BrowserController.getSession,
+);
+router.delete(
+  "/browser/session/:id_session",
+  verifyJWT,
+  BrowserController.closeSession,
+);
 router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
 router.post("/browser/click", verifyJWT, BrowserController.click);
 
