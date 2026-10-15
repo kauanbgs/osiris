@@ -174,7 +174,7 @@ export default function Login({ navigation }) {
 
       <TouchableOpacity
         style={styles.serverRow}
-        onPress={() => !loading && navigation.navigate("Configuracoes")}
+        onPress={() => !loading && navigation.navigate("Configuracoes", { guestMode: true })}
         disabled={loading}
       >
         <Settings size={16} color="#888888" strokeWidth={2} />

@@ -540,12 +540,7 @@ export default function HomeScreen({ navigation, route }) {
 
         <BottomNav
           activeKey="home"
-          onPressItem={(key) => {
-            if (key === "chats") navigation.navigate("Chats");
-            else if (key === "folder") navigation.navigate("folder");
-            else if (key === "settings") navigation.navigate("Configuracoes");
-            else console.log("nav:", key);
-          }}
+          navigation={navigation}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

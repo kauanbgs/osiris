@@ -15,7 +15,9 @@ import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
 import BottomNav from "../components/Navbar";
 
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen({ navigation, route }) {
+  // guestMode = true quando vindo da LoginScreen (sem estar autenticado)
+  const guestMode = route?.params?.guestMode === true;
   const [ip, setIp] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState("");
@@ -31,7 +33,11 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
     await saveIP(value);
-    navigation.goBack();
+    if (guestMode) {
+      navigation.goBack();
+    } else {
+      navigation.goBack();
+    }
   }
 
   async function handleTest() {
@@ -121,6 +127,15 @@ export default function SettingsScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Configurações do Sistema</Text>
 
+        {guestMode && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>← Voltar ao login</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Celular</Text>
           <Text style={styles.sectionDescription}>
@@ -158,40 +173,41 @@ export default function SettingsScreen({ navigation }) {
           <Text style={styles.hint}>Atual: {getIP()}</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.sectionCard}
-          activeOpacity={0.8}
-          onPress={handleOpenMemory}
-          accessibilityRole="button"
-          accessibilityLabel="Abrir memória do usuário"
-        >
-          <Text style={styles.sectionTitle}>Memória</Text>
-          <Text style={styles.memoryTitle}>Memória do usuário</Text>
-          <Text style={styles.sectionDescription}>
-            Memórias definidas pelo usuário para melhorar sua experiência.
-          </Text>
-          <Text style={styles.memoryAction}>Clique para mais informações ›</Text>
-        </TouchableOpacity>
+        {!guestMode && (
+          <TouchableOpacity
+            style={styles.sectionCard}
+            activeOpacity={0.8}
+            onPress={handleOpenMemory}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir memória do usuário"
+          >
+            <Text style={styles.sectionTitle}>Memória</Text>
+            <Text style={styles.memoryTitle}>Memória do usuário</Text>
+            <Text style={styles.sectionDescription}>
+              Memórias definidas pelo usuário para melhorar sua experiência.
+            </Text>
+            <Text style={styles.memoryAction}>Clique para mais informações ›</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.divider} />
 
-        <TouchableOpacity
-          style={[styles.button, styles.logoutButton]}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutText}>Sair da conta</Text>
-        </TouchableOpacity>
+        {!guestMode && (
+          <TouchableOpacity
+            style={[styles.button, styles.logoutButton]}
+            onPress={handleLogout}
+          >
+            <Text style={styles.logoutText}>Sair da conta</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
-      <BottomNav
-        activeKey="settings"
-        onPressItem={(key) => {
-          if (key === "settings") return;
-          if (key === "home") navigation.navigate("HomeScreen");
-          else if (key === "chats") navigation.navigate("Chats");
-          else console.log("nav:", key);
-        }}
-      />
+      {!guestMode && (
+        <BottomNav
+          activeKey="settings"
+          navigation={navigation}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -302,5 +318,16 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     fontSize: 18,
     fontWeight: "600",
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    marginBottom: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  backButtonText: {
+    color: "#BB86FC",
+    fontSize: 14,
+    fontWeight: "500",
   },
 });

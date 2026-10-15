@@ -103,15 +103,6 @@ export default function MemoriaScreen({ navigation }) {
     ]);
   }
 
-  function handleNavPress(key) {
-    if (key === 'home') {
-      navigation.navigate('HomeScreen');
-      return;
-    }
-
-    console.log('nav:', key);
-  }
-
   const hasMemories = memories.length > 0;
 
   return (
@@ -177,10 +168,7 @@ export default function MemoriaScreen({ navigation }) {
 
       <BottomNav
         activeKey="settings"
-        onPressItem={(key) => {
-          if (key === 'settings') navigation.navigate('Configuracoes');
-          else handleNavPress(key);
-        }}
+        navigation={navigation}
       />
     </SafeAreaView>
   );
