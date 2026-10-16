@@ -14,6 +14,7 @@ const ConnectionController = require("../controllers/connectionController");
 const FileController = require("../controllers/fileController");
 const SystemController = require("../controllers/systemController");
 const BrowserController = require("../controllers/browserController");
+const TerminalController = require("../controllers/terminalController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -172,5 +173,11 @@ router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSessi
 router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
 router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
 router.post("/browser/click", verifyJWT, BrowserController.click);
+
+// Terminal execution & history routes
+router.post("/terminal/exec", verifyJWT, TerminalController.exec);
+router.post("/api/exec", verifyJWT, TerminalController.exec);
+router.get("/terminal/history", verifyJWT, TerminalController.getHistory);
+router.delete("/terminal/history", verifyJWT, TerminalController.clearHistory);
 
 module.exports = router;

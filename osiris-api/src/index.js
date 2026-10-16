@@ -5,6 +5,8 @@ if (process.env.NODE_ENV !== "test") {
 const express = require("express");
 const cors = require("cors");
 const apiRoutes = require("./routes/apiRoutes");
+const verifyJWT = require("./middlewares/verifyJWT");
+const TerminalController = require("./controllers/terminalController");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 const app = express();
@@ -12,6 +14,10 @@ const app = express();
 app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Mobile direct alias
+app.post("/api/exec", verifyJWT, TerminalController.exec);
+
 app.use("/api/osiris", apiRoutes);
 
 // 404 handler - must be after all routes
