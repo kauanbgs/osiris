@@ -10,6 +10,7 @@ import DefaultLayout from "./layouts/DefaultLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Memoria from "./pages/Memoria";
 import Workflows from "./pages/Workflows";
+import Terminal from "./pages/Terminal";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/workflow" element={<Workflow />} />
               <Route path="/workflows" element={<Workflows/>} />
               <Route path="/memoria" element={<Memoria />} />
+              <Route path="/terminal" element={<Terminal />} />
             </Route>
           </Route>
 
