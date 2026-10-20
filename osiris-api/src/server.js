@@ -1,3 +1,6 @@
+// Optimize libuv threadpool size for concurrent CPU-bound crypto/bcrypt tasks
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "16";
+
 const app = require("./index");
 const testConnect = require("./db/testConnect");
 

@@ -2,16 +2,33 @@ const crypto = require("crypto");
 const pool = require("../db/connect");
 
 // In-memory set for instantaneous O(1) blacklist lookups
-const revokedMemorySet = new Set();
+// Stores map of token_hash -> expires_at_timestamp to allow pruning expired hashes
+const revokedMemoryMap = new Map();
+const MAX_REVOKED_CACHE = 10000;
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function pruneExpiredTokens() {
+  const now = Date.now();
+  for (const [hash, expMs] of revokedMemoryMap.entries()) {
+    if (now > expMs) {
+      revokedMemoryMap.delete(hash);
+    }
+  }
+}
+
 async function revokeToken(token, expiresAt, userId) {
   if (!token) return;
   const hash = hashToken(token);
-  revokedMemorySet.add(hash);
+
+  pruneExpiredTokens();
+
+  if (revokedMemoryMap.size >= MAX_REVOKED_CACHE) {
+    const oldest = revokedMemoryMap.keys().next().value;
+    revokedMemoryMap.delete(oldest);
+  }
 
   const expDate =
     expiresAt instanceof Date
@@ -19,6 +36,8 @@ async function revokeToken(token, expiresAt, userId) {
       : typeof expiresAt === "number"
       ? new Date(expiresAt * 1000)
       : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  revokedMemoryMap.set(hash, expDate.getTime());
 
   await pool.promise().execute(
     "INSERT INTO revoked_token (token_hash, expires_at, fk_id_user) VALUES (?, ?, ?)",
@@ -29,8 +48,12 @@ async function revokeToken(token, expiresAt, userId) {
 async function isTokenRevoked(token) {
   if (!token) return false;
   const hash = hashToken(token);
-  if (revokedMemorySet.has(hash)) {
-    return true;
+  const expMs = revokedMemoryMap.get(hash);
+  if (expMs !== undefined) {
+    if (Date.now() <= expMs) {
+      return true;
+    }
+    revokedMemoryMap.delete(hash);
   }
 
   // Check persistent store if not in test environment
@@ -41,7 +64,7 @@ async function isTokenRevoked(token) {
         [hash],
       );
       if (rows && rows.length > 0) {
-        revokedMemorySet.add(hash);
+        revokedMemoryMap.set(hash, Date.now() + 60 * 60 * 1000);
         return true;
       }
     } catch {
@@ -53,7 +76,7 @@ async function isTokenRevoked(token) {
 }
 
 function clearMemoryBlacklist() {
-  revokedMemorySet.clear();
+  revokedMemoryMap.clear();
 }
 
 module.exports = {

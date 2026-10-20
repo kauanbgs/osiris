@@ -15,7 +15,7 @@ const {
   ConflictError,
 } = require("../errors");
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 
 class UserController {
   static async register(req, res, next) {

@@ -167,7 +167,7 @@ describe("AiModelController", () => {
         name: "Llama 3.2 1B Instruct",
         download_url: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
       }]],
-      [[]], // check if in model_installation
+      [[]], // pre-fetch existing installations from model_installation
       [{ insertId: 1 }], // insert into model_installation
     );
 
