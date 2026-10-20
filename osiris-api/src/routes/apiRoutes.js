@@ -176,7 +176,6 @@ router.post("/browser/click", verifyJWT, BrowserController.click);
 
 // Terminal execution & history routes
 router.post("/terminal/exec", verifyJWT, TerminalController.exec);
-router.post("/api/exec", verifyJWT, TerminalController.exec);
 router.get("/terminal/history", verifyJWT, TerminalController.getHistory);
 router.delete("/terminal/history", verifyJWT, TerminalController.clearHistory);
 

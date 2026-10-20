@@ -1,19 +1,6 @@
 const AppError = require("../errors/AppError");
 
 /**
- * Sanitizes error details to avoid exposing sensitive information
- */
-function sanitizeError(error) {
-  const sanitized = {
-    message: error.message,
-    ...(error.statusCode && { statusCode: error.statusCode }),
-    ...(error.timestamp && { timestamp: error.timestamp }),
-  };
-
-  return sanitized;
-}
-
-/**
  * Logs error details for debugging (excludes sensitive data)
  */
 function logError(error, req) {

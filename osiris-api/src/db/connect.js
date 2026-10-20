@@ -1,5 +1,4 @@
-const mysql = require("mysql2")
-const jwt = require("jsonwebtoken");
+const mysql = require("mysql2");
 
 const pool = mysql.createPool({
     connectionLimit:10,
