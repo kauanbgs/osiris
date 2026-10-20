@@ -1,6 +1,10 @@
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 const AgentExecutionService = require("../services/agentExecutionService");
+const {
+  validateAgent,
+  validateExecutionInput,
+} = require("../validators/validateAgent");
 
 class AgentController {
   /**
@@ -16,17 +20,10 @@ class AgentController {
       } = req.body;
       const userId = req.userId;
 
-      // Validate required fields
-      if (!name || !name.trim()) {
-        throw new BadRequestError("Agent name is required.");
-      }
-
-      if (!objective || !objective.trim()) {
-        throw new BadRequestError("Agent objective is required.");
-      }
-
-      if (!system_prompt || !system_prompt.trim()) {
-        throw new BadRequestError("Agent system prompt is required.");
+      // Validate required fields via dedicated validator
+      const validationError = validateAgent(req.body, false);
+      if (validationError) {
+        throw new BadRequestError(validationError);
       }
 
       // Verify model exists if provided
@@ -199,6 +196,12 @@ class AgentController {
 
       if (!agentRows[0]) {
         throw new NotFoundError("Agent not found.");
+      }
+
+      // Validate update payload via dedicated validator
+      const validationError = validateAgent(req.body, true);
+      if (validationError) {
+        throw new BadRequestError(validationError);
       }
 
       // Build dynamic update query
@@ -410,8 +413,9 @@ class AgentController {
       const { input } = req.body;
       const userId = req.userId;
 
-      if (!input || !input.trim()) {
-        throw new BadRequestError("Input is required to execute agent.");
+      const inputError = validateExecutionInput(input);
+      if (inputError) {
+        throw new BadRequestError(inputError);
       }
 
       // Verify agent exists and belongs to user
