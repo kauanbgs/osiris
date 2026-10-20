@@ -3,8 +3,28 @@ const { BadRequestError, NotFoundError, ForbiddenError } = require("../errors");
 
 class BrowserService {
   static sessions = new Map();
+  static SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes inactivity TTL
+  static MAX_SESSIONS = 50;
+
+  static cleanupExpiredSessions() {
+    const now = Date.now();
+    for (const [id, session] of this.sessions.entries()) {
+      const lastActive = new Date(session.updated_at || session.created_at).getTime();
+      if (now - lastActive > this.SESSION_TTL_MS) {
+        this.sessions.delete(id);
+      }
+    }
+  }
 
   static createSession(userId, initialUrl = "about:blank") {
+    this.cleanupExpiredSessions();
+
+    if (this.sessions.size >= this.MAX_SESSIONS) {
+      // Evict oldest session
+      const oldestId = this.sessions.keys().next().value;
+      this.sessions.delete(oldestId);
+    }
+
     const sessionId = crypto.randomUUID();
     const session = {
       id_session: sessionId,

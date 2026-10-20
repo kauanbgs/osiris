@@ -18,7 +18,6 @@ describe("TerminalController & Routes", () => {
     it("rejects unauthenticated requests with 401 Unauthorized", async () => {
       const endpoints = [
         { method: "post", url: "/api/osiris/terminal/exec", body: { command: "echo test" } },
-        { method: "post", url: "/api/osiris/api/exec", body: { command: "echo test" } },
         { method: "post", url: "/api/exec", body: { command: "echo test" } },
         { method: "get", url: "/api/osiris/terminal/history" },
         { method: "delete", url: "/api/osiris/terminal/history" },
@@ -192,14 +191,14 @@ describe("TerminalController & Routes", () => {
   });
 
   describe("Routing Aliases", () => {
-    it("executes command via /api/osiris/api/exec alias", async () => {
+    it("executes command via canonical /api/osiris/terminal/exec route", async () => {
       const res = await request(app)
-        .post("/api/osiris/api/exec")
+        .post("/api/osiris/terminal/exec")
         .set(auth(1))
-        .send({ command: "node -e \"console.log('via-osiris-api-exec')\"" });
+        .send({ command: "node -e \"console.log('via-canonical-exec')\"" });
 
       expect(res.status).toBe(200);
-      expect(res.body.stdout).toContain("via-osiris-api-exec");
+      expect(res.body.stdout).toContain("via-canonical-exec");
       expect(res.body.exit_code).toBe(0);
     });
 
