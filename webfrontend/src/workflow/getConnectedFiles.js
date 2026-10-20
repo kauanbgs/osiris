@@ -1,4 +1,4 @@
-import { getNodeInputs } from "./getNodeInputs";
+import { getNodeInputs } from "./getNodeInputs.js";
 
 /**
  * Coleta todos os arquivos dos FileNodes conectados ao `agentId`
