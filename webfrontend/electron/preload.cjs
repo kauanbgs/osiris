@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  loadWorkflow: (owner, chatId) => ipcRenderer.invoke("workflow:load", owner, chatId),
+  saveWorkflow: (owner, chatId, workflow) => ipcRenderer.invoke("workflow:save", owner, chatId, workflow),
+  deleteWorkflow: (owner, chatId) => ipcRenderer.invoke("workflow:delete", owner, chatId),
   // WINDOW CONTROLS
   minimize: () => ipcRenderer.send("window-minimize"),
   maximize: () => ipcRenderer.send("window-maximize"),

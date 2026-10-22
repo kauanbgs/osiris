@@ -4,6 +4,12 @@ const os = require("os");
 const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
+const { createWorkflowStore } = require("./workflowStore.cjs");
+
+const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
+ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
+ipcMain.handle("workflow:save", (_event, owner, chatId, workflow) => workflowStore().save(owner, chatId, workflow));
+ipcMain.handle("workflow:delete", (_event, owner, chatId) => workflowStore().remove(owner, chatId));
 
 
 // Habilita Web Speech API e acesso ao microfone no Chromium do Electron

@@ -1,7 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
+import { useActiveProject } from "@/contexts/useActiveProject";
 
 import {
   ReactFlow,
+  ReactFlowProvider,
+  MarkerType,
   Background,
   Controls,
   useNodesState,
@@ -16,6 +20,8 @@ import TerminalNode from "@/components/terminalNode";
 import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
 import FileNode from "@/components/FileNode";
+import { WorkflowExecutionProvider } from "@/contexts/WorkflowExecutionContext";
+import WorkflowExecutionPanel from "@/components/WorkflowExecutionPanel";
 import WorkflowText from "@/components/workflowText";
 
 import {
@@ -35,7 +41,6 @@ import {
   MousePointer2,
   SquareTerminal,
   PaperclipIcon,
-  FileTextIcon,
   CaseSensitiveIcon,
   Bot,
   TerminalIcon,
@@ -52,14 +57,53 @@ const edgeTypes = {
   curved: FlowEdge,
 };
 
-const initialNodes = [];
+function SavedWorkflow({ owner, chatId }) {
+  const [loaded, setLoaded] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI.loadWorkflow(owner, chatId).then((workflow) => {
+      if (!Array.isArray(workflow?.nodes) || !Array.isArray(workflow?.edges)) throw new Error("Workflow inválido");
+      if (!cancelled) setLoaded(workflow);
+    }).catch(() => { if (!cancelled) setError("Não foi possível abrir o workflow salvo."); });
+    return () => { cancelled = true; };
+  }, [owner, chatId]);
+  if (error) return <p role="alert" className="p-8 text-red-400">{error}</p>;
+  if (!loaded) return <p className="p-8">Carregando workflow...</p>;
+  return <WorkflowCanvas owner={owner} chatId={chatId} initialWorkflow={loaded} />;
+}
 
 export default function Workflow() {
+  const { id } = useParams();
+  const { owner, activeId } = useActiveProject();
+  if (!window.electronAPI?.loadWorkflow) return <WorkflowCanvas initialWorkflow={{ nodes: [], edges: [] }} />;
+  if (!id && activeId) return <Navigate to={"/workflow/" + encodeURIComponent(activeId)} replace />;
+  if (!id) return <p className="p-8 text-zinc-200">Crie um projeto pelo + na barra lateral para iniciar o chat e seu workflow.</p>;
+  if (!owner) return <p role="alert" className="p-8">Usuário não identificado.</p>;
+  return <SavedWorkflow key={JSON.stringify([owner, id])} owner={owner} chatId={id} />;
+}
+
+function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
   const [nodes, setNodes, onNodesChange] =
-    useNodesState(initialNodes);
+    useNodesState(initialWorkflow.nodes.map((node, index) => node.type === "agent" && (!node.data?.label || node.data.label === "Agent")
+      ? { ...node, data: { ...node.data, label: "Agente " + (index + 1) } } : node));
 
   const [edges, setEdges, onEdgesChange] =
-    useEdgesState([]);
+    useEdgesState(initialWorkflow.edges.map((edge) => ({ ...edge, markerEnd: { type: MarkerType.ArrowClosed } })));
+  const [executionEvents, setExecutionEvents] = useState(initialWorkflow.executionEvents || []);
+  const [viewport, setViewport] = useState(initialWorkflow.viewport);
+  const [saveAttempt, setSaveAttempt] = useState(0);
+  const [saveStatus, setSaveStatus] = useState("Salvando...");
+  useEffect(() => {
+    if (!window.electronAPI?.saveWorkflow || !owner || !chatId) return;
+    let active = true;
+    window.electronAPI.saveWorkflow(owner, chatId, { nodes, edges, viewport, executionEvents }).then(() => {
+      if (active) setSaveStatus("Salvo neste computador");
+    }).catch(() => {
+      if (active) setSaveStatus("Erro ao salvar. Tente novamente.");
+    });
+    return () => { active = false; };
+  }, [owner, chatId, nodes, edges, viewport, saveAttempt, executionEvents]);
 
   const onConnect = useCallback(
     (params) =>
@@ -68,6 +112,7 @@ export default function Workflow() {
           {
             ...params,
             type: "curved",
+            markerEnd: { type: MarkerType.ArrowClosed },
           },
           eds
         )
@@ -90,7 +135,7 @@ export default function Workflow() {
         },
 
         data: {
-          label: "Agent",
+          label: "Agente",
 
           mode,
         },
@@ -100,7 +145,7 @@ export default function Workflow() {
 
       setNodes((nodes) => [
         ...nodes,
-        newNode,
+        { ...newNode, data: { ...newNode.data, label: "Agente " + (nodes.filter((node) => node.type === "agent").length + 1) } },
       ]);
     },
     [setNodes]
@@ -203,7 +248,15 @@ export default function Workflow() {
   );
 
   return (
+    <ReactFlowProvider>
+    <WorkflowExecutionProvider initialEvents={initialWorkflow.executionEvents} onEventsChange={setExecutionEvents}>
     <div className="relative h-full w-full overflow-hidden bg-[#141414]">
+      {chatId && <div className="absolute bottom-4 left-16 z-50 flex items-center gap-4 rounded bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+        <Link to={"/home/" + chatId}>Abrir chat do projeto</Link>
+        <span role="status">{saveStatus}</span>
+        <button type="button" onClick={() => { setSaveStatus("Salvando..."); setSaveAttempt((value) => value + 1); }}>Salvar</button>
+      </div>}
+      <WorkflowExecutionPanel />
       {/* NAVBAR */}
       <section className="absolute top-6 left-1/2 z-50 -translate-x-1/2">
         <Menubar className="gap-5 rounded-full border border-zinc-800/80 bg-background/40 p-3 shadow-lg backdrop-blur-md">
@@ -352,8 +405,10 @@ export default function Workflow() {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          defaultEdgeOptions={{ type: "curved" }}
-          fitView
+          defaultEdgeOptions={{ type: "curved", markerEnd: { type: MarkerType.ArrowClosed } }}
+          defaultViewport={initialWorkflow.viewport}
+          onMoveEnd={(_event, nextViewport) => setViewport(nextViewport)}
+          fitView={!initialWorkflow.viewport}
         >
           <Background
             gap={30}
@@ -364,5 +419,7 @@ export default function Workflow() {
         </ReactFlow>
       </div>
     </div>
+    </WorkflowExecutionProvider>
+    </ReactFlowProvider>
   );
 }

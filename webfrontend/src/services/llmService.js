@@ -1,4 +1,4 @@
-import sheets from "./api";
+import { scheduleGroqRequest } from "./groqRateLimit.js";
 
 export const CLOUD_PROVIDERS = [
   {
@@ -44,13 +44,19 @@ export const CLOUD_PROVIDERS = [
   },
   {
     id: "groq",
-    name: "Groq (Llama / Mixtral)",
+    name: "Groq",
     placeholder: "Cole sua chave gsk_...",
     getKeyUrl: "https://console.groq.com/keys",
+    // https://console.groq.com/docs/models (verified 2026-10-20)
     models: [
-      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B", default: true },
-      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B" },
-      { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
+      { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B", default: true },
+      { id: "openai/gpt-oss-20b", name: "GPT-OSS 20B" },
+      { id: "qwen/qwen3.8-27b", name: "Qwen 3.8 27B (Preview)" },
+      { id: "openai/gpt-oss-safeguard-20b", name: "GPT-OSS Safeguard 20B (Moderacao)" },
+      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Enterprise)" },
+      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Enterprise)" },
+      { id: "meta-models/muse-spark-open", name: "Muse Spark Open (Enterprise)" },
+      { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7 (Enterprise)" },
     ],
   },
 ];
@@ -180,7 +186,7 @@ export async function testProviderKey(providerId, apiKey) {
         Authorization: `Bearer ${trimmedKey}`,
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: "Hello" }],
         max_tokens: 5,
       }),
@@ -297,75 +303,68 @@ async function streamGoogleGemini({
 }
 
 async function streamOpenAICompatible({
-  endpoint,
-  model,
-  apiKey,
-  prompt,
-  history = [],
-  onChunk,
-  signal,
-  headers = {},
+  endpoint, model, apiKey, prompt, history = [], onChunk, signal,
+  headers = {}, maxOutputTokens, onNotice, continueOnLength = false,
 }) {
-  const messages = [
-    ...history.map((msg) => ({ role: msg.role, content: msg.content })),
-    { role: "user", content: prompt },
-  ];
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...headers,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(
-      err.error?.message || `Erro ${response.status} na API de IA.`,
-    );
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
+  const isGroq = endpoint.startsWith("https://api.groq.com/");
+  const messages = [...history.map((msg) => ({ role: msg.role, content: msg.content })), { role: "user", content: prompt }];
+  const maxParts = isGroq && continueOnLength ? 3 : 1;
   let fullText = "";
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === "[DONE]") break;
-        if (!jsonStr) continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const chunkText = parsed.choices?.[0]?.delta?.content || "";
-          if (chunkText) {
-            fullText += chunkText;
-            onChunk?.(fullText);
-          }
-        } catch {
-          // ignore
-        }
+  for (let part = 0; part < maxParts; part++) {
+    signal?.throwIfAborted();
+    const estimatedInput = Math.ceil(new TextEncoder().encode(JSON.stringify(messages)).length / 3);
+    const outputBudget = isGroq ? Math.min(maxOutputTokens || 4096, 7000 - estimatedInput) : maxOutputTokens;
+    if (isGroq && outputBudget < 256) throw new Error("A resposta e o contexto excederam o espaco seguro da cota de 8000 tokens do Groq. Divida esta etapa em mais agentes. Nenhum resultado incompleto foi aplicado aos arquivos.");
+    const request = () => fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, ...headers },
+      body: JSON.stringify({ model, messages, stream: true,
+        ...(outputBudget ? { max_completion_tokens: outputBudget } : {}),
+        ...(isGroq && ["openai/gpt-oss-20b", "openai/gpt-oss-120b"].includes(model) ? { reasoning_effort: "low" } : {}),
+      }), signal,
+    });
+    const response = isGroq ? await scheduleGroqRequest({ model, signal, onNotice, request, estimatedTokens: estimatedInput + outputBudget }) : await request();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || "Erro " + response.status + " na API de IA.");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "", partText = "", truncated = false;
+    function consume(line) {
+      if (!line.startsWith("data:")) return;
+      const raw = line.slice(5).trim();
+      if (!raw || raw === "[DONE]") return;
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { return; }
+      if (parsed.error) throw new Error(parsed.error.message || "Erro na resposta do modelo.");
+      if (parsed.choices?.[0]?.finish_reason === "length") truncated = true;
+      const content = parsed.choices?.[0]?.delta?.content || "";
+      if (content) { partText += content; onChunk?.(fullText + partText); }
+    }
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        signal?.throwIfAborted();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) consume(line);
       }
+      consume(buffer + decoder.decode());
+    } finally { reader.releaseLock(); }
+    fullText += partText;
+    if (!truncated) return fullText;
+    if (part + 1 === maxParts) throw new Error("A resposta atingiu o limite de tokens mesmo apos as continuacoes permitidas. Divida esta etapa em mais agentes; o resultado incompleto nao foi aplicado aos arquivos.");
+    onNotice?.({ type: "continuation", message: "A resposta precisa de mais espaco. Continuando automaticamente (parte " + (part + 2) + "/" + maxParts + "), respeitando a cota do Groq." });
+    // Send the complete prefix, so continuation can close an unfinished JSON
+    // string or source file without restarting or discarding previous output.
+    if (partText) {
+      messages.splice(history.length + 1);
+      messages.push({ role: "assistant", content: fullText }, { role: "user", content: "Continue exatamente do ponto em que a resposta parou. Retorne apenas a continuacao, sem repetir o prefixo, sem comentarios e sem novas cercas Markdown. Termine o JSON ou arquivo iniciado." });
     }
   }
-
-  return fullText;
 }
 
 async function streamAnthropic({
@@ -469,13 +468,38 @@ function formatMemoryForPrompt(memory) {
 
 // Unified LLM Request Runner
 
-export async function sendPrompt({
+// llama.cpp uses a shared session: serialize local calls so agents cannot
+// swap the loaded model or consume another request's stream mid-generation.
+let localPromptQueue = Promise.resolve();
+let groqPromptQueue = Promise.resolve();
+
+export function sendPrompt(options) {
+  const activeModel = options.activeModelOverride || getActiveModel();
+  const run = async () => {
+    options.signal?.throwIfAborted();
+    return runPrompt({ ...options, activeModelOverride: activeModel });
+  };
+  if (activeModel.type === "cloud" && activeModel.provider === "groq") {
+    const result = groqPromptQueue.then(run);
+    groqPromptQueue = result.catch(() => {});
+    return result;
+  }
+  if (activeModel.type === "cloud") return run();
+  const result = localPromptQueue.then(run);
+  localPromptQueue = result.catch(() => {});
+  return result;
+}
+
+async function runPrompt({
   prompt,
   history = [],
   memory = [],
   onChunk,
   signal,
   activeModelOverride,
+  maxOutputTokens,
+  onNotice,
+  continueOnLength,
 }) {
   const activeModel = activeModelOverride || getActiveModel();
 
@@ -552,7 +576,7 @@ ${prompt}
       return streamOpenAICompatible({
         endpoint: "https://api.groq.com/openai/v1/chat/completions",
 
-        model: activeModel.model || "llama-3.3-70b-versatile",
+        model: activeModel.model || "openai/gpt-oss-120b",
 
         apiKey,
 
@@ -561,6 +585,9 @@ ${prompt}
         history,
         onChunk,
         signal,
+        maxOutputTokens: maxOutputTokens || 4096,
+        onNotice,
+        continueOnLength,
       });
     }
 
@@ -579,14 +606,25 @@ ${prompt}
     }
   }
 
+  if (activeModel.type === "cloud") throw new Error("Provedor de nuvem desconhecido: " + activeModel.provider);
+
   // MODELO LOCAL
   if (typeof window !== "undefined" && window.llama?.prompt) {
+    signal?.throwIfAborted();
+    if (activeModel.modelPath) {
+      if (!window.llama.getStatus || !window.llama.loadModel) throw new Error("Motor local indisponivel.");
+      const status = await window.llama.getStatus();
+      if (!status.isLoaded || status.activeModelPath !== activeModel.modelPath) {
+        await window.llama.loadModel(activeModel.modelPath);
+      }
+      signal?.throwIfAborted();
+    }
     let accumulated = "";
     let cleanup = null;
 
     if (window.llama.onStream && onChunk) {
       cleanup = window.llama.onStream((data) => {
-        if (data.type === "chunk" && data.text) {
+        if (!signal?.aborted && data.type === "chunk" && data.text) {
           accumulated += data.text;
           onChunk(accumulated);
         }
@@ -618,6 +656,7 @@ ${prompt}
     // RETORNO DA RESPOSTA
     // ==============================
 
+    signal?.throwIfAborted();
     return accumulated || res || "";
   }
 

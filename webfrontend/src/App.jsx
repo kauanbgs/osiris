@@ -29,6 +29,7 @@ export default function App() {
               <Route path="/modelos" element={<Modelos />} />
               <Route path="/arquivos" element={<Arquivos />} />
               <Route path="/workflow" element={<Workflow />} />
+              <Route path="/workflow/:id" element={<Workflow />} />
               <Route path="/workflows" element={<Workflows/>} />
               <Route path="/memoria" element={<Memoria />} />
               <Route path="/terminal" element={<Terminal />} />
