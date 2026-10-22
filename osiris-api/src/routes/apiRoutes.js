@@ -174,6 +174,9 @@ router.delete("/browser/session/:id_session", verifyJWT, BrowserController.close
 router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
 router.post("/browser/click", verifyJWT, BrowserController.click);
 
+// Capturar a screenshot  e extrair dadosde uma página 
+router.post("/browser/capture", verifyJWT, BrowserController.capture);
+
 // Terminal execution & history routes
 router.post("/terminal/exec", verifyJWT, TerminalController.exec);
 router.get("/terminal/history", verifyJWT, TerminalController.getHistory);
