@@ -8,14 +8,23 @@ import {
   Platform,
   StyleSheet,
   TouchableOpacity,
+  Image,
+  Alert,
+  Keyboard,
 } from "react-native";
 import * as Speech from "expo-speech";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import BottomNav from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
+import PlusActionMenu from "../components/PlusActionMenu";
+import VoiceModal from "../components/VoiceModal";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
 
@@ -81,7 +90,6 @@ async function addMemoryContext(prompt) {
       `Mensagem atual do usuário: ${prompt}`,
     ].join("\n");
   } catch (error) {
-    // Uma indisponibilidade temporária da API de memória não deve impedir o chat.
     console.warn("Não foi possível carregar memórias para o chat:", error?.message);
     return prompt;
   }
@@ -107,7 +115,7 @@ async function checkDesktopConnection() {
       modelLoaded: Boolean(data.modelLoaded),
       modelName: data.activeModelName || null,
     };
-  } catch (error) {
+  } catch {
     return {
       connected: false,
       modelLoaded: false,
@@ -132,13 +140,11 @@ function StatusIndicator({ connected, modelLoaded, modelName, onPress }) {
       <View
         style={[
           styles.statusDot,
-
           {
             backgroundColor: connected ? colors.green : colors.red,
           },
         ]}
       />
-
       <Text style={styles.statusText}>{label}</Text>
     </TouchableOpacity>
   );
@@ -155,11 +161,107 @@ function GreetingHeader({ userName = "Usuário" }) {
   );
 }
 
-function MessageBubble({ role, text }) {
+function AudioPlayerBubble({ uri, name, duration = 0, isUser = true }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (playerRef.current) {
+        try {
+          playerRef.current.pause();
+          playerRef.current.remove();
+        } catch {}
+      }
+    };
+  }, []);
+
+  const handleTogglePlay = async () => {
+    try {
+      if (!playerRef.current) {
+        playerRef.current = createAudioPlayer(uri);
+        playerRef.current.addListener("playbackStatusUpdate", (status) => {
+          if (status.didJustFinish) {
+            setIsPlaying(false);
+          }
+        });
+      }
+
+      if (isPlaying) {
+        playerRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: false,
+        });
+        playerRef.current.play();
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.warn("Erro ao reproduzir áudio:", err);
+      setIsPlaying(false);
+    }
+  };
+
+  const formatSecs = (sec) => {
+    const s = Math.floor(sec || 0);
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${rem < 10 ? "0" : ""}${rem}`;
+  };
+
+  return (
+    <View style={styles.audioBubbleContainer}>
+      <TouchableOpacity
+        style={[
+          styles.audioPlayBtn,
+          isUser ? styles.audioPlayBtnUser : styles.audioPlayBtnAgent,
+        ]}
+        onPress={handleTogglePlay}
+        activeOpacity={0.8}
+      >
+        <Ionicons
+          name={isPlaying ? "pause" : "play"}
+          size={16}
+          color="#ffffff"
+          style={!isPlaying ? { marginLeft: 2 } : {}}
+        />
+      </TouchableOpacity>
+
+      <View style={styles.audioWaveformCol}>
+        <View style={styles.audioWaveformBars}>
+          {[5, 13, 8, 17, 21, 14, 18, 10, 16, 8, 14, 20, 13, 7, 15, 9].map(
+            (barHeight, idx) => (
+              <View
+                key={idx}
+                style={[
+                  styles.audioMiniBar,
+                  {
+                    height: barHeight,
+                    backgroundColor: isPlaying
+                      ? "#60a5fa"
+                      : isUser
+                      ? "rgba(255, 255, 255, 0.75)"
+                      : "#85818c",
+                  },
+                ]}
+              />
+            )
+          )}
+        </View>
+        <Text style={styles.audioDurationText}>
+          {name || formatSecs(duration)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function MessageBubble({ role, text, attachment }) {
   const isUser = role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
   const btnScale = useRef(new Animated.Value(1)).current;
-
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -170,7 +272,6 @@ function MessageBubble({ role, text }) {
     }).start();
   }, [anim]);
 
-  // Para fala quando o componente desmontar
   useEffect(() => {
     return () => {
       if (isSpeaking) Speech.stop();
@@ -196,7 +297,6 @@ function MessageBubble({ role, text }) {
   };
 
   const handleTTS = () => {
-    // Animação de pulso no botão
     Animated.sequence([
       Animated.timing(btnScale, { toValue: 0.8, duration: 100, useNativeDriver: true }),
       Animated.timing(btnScale, { toValue: 1, duration: 100, useNativeDriver: true }),
@@ -230,17 +330,56 @@ function MessageBubble({ role, text }) {
         <View
           style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}
         >
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-            {text}
-          </Text>
+          {/* Anexo de Imagem */}
+          {attachment && attachment.type === "image" && (
+            <Image
+              source={{ uri: attachment.uri }}
+              style={styles.bubbleAttachedImage}
+              resizeMode="cover"
+            />
+          )}
+
+          {/* Anexo de Arquivo */}
+          {attachment && attachment.type === "file" && (
+            <View style={styles.bubbleAttachedFile}>
+              <Feather name="file-text" size={16} color="#fff" />
+              <Text style={styles.bubbleAttachedFileName} numberOfLines={1}>
+                {attachment.name}
+              </Text>
+            </View>
+          )}
+
+          {/* Anexo de Áudio gravado via microfone */}
+          {attachment && attachment.type === "audio" && (
+            <AudioPlayerBubble
+              uri={attachment.uri}
+              name={attachment.name}
+              duration={attachment.duration}
+              isUser={isUser}
+            />
+          )}
+
+          {/* Texto da Mensagem */}
+          {!!text && (
+            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+              {text}
+            </Text>
+          )}
         </View>
-        {!isUser && (
+
+        {!isUser && !!text && (
           <TouchableOpacity
             onPress={handleTTS}
             style={styles.ttsButton}
             activeOpacity={0.7}
           >
-            <Animated.View style={[styles.ttsInner, { transform: [{ scale: btnScale }] }, isSpeaking && styles.ttsInnerActive]}>
+            <Animated.View
+              style={[
+                styles.ttsInner,
+                { transform: [{ scale: btnScale }] },
+                isSpeaking && styles.ttsInnerActive,
+              ]}
+            >
               <Text style={[styles.ttsIcon, isSpeaking && styles.ttsIconActive]}>
                 {isSpeaking ? "⏹" : "🔊"}
               </Text>
@@ -254,11 +393,8 @@ function MessageBubble({ role, text }) {
 
 function TypingIndicator() {
   const dot1 = useRef(new Animated.Value(0)).current;
-
   const dot2 = useRef(new Animated.Value(0)).current;
-
   const dot3 = useRef(new Animated.Value(0)).current;
-
   const dots = [dot1, dot2, dot3];
 
   useEffect(() => {
@@ -266,13 +402,11 @@ function TypingIndicator() {
       Animated.loop(
         Animated.sequence([
           Animated.delay(index * 150),
-
           Animated.timing(dot, {
             toValue: 1,
             duration: 350,
             useNativeDriver: true,
           }),
-
           Animated.timing(dot, {
             toValue: 0,
             duration: 350,
@@ -297,20 +431,13 @@ function TypingIndicator() {
             key={index}
             style={[
               styles.typingDot,
-
               {
-                opacity: dot.interpolate({
-                  inputRange: [0, 1],
-
-                  outputRange: [0.3, 1],
-                }),
-
+                opacity: dot,
                 transform: [
                   {
                     translateY: dot.interpolate({
                       inputRange: [0, 1],
-
-                      outputRange: [0, -4],
+                      outputRange: [0, -5],
                     }),
                   },
                 ],
@@ -324,27 +451,33 @@ function TypingIndicator() {
 }
 
 export default function HomeScreen({ navigation, route }) {
-  const [message, setMessage] = useState("");
-  const [userName, setUserName] = useState("");
   const [messages, setMessages] = useState([]);
-  const [isAgentTyping, setIsAgentTyping] = useState(false);
+  const [message, setMessage] = useState("");
+  const [userName, setUserName] = useState("Usuário");
   const [desktopConnected, setDesktopConnected] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [modelName, setModelName] = useState(null);
+  const [isAgentTyping, setIsAgentTyping] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
+
+  // Estados para Anexos (Câmera, Fotos, Arquivos) e Menu do +
+  const [plusMenuVisible, setPlusMenuVisible] = useState(false);
+  const [attachment, setAttachment] = useState(null);
+
+  // Estado para VoiceModal (voz sem abrir teclado, estilo ChatGPT)
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+
   const listRef = useRef(null);
 
-  // Carrega usuário
   useEffect(() => {
     async function loadUser() {
       try {
-        const stored = await AsyncStorage.getItem("user");
-        if (stored) {
-          const parsedUser = JSON.parse(stored);
-          const firstName = parsedUser?.name?.trim().split(" ")[0];
-          setUserName(firstName || "Usuário");
-        } else {
-          setUserName("Usuário");
+        const storedUser = await AsyncStorage.getItem("user");
+        if (storedUser) {
+          const userObj = JSON.parse(storedUser);
+          if (userObj.name) {
+            setUserName(userObj.name);
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
@@ -357,11 +490,9 @@ export default function HomeScreen({ navigation, route }) {
   // Carrega histórico quando a tela ganha foco ou recebe params
   useEffect(() => {
     async function loadChatHistory() {
-      // chatId vindo da ChatsScreen tem prioridade
       const paramChatId = route?.params?.chatId ?? null;
 
       if (paramChatId === null) {
-        // Novo chat: limpa o estado
         setMessages([]);
         setActiveChatId(null);
         return;
@@ -390,33 +521,128 @@ export default function HomeScreen({ navigation, route }) {
 
     async function checkConnection() {
       const status = await checkDesktopConnection();
-
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setDesktopConnected(status.connected);
       setModelLoaded(status.modelLoaded);
       setModelName(status.modelName);
     }
 
-    // verifica imediatamente
     checkConnection();
-
-    // verifica novamente a cada 5 segundos
     const interval = setInterval(checkConnection, 5000);
 
     return () => {
       mounted = false;
-
       clearInterval(interval);
     };
   }, []);
 
-  const handleSend = async () => {
-    const text = message.trim();
+  // ─── AÇÕES DO MENU + (Câmera, Fotos, Arquivos) ─────────────────────────
+  const handleSelectCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão necessária",
+          "Precisamos de permissão para acessar a câmera do seu dispositivo."
+        );
+        return;
+      }
 
-    if (!text) {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "image",
+          uri: asset.uri,
+          name: "Foto da câmera",
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao abrir câmera:", err?.message);
+    }
+  };
+
+  const handleSelectPhotos = async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão necessária",
+          "Precisamos de permissão para acessar a galeria de fotos."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "image",
+          uri: asset.uri,
+          name: asset.fileName || "Foto da galeria",
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao abrir galeria de fotos:", err?.message);
+    }
+  };
+
+  const handleSelectFiles = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "file",
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size,
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao selecionar arquivo:", err?.message);
+    }
+  };
+
+  // ─── VOICE (Gravação real do microfone estilo ChatGPT sem abrir teclado) ──
+  const handleOpenVoice = () => {
+    Keyboard.dismiss(); // O teclado NÃO abre!
+    setVoiceModalVisible(true);
+  };
+
+  const handleVoiceSend = (voiceData) => {
+    if (!voiceData || !voiceData.uri) return;
+
+    const audioAttachment = {
+      type: "audio",
+      uri: voiceData.uri,
+      name: voiceData.name || "Mensagem de voz",
+      duration: voiceData.duration || 0,
+    };
+
+    handleSend("", audioAttachment);
+  };
+
+  // ─── ENVIO DE MENSAGEM ───────────────────────────────────────────────
+  const handleSend = async (customText = null, customAttachment = null) => {
+    const text = (typeof customText === "string" ? customText : message).trim();
+    const currentAttachment =
+      customAttachment !== null ? customAttachment : attachment;
+
+    if (!text && !currentAttachment) {
       return;
     }
     if (isAgentTyping) {
@@ -427,17 +653,19 @@ export default function HomeScreen({ navigation, route }) {
       id: `${Date.now()}-user`,
       role: "user",
       text,
+      attachment: currentAttachment,
     };
 
     setMessages((previous) => [...previous, userMessage]);
     setMessage("");
+    setAttachment(null);
     setIsAgentTyping(true);
 
     try {
-      // 1. Garante que existe um chat ativo no banco
       let chatId = activeChatId;
       if (!chatId) {
-        const title = text.length > 40 ? text.slice(0, 37) + "..." : text;
+        const titleText = text || (currentAttachment ? `[${currentAttachment.name}]` : "Nova conversa");
+        const title = titleText.length > 40 ? titleText.slice(0, 37) + "..." : titleText;
         const chatRes = await sheets.createChat(title);
         chatId = chatRes.data?.chat?.id_chat;
 
@@ -445,18 +673,25 @@ export default function HomeScreen({ navigation, route }) {
         await AsyncStorage.setItem("@osiris/active_chat_id", String(chatId));
       }
 
-      // 2. Salva a mensagem do usuário no banco
+      const contentToSave = currentAttachment
+        ? `[Anexo: ${currentAttachment.name}] ${text}`.trim()
+        : text;
+
       if (chatId) {
-        await sheets.createMessage(chatId, { type: "user", content: text }).catch(() => { });
+        await sheets
+          .createMessage(chatId, { type: "user", content: contentToSave })
+          .catch(() => {});
       }
 
-      // 3. Envia para a IA no desktop
-      const promptWithMemory = await addMemoryContext(text);
+      // Prepara o prompt para o desktop
+      const promptText = contentToSave;
+      const promptWithMemory = await addMemoryContext(promptText);
       const aiResponse = await sendPromptToDesktop(promptWithMemory);
 
-      // 4. Salva a resposta da IA no banco
       if (chatId) {
-        await sheets.createMessage(chatId, { type: "assistant", content: aiResponse }).catch(() => { });
+        await sheets
+          .createMessage(chatId, { type: "assistant", content: aiResponse })
+          .catch(() => {});
       }
 
       const agentMessage = {
@@ -514,7 +749,11 @@ export default function HomeScreen({ navigation, route }) {
             data={messages}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <MessageBubble role={item.role} text={item.text} />
+              <MessageBubble
+                role={item.role}
+                text={item.text}
+                attachment={item.attachment}
+              />
             )}
             contentContainerStyle={styles.messagesList}
             ListFooterComponent={isAgentTyping ? <TypingIndicator /> : null}
@@ -533,15 +772,35 @@ export default function HomeScreen({ navigation, route }) {
           value={message}
           onChangeText={setMessage}
           onSend={handleSend}
-          onMicPress={() => console.log("mic pressionado")}
-          onPlusPress={() => console.log("plus pressionado")}
+          onMicPress={handleOpenVoice}
+          onPlusPress={() => setPlusMenuVisible(true)}
           disabled={isAgentTyping}
+          isListening={voiceModalVisible}
+          attachment={attachment}
+          onRemoveAttachment={() => setAttachment(null)}
+        />
+
+        {/* Modal de Voz estilo ChatGPT com ondas sonoras azuis (sem abrir teclado) */}
+        <VoiceModal
+          visible={voiceModalVisible}
+          onClose={() => setVoiceModalVisible(false)}
+          onSendVoice={handleVoiceSend}
+        />
+
+        {/* Menu Popover acionado pelo botão + */}
+        <PlusActionMenu
+          visible={plusMenuVisible}
+          onClose={() => setPlusMenuVisible(false)}
+          onSelectCamera={handleSelectCamera}
+          onSelectPhotos={handleSelectPhotos}
+          onSelectFiles={handleSelectFiles}
         />
 
         <BottomNav
           activeKey="home"
           onPressItem={(key) => {
-            if (key === "home") navigation.navigate("HomeScreen", { chatId: null });
+            if (key === "home")
+              navigation.navigate("HomeScreen", { chatId: null });
             else if (key === "chats") navigation.navigate("Chats");
             else if (key === "folder") navigation.navigate("ArquivoScreen");
             else if (key === "terminal") navigation.navigate("Terminal");
@@ -637,6 +896,28 @@ const styles = StyleSheet.create({
     borderColor: colors.bubbleAgentBorder,
     borderBottomLeftRadius: 4,
   },
+  bubbleAttachedImage: {
+    width: 200,
+    height: 140,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  bubbleAttachedFile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  bubbleAttachedFileName: {
+    fontFamily,
+    fontSize: 12,
+    color: "#ffffff",
+    fontWeight: "500",
+  },
   ttsButton: {
     marginTop: 5,
     alignSelf: "flex-start",
@@ -682,5 +963,48 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.textSecondary,
     marginHorizontal: 2,
+  },
+
+  // Player de Áudio do Chat
+  audioBubbleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    minWidth: 200,
+  },
+  audioPlayBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  audioPlayBtnUser: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+  },
+  audioPlayBtnAgent: {
+    backgroundColor: "#3b82f6",
+  },
+  audioWaveformCol: {
+    flex: 1,
+    justifyContent: "center",
+    gap: 4,
+  },
+  audioWaveformBars: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    height: 22,
+  },
+  audioMiniBar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
+  audioDurationText: {
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontWeight: "500",
   },
 });
