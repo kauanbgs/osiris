@@ -1,7 +1,8 @@
 import { prepareGroqPrompt } from "./groqBudget.js";
 import { getConnectedFiles } from "./getConnectedFiles.js";
 import { buildFileContext, buildFinalPrompt } from "./buildFileContext.js";
-import { resolveAgentInputs, buildAgentContext } from "./resolveAgentInputs.js";
+import { resolveAgentInputs, buildAgentContext, findWorkflowGoal } from "./resolveAgentInputs.js";
+import { buildAgentSystemPrompt } from "./handoff.js";
 import { resolveWorkflowModel } from "./modelSelection.js";
 import { getActiveModel, sendPrompt } from "../services/llmService.js";
 
@@ -71,7 +72,8 @@ export async function executeAgentNode({
   //    Caso contrário, resolver diretamente dos nodes (execução isolada).
   const resolvedAgentContext =
     agentContext ??
-    buildAgentContext(resolveAgentInputs(agentId, nodes, edges));
+    buildAgentContext(resolveAgentInputs(agentId, nodes, edges),
+      { goal: findWorkflowGoal(agentId, nodes, edges), label: node.data?.label || agentId });
 
   // 3. Construir contexto de arquivos
   const fileContext = buildFileContext(files);
@@ -93,6 +95,7 @@ export async function executeAgentNode({
   // 6. Enviar ao modelo
   const result = await sendPrompt({
     activeModelOverride: modelConfig,
+    systemPrompt: buildAgentSystemPrompt(node.data?.label || agentId),
     maxOutputTokens: groq?.maxOutputTokens,
     continueOnLength: Boolean(groq),
     onNotice,

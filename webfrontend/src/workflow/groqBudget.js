@@ -5,7 +5,7 @@ export function prepareGroqPrompt(instruction, agentContext, fileContext, maxOut
     context = context.slice(0, 4000) + "\n[Contexto anterior reduzido para economizar tokens; consulte a resposta completa no painel.]\n" + context.slice(-800);
     notices.push("O contexto dos agentes anteriores foi reduzido para economizar tokens. A resposta completa continua no painel.");
   }
-  const prompt = [context, fileContext, "INSTRUCAO ATUAL:\n" + instruction].filter(Boolean).join("\n\n---\n\n");
+  const prompt = [context, fileContext, "SUA TAREFA:\n" + instruction].filter(Boolean).join("\n\n---\n\n");
   // Conservative estimate, not a provider tokenizer. Keep room below the
   // reported 8000 TPM budget for the completion and protocol overhead.
   const estimatedInputTokens = Math.ceil(new TextEncoder().encode(prompt).length / 3);

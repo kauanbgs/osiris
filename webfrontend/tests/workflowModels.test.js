@@ -86,3 +86,4 @@ test('Groq catalog includes current text models and no retired Mixtral or Compou
   assert.equal(models.some((model) => model.id.includes('mixtral') || model.id.includes('compound')), false);
   assert.equal(models.filter((model) => model.default).length, 1);
 });
+

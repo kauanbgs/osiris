@@ -237,6 +237,7 @@ async function streamGoogleGemini({
   model,
   apiKey,
   prompt,
+  systemPrompt,
   history = [],
   onChunk,
   signal,
@@ -255,7 +256,10 @@ async function streamGoogleGemini({
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents }),
+    body: JSON.stringify({
+      contents,
+      ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
+    }),
     signal,
   });
 
@@ -303,11 +307,13 @@ async function streamGoogleGemini({
 }
 
 async function streamOpenAICompatible({
-  endpoint, model, apiKey, prompt, history = [], onChunk, signal,
+  endpoint, model, apiKey, prompt, systemPrompt, history = [], onChunk, signal,
   headers = {}, maxOutputTokens, onNotice, continueOnLength = false,
 }) {
   const isGroq = endpoint.startsWith("https://api.groq.com/");
-  const messages = [...history.map((msg) => ({ role: msg.role, content: msg.content })), { role: "user", content: prompt }];
+  const messages = [...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+    ...history.map((msg) => ({ role: msg.role, content: msg.content })), { role: "user", content: prompt }];
+  const baseLength = messages.length;
   const maxParts = isGroq && continueOnLength ? 3 : 1;
   let fullText = "";
   for (let part = 0; part < maxParts; part++) {
@@ -361,7 +367,7 @@ async function streamOpenAICompatible({
     // Send the complete prefix, so continuation can close an unfinished JSON
     // string or source file without restarting or discarding previous output.
     if (partText) {
-      messages.splice(history.length + 1);
+      messages.splice(baseLength);
       messages.push({ role: "assistant", content: fullText }, { role: "user", content: "Continue exatamente do ponto em que a resposta parou. Retorne apenas a continuacao, sem repetir o prefixo, sem comentarios e sem novas cercas Markdown. Termine o JSON ou arquivo iniciado." });
     }
   }
@@ -371,6 +377,7 @@ async function streamAnthropic({
   model,
   apiKey,
   prompt,
+  systemPrompt,
   history = [],
   onChunk,
   signal,
@@ -391,6 +398,7 @@ async function streamAnthropic({
     body: JSON.stringify({
       model,
       max_tokens: 4096,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
       messages,
       stream: true,
     }),
@@ -492,6 +500,7 @@ export function sendPrompt(options) {
 
 async function runPrompt({
   prompt,
+  systemPrompt,
   history = [],
   memory = [],
   onChunk,
@@ -549,6 +558,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -565,6 +575,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -581,6 +592,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -598,6 +610,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -640,6 +653,7 @@ ${prompt}
 
       res = await window.llama.prompt({
         prompt: promptWithMemory,
+        systemPrompt,
         history,
       });
 

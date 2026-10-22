@@ -1,4 +1,4 @@
-import { buildAgentContext } from "./resolveAgentInputs.js";
+import { buildAgentContext, findWorkflowGoal, toAgentInput } from "./resolveAgentInputs.js";
 
 // Every directed connection between agent nodes carries a handoff, regardless
 // of the visual handle used to draw it.
@@ -73,13 +73,12 @@ export async function runWorkflow({ nodes, edges, startAgentId, onlyAgentId, exe
       const saved = onlyAgentId && !outputs.has(sourceId);
       const output = saved ? source.data?.output : outputs.get(sourceId);
       if (output === undefined || output === null || output === "") continue;
-      const transfer = { agentId: sourceId, label: source.data?.label || sourceId,
-        targetId: node.id, targetLabel: label, output: String(output),
-        instruction: source.data?.handoffPrompt || "", saved: Boolean(saved) };
+      const transfer = { ...toAgentInput(source, output), targetId: node.id, targetLabel: label, saved: Boolean(saved) };
       received.push(transfer);
       onTransfer?.(transfer);
     }
-    const context = buildAgentContext(received);
+    const context = buildAgentContext(received, { goal: findWorkflowGoal(node.id, nodes, edges), label,
+      step: onlyAgentId ? undefined : index + 1, total: ordered.length });
     onAgentStart?.(node.id, label, index, ordered.length, received);
     try {
       const result = await executeAgent(node.id, context, signal);

@@ -25,6 +25,29 @@ let currentSession = null;
 let activeModelPath = null;
 const activeDownloads = new Map();
 
+// Serializes load/prompt/delete: a single session can't run prompts
+// concurrently, and swapping the model mid-prompt disposes it underneath.
+let llamaQueue = Promise.resolve();
+function withLlamaLock(fn) {
+  const run = llamaQueue.then(fn, fn);
+  llamaQueue = run.catch(() => {});
+  return run;
+}
+
+async function disposeCurrentModel() {
+  const model = currentModel;
+  currentModel = null;
+  currentSession = null;
+  activeModelPath = null;
+  if (model) {
+    try {
+      await model.dispose();
+    } catch (err) {
+      console.error("Erro ao descartar modelo antigo:", err);
+    }
+  }
+}
+
 async function runLlamaPrompt(payload, onTextChunk) {
   if (!currentSession) {
     throw new Error("Nenhum modelo carregado");
@@ -42,10 +65,10 @@ async function runLlamaPrompt(payload, onTextChunk) {
     throw new Error("Prompt inválido");
   }
 
-  if (
-    history.length > 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
+  const systemPrompt =
+    typeof payload?.systemPrompt === "string" ? payload.systemPrompt.trim() : "";
+
+  if (typeof currentSession.setChatHistory === "function") {
     const chatHistory = history.map((msg) => {
       if (msg.role === "assistant") {
         return {
@@ -59,12 +82,24 @@ async function runLlamaPrompt(payload, onTextChunk) {
         text: msg.content || "",
       };
     });
-    currentSession.setChatHistory(chatHistory);
-  } else if (
-    history.length === 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
-    currentSession.setChatHistory([]);
+    currentSession.setChatHistory(
+      systemPrompt ? [{ type: "system", text: systemPrompt }, ...chatHistory] : chatHistory,
+    );
+  }
+
+  // Old history may be shifted out, but the current prompt must fit whole:
+  // its beginning carries the upstream agents' handoff.
+  if (currentModel) {
+    const contextSize = currentSession.context.contextSize;
+    const inputTokens = currentModel.tokenize(
+      [systemPrompt, promptText].join("\n"),
+    ).length;
+    if (inputTokens > contextSize - 512) {
+      throw new Error(
+        `O prompt tem cerca de ${inputTokens} tokens e o contexto do modelo local comporta ${contextSize}. ` +
+          "Conecte menos arquivos ou divida a etapa em mais agentes.",
+      );
+    }
   }
 
   return currentSession.prompt(promptText, {
@@ -185,32 +220,34 @@ ipcMain.handle("llama:list-local-models", () => {
   return models;
 });
 
-ipcMain.handle("llama:load-model", async (_, modelPath) => {
+ipcMain.handle("llama:load-model", (_, modelPath) => withLlamaLock(async () => {
   try {
     if (!fs.existsSync(modelPath)) {
       throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
     }
 
+    if (currentSession && activeModelPath === modelPath) {
+      return {
+        success: true,
+        activeModelPath,
+        activeModelName: path.basename(modelPath),
+      };
+    }
+
     const llama = await getLlamaModule();
     const { LlamaChatSession } = await import("node-llama-cpp");
 
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (err) {
-        console.error("Erro ao descartar modelo antigo:", err);
-      }
-    }
+    await disposeCurrentModel();
 
-    currentModel = await llama.loadModel({
+    const model = await llama.loadModel({
       modelPath: modelPath,
     });
 
-    const context = await currentModel.createContext();
+    const context = await model.createContext();
     currentSession = new LlamaChatSession({
       contextSequence: context.getSequence(),
     });
-
+    currentModel = model;
     activeModelPath = modelPath;
 
     return {
@@ -222,20 +259,20 @@ ipcMain.handle("llama:load-model", async (_, modelPath) => {
     console.error("Erro ao carregar modelo:", err);
     throw new Error(err.message || "Falha ao carregar o modelo GGUF");
   }
-});
+}));
 
 ipcMain.handle("llama:prompt", async (event, payload) => {
   const sender = event.sender;
 
   try {
-    const response = await runLlamaPrompt(payload, (chunk) => {
+    const response = await withLlamaLock(() => runLlamaPrompt(payload, (chunk) => {
       if (!sender.isDestroyed()) {
         sender.send("llama:stream", {
           type: "chunk",
           text: chunk,
         });
       }
-    });
+    }));
 
     if (!sender.isDestroyed()) {
       sender.send("llama:stream", {
@@ -375,16 +412,11 @@ ipcMain.handle("llama:import-file", async (event) => {
 });
 
 ipcMain.handle("llama:delete-model", async (_, modelPath) => {
-  if (activeModelPath === modelPath) {
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (e) {}
-      currentModel = null;
-      currentSession = null;
-      activeModelPath = null;
+  await withLlamaLock(async () => {
+    if (activeModelPath === modelPath) {
+      await disposeCurrentModel();
     }
-  }
+  });
 
   if (fs.existsSync(modelPath)) {
     fs.unlinkSync(modelPath);

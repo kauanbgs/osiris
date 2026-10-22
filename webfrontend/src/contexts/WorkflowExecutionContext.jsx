@@ -4,6 +4,7 @@ import { useReactFlow } from "@xyflow/react";
 import { runWorkflow } from "@/workflow/runWorkflow";
 import { executeAgentNode } from "@/workflow/executeAgentNode";
 import { applyAgentResultToFileNodes, buildFileEditInstruction } from "@/workflow/agentFiles";
+import { buildJsonHandoffRequest, buildTextHandoffRequest } from "@/workflow/handoff";
 
 export function WorkflowExecutionProvider({ children, initialEvents = [], onEventsChange }) {
   const { getNodes, getEdges, updateNodeData } = useReactFlow();
@@ -43,8 +44,9 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
         },
         onTransfer: (transfer) => {
           emit({ type: "transfer", title: transfer.label + " -> " + transfer.targetLabel,
-            text: (transfer.instruction ? "Instrucao: " + transfer.instruction + "\n\n" : "") + transfer.output,
-            note: transfer.saved ? "Resultado salvo de uma execucao anterior" : "Instrucoes entregues nesta execucao" });
+            text: (transfer.instruction ? "Tarefa encaminhada:\n" + transfer.instruction + "\n\n" : "") + "Dados:\n" + transfer.output,
+            note: [transfer.saved ? "Resultado salvo de uma execucao anterior" : "Instrucoes entregues nesta execucao",
+              !transfer.structured && "O agente anterior nao seguiu o formato de passagem; foi repassado o final da resposta"].filter(Boolean).join(". ") });
         },
         onAgentStart: (agentId, label, index, total, received) => {
           const prompt = nodes.find((node) => node.id === agentId)?.data?.prompt || "";
@@ -68,8 +70,9 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
           const targets = nodes.filter((item) => item.type === "agent" && edges.some((edge) => edge.source === agentId && edge.target === item.id));
           const outputFiles = currentNodes.filter((item) => item.type === "file" && edges.some((edge) => edge.source === agentId && edge.target === item.id && ["output", "bottom"].includes(edge.sourceHandle)));
           let instruction = node.data?.prompt || "";
-          if (targets.length) instruction += "\n\nSua resposta sera entregue aos seguintes agentes: " + targets.map((item) => item.data?.label || item.id).join(", ") + ". Inclua os resultados relevantes e instrucoes concretas para a proxima etapa. " + (node.data?.handoffPrompt || "");
-          if (outputFiles.length) instruction = buildFileEditInstruction(instruction, outputFiles);
+          const handoffPrompt = node.data?.handoffPrompt?.trim() || "";
+          if (outputFiles.length) instruction = buildFileEditInstruction(instruction, outputFiles, targets.length ? buildJsonHandoffRequest(targets, handoffPrompt) : "");
+          else if (targets.length) instruction += buildTextHandoffRequest(targets, handoffPrompt);
           const result = await executeAgentNode({ agentId, nodes: currentNodes, edges, instruction, agentContext: context, signal,
             onNotice: (notice) => {
               patch(agentId, { notice: notice.message });

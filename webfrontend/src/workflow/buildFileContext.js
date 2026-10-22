@@ -25,5 +25,5 @@ export function buildFileContext(files) {
 export function buildFinalPrompt(instruction, fileContext) {
   if (!fileContext) return instruction;
 
-  return `${fileContext}\n\n---\n\nINSTRUÇÃO DO USUÁRIO:\n\n${instruction}`;
+  return `${fileContext}\n\n---\n\nSUA TAREFA:\n\n${instruction}`;
 }

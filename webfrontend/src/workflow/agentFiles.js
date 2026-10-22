@@ -1,4 +1,4 @@
-function extractJson(text) {
+export function extractJson(text) {
   if (!text) return null;
 
   try {
@@ -203,7 +203,7 @@ export async function applyAgentResultToFileNodes({
  * Constrói a instrução final para um agente que tem FileNodes de saída,
  * instruindo o modelo a responder em JSON estruturado.
  */
-export function buildFileEditInstruction(instruction, outputFileNodes) {
+export function buildFileEditInstruction(instruction, outputFileNodes, handoffRequest = "") {
   const outputFiles = outputFileNodes.flatMap((node) =>
     Array.isArray(node.data?.files) ? node.data.files : [],
   );
@@ -241,9 +241,13 @@ Responda SOMENTE neste JSON:
       "content": "arquivo completo"
     }
   ],
-  "message": "resumo curto"
+  "message": "resumo curto"${handoffRequest ? `,
+  "handoff": "Tarefa: ...\\nUse: ...\\nPronto quando: ..."` : ""}
 }
-
+${handoffRequest ? `
+PROXIMO AGENTE:
+${handoffRequest}
+` : ""}
 REGRAS:
 - action é sempre "update".
 - Use exatamente o nome de um arquivo existente.
@@ -253,7 +257,7 @@ REGRAS:
 - Nunca use pseudocódigo, TODO, placeholders ou comentários no lugar da implementação.
 - Não omita partes do código.
 - Não crie campos extras no JSON.
-- Se não precisar editar: {"fileOperations":[],"message":"resposta"}
+- Se não precisar editar: {"fileOperations":[],"message":"resposta"${handoffRequest ? ',"handoff":"..."' : ""}}
 - Responda apenas JSON válido.`;
 }
 
