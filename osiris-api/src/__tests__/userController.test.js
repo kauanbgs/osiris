@@ -32,7 +32,7 @@ describe("UserController", () => {
   });
 
   it("logs in with valid credentials", async () => {
-    const bcrypt = require("bcrypt");
+    const bcrypt = require("bcryptjs");
     const password = "StrongPass1";
     const hash = await bcrypt.hash(password, 12);
     mockQueries([[
