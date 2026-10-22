@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEY = "@osiris/desktop_ip";
 
-let IP = "10.89.240.114";
+let IP = "172.20.10.3";
 // Carrega o IP salvo no celular (chamar 1x ao abrir o app).
 export async function loadIP() {
   try {
