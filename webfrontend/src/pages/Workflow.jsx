@@ -409,6 +409,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
           defaultViewport={initialWorkflow.viewport}
           onMoveEnd={(_event, nextViewport) => setViewport(nextViewport)}
           fitView={!initialWorkflow.viewport}
+          minZoom={0.1}
+          maxZoom={4}
         >
           <Background
             gap={30}
