@@ -36,6 +36,13 @@ const sheets = {
   executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
   terminalHistory: (params) => api.get("/terminal/history", { params }),
   terminalClearHistory: () => api.delete("/terminal/history"),
+  // Browser
+  createBrowserSession: (initial_url) => api.post("/browser/session", { initial_url }),
+  listBrowserSessions: () => api.get("/browser/sessions"),
+  getBrowserSession: (id_session) => api.get(`/browser/session/${id_session}`),
+  navigateBrowser: (id_session, url) => api.post("/browser/navigate", { id_session, url }),
+  clickBrowserElement: (id_session, { selector, x, y } = {}) => api.post("/browser/click", { id_session, selector, x, y }),
+  closeBrowserSession: (id_session) => api.delete(`/browser/session/${id_session}`),
 }
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),
