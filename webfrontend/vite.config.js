@@ -12,4 +12,9 @@ export default defineConfig({
       '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), './src'),
     },
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/setupTests.js',
+  },
 })
