@@ -1,20 +1,18 @@
+
 import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
-/**
- * ElectronTerminalPanel
- * Wrapper do xterm.js para uso na página Terminal em modo Electron (PTY nativo).
- */
-export default function ElectronTerminalPanel({ terminalId, clearTrigger = 0 }) {
+export default function ElectronTerminalPanel({
+  terminalId,
+  clearTrigger = 0,
+}) {
   const containerRef = useRef(null);
   const xtermRef = useRef(null);
-  const fitAddonRef = useRef(null);
   const resizeObserverRef = useRef(null);
-  const dataListenerRef = useRef(null);
 
-  // Clear disparado externamente
+  // Limpar terminal pelo botão da página
   useEffect(() => {
     if (clearTrigger > 0 && xtermRef.current) {
       xtermRef.current.clear();
@@ -24,11 +22,14 @@ export default function ElectronTerminalPanel({ terminalId, clearTrigger = 0 }) 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 1. Instância do XTerm com tema escuro do Osíris
+    let disposed = false;
+
+    // Criar o terminal visual
     const xterm = new XTerm({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+      fontFamily:
+        '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
       scrollback: 10000,
       theme: {
         background: "#0c0c0e",
@@ -39,86 +40,142 @@ export default function ElectronTerminalPanel({ terminalId, clearTrigger = 0 }) 
     });
 
     const fitAddon = new FitAddon();
+
     xterm.loadAddon(fitAddon);
-
-    xtermRef.current = xterm;
-    fitAddonRef.current = fitAddon;
-
-    // 2. Montar no container DOM
     xterm.open(containerRef.current);
 
-    const fitTimer = setTimeout(() => {
+    xtermRef.current = xterm;
+
+    // Ajustar tamanho do terminal
+    function ajustarTerminal() {
+      if (disposed) return;
+
       try {
         fitAddon.fit();
-        if (window.electronAPI?.terminalResize) {
-          window.electronAPI.terminalResize(terminalId, xterm.cols, xterm.rows);
-        }
-      } catch (_) {}
-    }, 60);
 
-    // 3. Criar terminal no Electron
-    if (window.electronAPI?.terminalCreate) {
-      window.electronAPI.terminalCreate(terminalId, "default");
+        window.electronAPI?.terminalResize?.(
+          terminalId,
+          xterm.cols,
+          xterm.rows
+        );
+      } catch (error) {
+        console.error(
+          "Erro ao redimensionar terminal:",
+          error
+        );
+      }
     }
 
-    // 4. Input do usuário -> PTY
+    // Receber resultado dos comandos
+    const removerDados =
+      window.electronAPI?.onTerminalData?.(
+        (targetId, data) => {
+          if (targetId === terminalId && !disposed) {
+            xterm.write(data);
+          }
+        }
+      );
+
+    // Detectar encerramento do PowerShell
+    const removerSaida =
+      window.electronAPI?.onTerminalExit?.(
+        (targetId, exitCode) => {
+          if (targetId === terminalId && !disposed) {
+            xterm.writeln(
+              `\r\n\x1b[33mTerminal encerrado (código ${exitCode}).\x1b[0m`
+            );
+          }
+        }
+      );
+
+    // Enviar cada tecla digitada para o PowerShell
     const onDataDisposable = xterm.onData((data) => {
-      if (window.electronAPI?.terminalWrite) {
-        window.electronAPI.terminalWrite(terminalId, data);
-      }
+      if (disposed) return;
+
+      window.electronAPI?.terminalWrite?.(
+        terminalId,
+        data
+      );
     });
 
-    // 5. Output do PTY -> xterm
-    const handleTerminalData = (targetId, data) => {
-      if (targetId === terminalId && xtermRef.current) {
-        xtermRef.current.write(data);
-      }
-    };
-
-    if (window.electronAPI?.onTerminalData) {
-      const cleanup = window.electronAPI.onTerminalData(handleTerminalData);
-      dataListenerRef.current = cleanup;
+    // Criar processo do PowerShell no Electron
+    if (!window.electronAPI?.terminalCreate) {
+      xterm.writeln(
+        "\r\n\x1b[31mTerminal nativo indisponível.\x1b[0m"
+      );
+    } else {
+      Promise.resolve(
+        window.electronAPI.terminalCreate(
+          terminalId,
+          "default"
+        )
+      ).catch((error) => {
+        if (!disposed) {
+          xterm.writeln(
+            `\r\n\x1b[31mErro ao iniciar terminal: ${String(
+              error?.message || error
+            )}\x1b[0m`
+          );
+        }
+      });
     }
 
-    // 6. Redimensionamento responsivo
-    const observer = new ResizeObserver(() => {
-      try {
-        fitAddon.fit();
-        if (window.electronAPI?.terminalResize) {
-          window.electronAPI.terminalResize(terminalId, xterm.cols, xterm.rows);
-        }
-      } catch (_) {}
+    // Observar alteração de tamanho da janela
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        ajustarTerminal();
+      });
+
+      observer.observe(containerRef.current);
+      resizeObserverRef.current = observer;
+    }
+
+    // Ajustar e ativar o teclado
+    const fitTimer = setTimeout(() => {
+      ajustarTerminal();
+      xterm.focus();
+    }, 100);
+
+    const focusFrame = requestAnimationFrame(() => {
+      xterm.focus();
     });
 
-    observer.observe(containerRef.current);
-    resizeObserverRef.current = observer;
-
-    xterm.focus();
-
-    // 7. Cleanup
+    // Remover recursos ao sair da página
     return () => {
+      disposed = true;
+
       clearTimeout(fitTimer);
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
+      cancelAnimationFrame(focusFrame);
+
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+
+      if (typeof removerDados === "function") {
+        removerDados();
       }
-      if (typeof dataListenerRef.current === "function") {
-        dataListenerRef.current();
+
+      if (typeof removerSaida === "function") {
+        removerSaida();
       }
+
       onDataDisposable.dispose();
-      if (window.electronAPI?.terminalClose) {
-        window.electronAPI.terminalClose(terminalId);
-      }
+
+      window.electronAPI?.terminalClose?.(terminalId);
+
       xterm.dispose();
       xtermRef.current = null;
-      fitAddonRef.current = null;
     };
   }, [terminalId]);
 
   return (
     <div
       ref={containerRef}
-      className="h-full w-full p-1"
+      className="h-full w-full cursor-text p-1"
+      role="region"
+      aria-label="Terminal PowerShell interativo"
+      tabIndex={0}
+      onFocus={() => xtermRef.current?.focus()}
+      onPointerDown={() => xtermRef.current?.focus()}
       onClick={() => xtermRef.current?.focus()}
     />
   );

@@ -420,12 +420,25 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
     }
   });
 
-  terminal.onExit(({ exitCode }) => {
-    terminals.delete(id);
-    if (!win.isDestroyed()) {
-      win.webContents.send("terminal-exit", id, exitCode);
-    }
-  });
+ 
+terminal.onExit(({ exitCode }) => {
+  // Evita que uma sessão antiga remova
+  // uma sessão nova com o mesmo ID.
+  if (terminals.get(id) !== terminal) {
+    return;
+  }
+
+  terminals.delete(id);
+
+  // Informa ao React que o terminal foi encerrado.
+  if (!win.isDestroyed()) {
+    win.webContents.send(
+      "terminal-exit",
+      id,
+      exitCode
+    );
+  }
+});
 
   if (mode === "claude") {
     setTimeout(() => {
