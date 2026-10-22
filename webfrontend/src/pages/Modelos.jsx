@@ -12,11 +12,16 @@ import {
   KeyRound,
   Loader2,
   Play,
+  Server,
   Trash2,
 } from 'lucide-react';
 import {
   CLOUD_PROVIDERS,
+  CUSTOM_PROVIDER_ID,
+  fetchCustomServerModels,
   getActiveModel,
+  getCustomServer,
+  saveCustomServer,
   setActiveModel,
   testProviderKey,
 } from '@/services/llmService';
@@ -299,6 +304,82 @@ function ProviderCard({
   );
 }
 
+function CustomServerCard({ activeModelConfig, onActivateModel }) {
+  const [server, setServer] = useState(getCustomServer);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleConnect() {
+    setLoading(true);
+    setResult(null);
+    try {
+      const models = await fetchCustomServerModels(server.baseUrl, server.apiKey);
+      const next = { ...server, models };
+      setServer(next);
+      saveCustomServer(next);
+      setResult({ ok: true, msg: models.length ? `${models.length} modelo(s) encontrado(s).` : 'Conectado, mas o servidor nao tem modelos.' });
+    } catch (err) {
+      setResult({ ok: false, msg: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputClass = 'h-8 min-w-0 rounded-md border border-zinc-700 bg-[#101010] px-2.5 font-mono text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none';
+
+  return (
+    <section className="rounded-lg border border-zinc-700/80 bg-[#181818] p-3.5">
+      <div className="mb-1 flex items-center gap-2">
+        <Server size={13} className="text-violet-400" />
+        <h3 className="text-[13px] font-semibold text-zinc-100">Servidor proprio (VPS)</h3>
+      </div>
+      <p className="mb-2.5 text-[10px] leading-4 text-zinc-500">
+        Ollama, vLLM ou llama.cpp com API compativel com OpenAI. Abra o tunel SSH antes de conectar.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input aria-label="Endereco do servidor" value={server.baseUrl} placeholder="http://localhost:11434/v1"
+          onChange={(event) => setServer({ ...server, baseUrl: event.target.value })} className={inputClass + ' flex-1'} />
+        <input aria-label="Chave do servidor (opcional)" type="password" value={server.apiKey} placeholder="chave (opcional)"
+          onChange={(event) => setServer({ ...server, apiKey: event.target.value })} className={inputClass + ' w-36'} />
+        <button type="button" onClick={handleConnect} disabled={loading || !server.baseUrl.trim()}
+          className="flex h-8 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50">
+          {loading && <Loader2 size={12} className="animate-spin" />}
+          Conectar e listar modelos
+        </button>
+      </div>
+
+      {result && (
+        <div className={`mt-2 rounded px-2 py-1 text-[11px] ${result.ok
+          ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+          : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>
+          {result.msg}
+        </div>
+      )}
+
+      {server.models.length > 0 && (
+        <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {server.models.map((model) => {
+            const isActive = activeModelConfig?.provider === CUSTOM_PROVIDER_ID && activeModelConfig?.model === model;
+            return (
+              <div key={model} className={`flex items-center justify-between rounded-md border p-2 ${isActive
+                ? 'border-violet-500/80 bg-violet-950/20' : 'border-zinc-800 bg-[#121212]'}`}>
+                <p className="min-w-0 truncate font-mono text-[11px] text-zinc-200">{model}</p>
+                <button type="button" disabled={isActive}
+                  onClick={() => onActivateModel({ type: 'cloud', provider: CUSTOM_PROVIDER_ID, model, name: `Servidor proprio - ${model}` })}
+                  className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] font-semibold ${isActive
+                    ? 'bg-emerald-500/20 text-emerald-400' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
+                  {isActive ? <><Check size={11} />Em uso</> : 'Ativar'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Modelos() {
   const [localModels, setLocalModels] = useState([]);
   const [status, setStatus] = useState({ isLoaded: false, activeModelName: null, activeModelPath: null });
@@ -506,6 +587,7 @@ export default function Modelos() {
             </p>
 
             <div className="space-y-3.5">
+              <CustomServerCard activeModelConfig={activeModelConfig} onActivateModel={handleActivateCloudModel} />
               {CLOUD_PROVIDERS.map((provider) => (
                 <ProviderCard
                   key={provider.id}

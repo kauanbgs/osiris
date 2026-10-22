@@ -5,6 +5,7 @@ import { runWorkflow } from "@/workflow/runWorkflow";
 import { executeAgentNode } from "@/workflow/executeAgentNode";
 import { applyAgentResultToFileNodes, buildFileEditInstruction } from "@/workflow/agentFiles";
 import { buildJsonHandoffRequest, buildTextHandoffRequest } from "@/workflow/handoff";
+import { getAgentFileNodes, getConnectedFiles } from "@/workflow/getConnectedFiles";
 
 export function WorkflowExecutionProvider({ children, initialEvents = [], onEventsChange }) {
   const { getNodes, getEdges, updateNodeData } = useReactFlow();
@@ -66,12 +67,14 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
           const node = currentNodes.find((item) => item.id === agentId);
           if (!node) throw new Error("Agente removido durante a execucao.");
           const targets = nodes.filter((item) => item.type === "agent" && edges.some((edge) => edge.source === agentId && edge.target === item.id));
-          const outputFiles = currentNodes.filter((item) => item.type === "file" && edges.some((edge) => edge.source === agentId && edge.target === item.id && ["output", "bottom"].includes(edge.sourceHandle)));
+          const outputFiles = getAgentFileNodes(agentId, currentNodes, edges).outputs;
           let instruction = node.data?.prompt || "";
           const handoffPrompt = node.data?.handoffPrompt?.trim() || "";
-          if (outputFiles.length) instruction = buildFileEditInstruction(instruction, outputFiles, targets.length ? buildJsonHandoffRequest(targets, handoffPrompt) : "");
+          let editableFileContext = "";
+          if (outputFiles.length) ({ instruction, fileContext: editableFileContext } = buildFileEditInstruction(instruction, outputFiles,
+            targets.length ? buildJsonHandoffRequest(targets, handoffPrompt) : "", getConnectedFiles(agentId, currentNodes, edges)));
           else if (targets.length) instruction += buildTextHandoffRequest(targets, handoffPrompt);
-          const result = await executeAgentNode({ agentId, nodes: currentNodes, edges, instruction, agentContext: context, signal,
+          const result = await executeAgentNode({ agentId, nodes: currentNodes, edges, instruction, agentContext: context, editableFileContext, signal,
             onNotice: (notice) => {
               patch(agentId, { notice: notice.message });
               emit({ type: notice.type, title: (node.data?.label || agentId) + " - " + (notice.type === "rate-limit" ? "aguardando Groq" : notice.type === "continuation" ? "continuando resposta" : "economia de contexto"), text: notice.message });
@@ -83,6 +86,8 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
             const applied = await applyAgentResultToFileNodes({ agentId, result, nodes: getNodes(), edges, updateNodeData, signal });
             emit({ type: "files", title: (node.data?.label || agentId) + " - arquivos",
               text: applied ? JSON.stringify(applied.fileOperations, null, 2) : "A resposta nao continha operacoes de arquivo validas." });
+            const problems = applied ? applied.errors : ["a resposta nao veio no formato JSON esperado"];
+            if (problems.length) patch(agentId, { notice: "Edicoes nao aplicadas (o arquivo ficou como estava): " + problems.join("; ") });
           }
           return result;
         },

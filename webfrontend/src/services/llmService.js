@@ -61,6 +61,43 @@ export const CLOUD_PROVIDERS = [
   },
 ];
 
+// Self-hosted OpenAI-compatible server (Ollama, vLLM, llama.cpp), usually
+// reached through an SSH tunnel. Models come from the server's /models list.
+export const CUSTOM_PROVIDER_ID = "custom";
+const CUSTOM_SERVER_KEY = "osiris_custom_server";
+const DEFAULT_CUSTOM_SERVER = { baseUrl: "http://localhost:11434/v1", apiKey: "", models: [] };
+
+export function getCustomServer() {
+  try {
+    return { ...DEFAULT_CUSTOM_SERVER, ...JSON.parse(localStorage.getItem(CUSTOM_SERVER_KEY) || "{}") };
+  } catch {
+    return { ...DEFAULT_CUSTOM_SERVER };
+  }
+}
+
+export function saveCustomServer(server) {
+  localStorage.setItem(CUSTOM_SERVER_KEY, JSON.stringify(server));
+  window.dispatchEvent(new CustomEvent("osiris:model-changed"));
+}
+
+function customServerUrl(baseUrl, path) {
+  return baseUrl.trim().replace(/\/+$/, "") + path;
+}
+
+export async function fetchCustomServerModels(baseUrl, apiKey) {
+  let response;
+  try {
+    response = await fetch(customServerUrl(baseUrl, "/models"), {
+      headers: apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {},
+    });
+  } catch {
+    throw new Error("Servidor inacessivel em " + baseUrl + ". O tunel SSH esta aberto?");
+  }
+  if (!response.ok) throw new Error("Erro " + response.status + " ao listar modelos do servidor.");
+  const body = await response.json();
+  return (body.data || []).map((model) => model.id).filter(Boolean).sort();
+}
+
 export function getStoredCloudKeys() {
   try {
     return JSON.parse(localStorage.getItem("osiris_cloud_model_keys") || "{}");
@@ -481,6 +518,18 @@ function formatMemoryForPrompt(memory) {
 let localPromptQueue = Promise.resolve();
 let groqPromptQueue = Promise.resolve();
 
+// Rejects as soon as `signal` aborts, even while `promise` is still waiting
+// in a queue; the queued work then sees the aborted signal and does nothing.
+export function abortable(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new DOMException("Interrompido", "AbortError"));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 export function sendPrompt(options) {
   const activeModel = options.activeModelOverride || getActiveModel();
   const run = async () => {
@@ -490,12 +539,12 @@ export function sendPrompt(options) {
   if (activeModel.type === "cloud" && activeModel.provider === "groq") {
     const result = groqPromptQueue.then(run);
     groqPromptQueue = result.catch(() => {});
-    return result;
+    return abortable(result, options.signal);
   }
-  if (activeModel.type === "cloud") return run();
+  if (activeModel.type === "cloud") return abortable(run(), options.signal);
   const result = localPromptQueue.then(run);
   localPromptQueue = result.catch(() => {});
-  return result;
+  return abortable(result, options.signal);
 }
 
 async function runPrompt({
@@ -533,6 +582,25 @@ ${prompt}
   // ============================================
   // MODELOS CLOUD
   // ============================================
+
+  if (activeModel.type === "cloud" && activeModel.provider === CUSTOM_PROVIDER_ID) {
+    const server = getCustomServer();
+    return streamOpenAICompatible({
+      endpoint: customServerUrl(server.baseUrl, "/chat/completions"),
+      model: activeModel.model,
+      // Ollama ignores the key; other servers may require one.
+      apiKey: server.apiKey?.trim() || "none",
+      prompt: promptWithMemory,
+      systemPrompt,
+      history,
+      onChunk,
+      signal,
+      maxOutputTokens,
+    }).catch((error) => {
+      if (error.name === "TypeError") throw new Error("Servidor proprio inacessivel em " + server.baseUrl + ". O tunel SSH esta aberto?");
+      throw error;
+    });
+  }
 
   if (activeModel.type === "cloud") {
     const keys = getStoredCloudKeys();
@@ -634,9 +702,13 @@ ${prompt}
     }
     let accumulated = "";
     let cleanup = null;
+    const requestId = crypto.randomUUID();
+    const stop = () => window.llama.abort?.(requestId);
+    signal?.addEventListener("abort", stop, { once: true });
 
     if (window.llama.onStream && onChunk) {
       cleanup = window.llama.onStream((data) => {
+        if (data.requestId && data.requestId !== requestId) return;
         if (!signal?.aborted && data.type === "chunk" && data.text) {
           accumulated += data.text;
           onChunk(accumulated);
@@ -655,6 +727,7 @@ ${prompt}
         prompt: promptWithMemory,
         systemPrompt,
         history,
+        requestId,
       });
 
       console.log("[CHAT] Resposta principal finalizada");
@@ -664,6 +737,7 @@ ${prompt}
       // principal ANTES de pedir análise
       // de memória.
       cleanup?.();
+      signal?.removeEventListener("abort", stop);
     }
 
     // ==============================

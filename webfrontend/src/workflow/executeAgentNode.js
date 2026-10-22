@@ -56,6 +56,7 @@ export async function executeAgentNode({
   edges,
   instruction,
   agentContext,
+  editableFileContext,
   onChunk,
   onNotice,
   signal,
@@ -78,7 +79,8 @@ export async function executeAgentNode({
 
   // 3. Construir contexto de arquivos
   //    Notas de texto conectadas entram junto, antes dos arquivos.
-  const fileContext = [buildNoteContext(getConnectedNotes(agentId, nodes, edges)), buildFileContext(files)]
+  //    Arquivos de saida que nao estao na entrada vem em editableFileContext.
+  const fileContext = [buildNoteContext(getConnectedNotes(agentId, nodes, edges)), buildFileContext(files), editableFileContext]
     .filter(Boolean).join("\n\n---\n\n");
 
   // 4. Montar contexto combinado (agentes upstream + arquivos)

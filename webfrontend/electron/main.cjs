@@ -48,7 +48,7 @@ async function disposeCurrentModel() {
   }
 }
 
-async function runLlamaPrompt(payload, onTextChunk) {
+async function runLlamaPrompt(payload, onTextChunk, signal) {
   if (!currentSession) {
     throw new Error("Nenhum modelo carregado");
   }
@@ -103,6 +103,10 @@ async function runLlamaPrompt(payload, onTextChunk) {
   }
 
   return currentSession.prompt(promptText, {
+    // Stop returns the partial text instead of throwing, so the session
+    // stays usable for the next prompt.
+    signal,
+    stopOnAbortSignal: true,
     onTextChunk(chunk) {
       const text =
         typeof chunk === "string"
@@ -261,22 +265,37 @@ ipcMain.handle("llama:load-model", (_, modelPath) => withLlamaLock(async () => {
   }
 }));
 
+// Running or queued prompts by request id, so the renderer can stop them.
+const llamaPromptAborts = new Map();
+
+ipcMain.handle("llama:abort", (_, requestId) => {
+  llamaPromptAborts.get(requestId)?.abort();
+});
+
 ipcMain.handle("llama:prompt", async (event, payload) => {
   const sender = event.sender;
+  const requestId = payload?.requestId;
+  const abort = new AbortController();
+  if (requestId) llamaPromptAborts.set(requestId, abort);
 
   try {
-    const response = await withLlamaLock(() => runLlamaPrompt(payload, (chunk) => {
-      if (!sender.isDestroyed()) {
-        sender.send("llama:stream", {
-          type: "chunk",
-          text: chunk,
-        });
-      }
-    }));
+    const response = await withLlamaLock(() => {
+      if (abort.signal.aborted) return "";
+      return runLlamaPrompt(payload, (chunk) => {
+        if (!sender.isDestroyed()) {
+          sender.send("llama:stream", {
+            type: "chunk",
+            text: chunk,
+            requestId,
+          });
+        }
+      }, abort.signal);
+    });
 
     if (!sender.isDestroyed()) {
       sender.send("llama:stream", {
         type: "done",
+        requestId,
       });
     }
 
@@ -286,10 +305,13 @@ ipcMain.handle("llama:prompt", async (event, payload) => {
       sender.send("llama:stream", {
         type: "error",
         error: error.message,
+        requestId,
       });
     }
 
     throw error;
+  } finally {
+    if (requestId) llamaPromptAborts.delete(requestId);
   }
 });
 

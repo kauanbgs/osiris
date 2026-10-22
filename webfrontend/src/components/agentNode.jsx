@@ -2,6 +2,7 @@ import { Handle, Position, useReactFlow, useStore } from "@xyflow/react";
 import { Bot, GripVertical, Loader2, Play, Square, Workflow } from "lucide-react";
 import WorkflowModelSelect from "@/components/WorkflowModelSelect";
 import { useWorkflowExecution } from "@/contexts/useWorkflowExecution";
+import { getAgentFileNodes } from "@/workflow/getConnectedFiles";
 
 export default function AgentNode({ id, data }) {
   const { updateNodeData } = useReactFlow();
@@ -12,8 +13,8 @@ export default function AgentNode({ id, data }) {
   const error = agentState?.error || "";
   const chainStatus = agentState ? ({ waiting: "Aguardando agentes anteriores", done: "Concluido", cancelled: "Interrompido", skipped: "Nao executado" }[agentState.status] || "") : "";
   const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-violet-500 hover:!bg-violet-400 transition-colors";
-  const hasFileInput = useStore((state) => state.edges.some((edge) => edge.target === id && state.nodes.some((node) => node.id === edge.source && node.type === "file")));
-  const hasFileOutput = useStore((state) => state.edges.some((edge) => edge.source === id && state.nodes.some((node) => node.id === edge.target && node.type === "file")));
+  const hasFileInput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).inputs.length > 0);
+  const hasFileOutput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).outputs.length > 0);
   const hasAgentInput = useStore((state) => state.edges.some((edge) => edge.target === id && state.nodes.some((node) => node.id === edge.source && node.type === "agent")));
   const hasAgentOutput = useStore((state) => state.edges.some((edge) => edge.source === id && state.nodes.some((node) => node.id === edge.target && node.type === "agent")));
   const isChainRoot = hasAgentOutput;

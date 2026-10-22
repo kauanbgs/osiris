@@ -159,7 +159,7 @@ function getAgent(agentId) {
 }
 
 async function askAgent(agentId, prompt, history = [], options = {}) {
-  const { stream = false, onChunk, memory = [], includeRole = true } = options;
+  const { stream = false, onChunk, memory = [], includeRole = true, signal } = options;
 
   const agent = getAgent(agentId);
 
@@ -184,6 +184,7 @@ ${prompt}
     history,
     memory,
     onChunk: stream ? onChunk : undefined,
+    signal,
   });
 }
 

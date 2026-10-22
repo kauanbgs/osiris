@@ -203,6 +203,9 @@ export default function Home() {
 
   const accumulatedTextRef = useRef("");
 
+  // Geração em andamento no chat; o botão de parar aborta por aqui.
+  const generationRef = useRef(null);
+
   function startRecognition(SpeechRecognition, baseText) {
     const recognition = new SpeechRecognition();
 
@@ -450,6 +453,10 @@ export default function Home() {
 
     setIsLoading(true);
 
+    const generation = new AbortController();
+    generationRef.current = generation;
+    let partialText = "";
+
     let currentChatId = id;
 
     // ========================================
@@ -569,7 +576,10 @@ export default function Home() {
         // STREAM
         // ==================================
 
+        signal: generation.signal,
+
         onChunk: (accumulated) => {
+          partialText = accumulated;
           const parsed = parseReasoning(accumulated);
 
           setMessages((prev) => {
@@ -685,6 +695,38 @@ export default function Home() {
       }
     } catch (err) {
       // ======================================
+      // INTERROMPIDO PELO USUÁRIO
+      // ======================================
+
+      if (err.name === "AbortError") {
+        const parsed = parseReasoning(partialText);
+
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+
+          if (lastIdx >= 0 && updated[lastIdx].isBot) {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              content: parsed.content || "_Resposta interrompida._",
+              reasoning: parsed.reasoning,
+              isStreaming: false,
+              agentStatus: { type: "done", agent: "main", label: "Resposta interrompida." },
+            };
+          }
+
+          return updated;
+        });
+
+        if (currentChatId && partialText) {
+          sheets.postMessage(currentChatId, { type: "assistant", content: partialText })
+            .catch((saveErr) => console.error("Erro ao salvar resposta interrompida:", saveErr));
+        }
+
+        return;
+      }
+
+      // ======================================
       // ERRO
       // ======================================
 
@@ -720,8 +762,13 @@ export default function Home() {
         return updated;
       });
     } finally {
+      if (generationRef.current === generation) generationRef.current = null;
       setIsLoading(false);
     }
+  }
+
+  function handleStop() {
+    generationRef.current?.abort();
   }
 
   // ==========================================
@@ -1016,13 +1063,14 @@ export default function Home() {
 
               {/* Enviar */}
               <PromptInputAction
-                tooltip={isLoading ? "Gerando..." : "Enviar mensagem"}
+                tooltip={isLoading ? "Parar resposta" : "Enviar mensagem"}
               >
                 <Button
                   variant="default"
                   size="icon"
                   className="h-8 w-8 rounded-full bg-white text-black"
-                  onClick={handleSubmit}
+                  onClick={isLoading ? handleStop : handleSubmit}
+                  aria-label={isLoading ? "Parar resposta" : "Enviar mensagem"}
                 >
                   {isLoading ? (
                     <Square className="size-5 fill-current" />

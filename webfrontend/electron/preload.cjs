@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld("llama", {
   prompt: (payload) => {
     return ipcRenderer.invoke("llama:prompt", payload);
   },
+  abort: (requestId) => ipcRenderer.invoke("llama:abort", requestId),
   importFile: () => ipcRenderer.invoke("llama:import-file"),
   deleteModel: (modelPath) =>
     ipcRenderer.invoke("llama:delete-model", modelPath),
