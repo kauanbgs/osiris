@@ -1,5 +1,6 @@
 import { prepareGroqPrompt } from "./groqBudget.js";
 import { getConnectedFiles } from "./getConnectedFiles.js";
+import { getConnectedNotes, buildNoteContext } from "./getConnectedNotes.js";
 import { buildFileContext, buildFinalPrompt } from "./buildFileContext.js";
 import { resolveAgentInputs, buildAgentContext, findWorkflowGoal } from "./resolveAgentInputs.js";
 import { buildAgentSystemPrompt } from "./handoff.js";
@@ -76,7 +77,9 @@ export async function executeAgentNode({
       { goal: findWorkflowGoal(agentId, nodes, edges), label: node.data?.label || agentId });
 
   // 3. Construir contexto de arquivos
-  const fileContext = buildFileContext(files);
+  //    Notas de texto conectadas entram junto, antes dos arquivos.
+  const fileContext = [buildNoteContext(getConnectedNotes(agentId, nodes, edges)), buildFileContext(files)]
+    .filter(Boolean).join("\n\n---\n\n");
 
   // 4. Montar contexto combinado (agentes upstream + arquivos)
   const combinedContext = [

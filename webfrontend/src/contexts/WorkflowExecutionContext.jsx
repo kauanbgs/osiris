@@ -11,7 +11,6 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
   const [events, setEvents] = useState(initialEvents);
   const [agents, setAgents] = useState({});
   const [running, setRunning] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(initialEvents.length > 0);
   const controller = useRef(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -30,7 +29,6 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
     const abort = new AbortController();
     controller.current = abort;
     setRunning(true);
-    setPanelOpen(true);
     setAgents({});
     const nodes = getNodes();
     const edges = getEdges();
@@ -102,7 +100,7 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
       controller.current = null;
     }
   }
-  return <WorkflowExecutionContext.Provider value={{ events, agents, running, run, stop: () => controller.current?.abort(), panelOpen, setPanelOpen }}>
+  return <WorkflowExecutionContext.Provider value={{ events, agents, running, run, stop: () => controller.current?.abort() }}>
     {children}
   </WorkflowExecutionContext.Provider>;
 }

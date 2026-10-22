@@ -411,6 +411,7 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
           fitView={!initialWorkflow.viewport}
           minZoom={0.1}
           maxZoom={4}
+          connectionRadius={40}
         >
           <Background
             gap={30}
