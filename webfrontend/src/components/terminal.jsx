@@ -4,7 +4,13 @@ import { FitAddon } from "@xterm/addon-fit";
 
 import "@xterm/xterm/css/xterm.css";
 
-export default function Terminal({ terminalId, mode }) {
+function stripTerminalControlSequences(value) {
+  return String(value)
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, "");
+}
+
+export default function Terminal({ terminalId, mode, initialContent = "", onContentChange }) {
   const terminalRef = useRef(null);
   
 
@@ -28,6 +34,8 @@ export default function Terminal({ terminalId, mode }) {
     xterm.loadAddon(fitAddon);
 
     xterm.open(terminalRef.current);
+    if (initialContent) xterm.write(initialContent);
+    let savedContent = initialContent;
 
     // Ensure layout dimensions are computed before initial fit
     const fitTimer = setTimeout(() => {
@@ -55,6 +63,8 @@ export default function Terminal({ terminalId, mode }) {
       ? window.electronAPI.onTerminalData((targetId, data) => {
           if (targetId === terminalId) {
             xterm.write(data);
+            savedContent = (savedContent + stripTerminalControlSequences(data)).slice(-4000);
+            onContentChange?.(savedContent);
           }
         })
       : null;

@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { key: 'home',     icon: 'home',           route: 'HomeScreen' },
   { key: 'chats',   icon: 'message-square', route: 'Chats' },
   { key: 'folder',  icon: 'folder',          route: 'ArquivoScreen' },
+  { key: 'workflow',icon: 'git-branch',      route: 'WorkflowScreen' },
   { key: 'terminal',icon: 'terminal',        route: 'Terminal' },
   { key: 'settings',icon: 'settings',        route: 'Configuracoes' },
 ];

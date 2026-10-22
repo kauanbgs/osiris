@@ -67,6 +67,9 @@ const sheets = {
 
   // ── Files ──────────────────────────────────────────────────────────
   getDesktopWorkspace: () => api.get("/file/workspace"),
+  getWorkflows: () => api.get("/workflow"),
+  getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
+  saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
 };
 
 export default sheets;

@@ -1,4 +1,5 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   ReactFlow,
@@ -17,6 +18,7 @@ import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
 import FileNode from "@/components/FileNode";
 import WorkflowText from "@/components/workflowText";
+import sheets from "@/services/api";
 
 import {
   Menubar,
@@ -55,14 +57,119 @@ const edgeTypes = {
 const initialNodes = [];
 
 export default function Workflow() {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const [canvasReady, setCanvasReady] = useState(false);
+  const dirtyRef = useRef(false);
+  const changeVersionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
   const [nodes, setNodes, onNodesChange] =
     useNodesState(initialNodes);
 
   const [edges, setEdges, onEdgesChange] =
     useEdgesState([]);
 
+  useEffect(() => {
+    if (id) return undefined;
+    let cancelled = false;
+    async function openOrCreate() {
+      try {
+        const { data } = await sheets.getWorkflows();
+        let workflow = data.workflows?.[0];
+        if (!workflow) {
+          const result = await sheets.createWorkflow({ name: "Meu workflow", description: "Workflow criado pelo editor." });
+          workflow = result.data.workflow;
+        }
+        if (!cancelled) navigate(`/workflows/${workflow.id_workflow}`, { replace: true });
+      } catch (error) {
+        console.error("Não foi possível abrir o workflow:", error);
+      }
+    }
+    openOrCreate();
+    return () => { cancelled = true; };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    let cancelled = false;
+    setCanvasReady(false);
+    dirtyRef.current = false;
+    changeVersionRef.current = 0;
+    async function loadCanvas() {
+      try {
+        const { data } = await sheets.getWorkflowCanvas(id);
+        if (cancelled) return;
+        setNodes(data.canvas?.nodes || []);
+        setEdges(data.canvas?.edges || []);
+        setCanvasReady(true);
+      } catch (error) {
+        console.error("Não foi possível carregar o workflow:", error);
+        if (!cancelled) setCanvasReady(true);
+      }
+    }
+    loadCanvas();
+    const interval = setInterval(async () => {
+      if (cancelled || dirtyRef.current || saveInFlightRef.current) return;
+      try {
+        const { data } = await sheets.getWorkflowCanvas(id);
+        if (cancelled || dirtyRef.current) return;
+        const remoteNodes = data.canvas?.nodes || [];
+        const remoteEdges = data.canvas?.edges || [];
+        setNodes((current) => JSON.stringify(current) === JSON.stringify(remoteNodes) ? current : remoteNodes);
+        setEdges((current) => JSON.stringify(current) === JSON.stringify(remoteEdges) ? current : remoteEdges);
+      } catch (error) {
+        console.warn("Não foi possível atualizar o workflow:", error?.message);
+      }
+    }, 1500);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [id, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!id || !canvasReady || !dirtyRef.current) return undefined;
+    const version = changeVersionRef.current;
+    const timeout = setTimeout(async () => {
+      saveInFlightRef.current = true;
+      try {
+        await sheets.saveWorkflowCanvas(id, { nodes, edges });
+        if (changeVersionRef.current === version) dirtyRef.current = false;
+      } catch (error) {
+        console.error("Não foi possível salvar o workflow:", error);
+      } finally {
+        saveInFlightRef.current = false;
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [id, canvasReady, nodes, edges]);
+
+  const handleNodesChange = useCallback((changes) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    onNodesChange(changes);
+  }, [onNodesChange]);
+
+  const handleEdgesChange = useCallback((changes) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    onEdgesChange(changes);
+  }, [onEdgesChange]);
+
+  const updateNodeData = useCallback((nodeId, patch) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    setNodes((current) => current.map((node) => node.id === nodeId
+      ? { ...node, data: { ...node.data, ...patch } }
+      : node));
+  }, [setNodes]);
+
+  const renderNodes = useMemo(() => nodes.map((node) => ({
+    ...node,
+    data: { ...node.data, onWorkflowDataChange: updateNodeData },
+  })), [nodes, updateNodeData]);
+
   const onConnect = useCallback(
-    (params) =>
+    (params) => {
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setEdges((eds) =>
         addEdge(
           {
@@ -71,7 +178,8 @@ export default function Workflow() {
           },
           eds
         )
-      ),
+      );
+    },
     [setEdges]
   );
 
@@ -98,6 +206,8 @@ export default function Workflow() {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -126,6 +236,8 @@ export default function Workflow() {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -160,6 +272,8 @@ export default function Workflow() {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -194,6 +308,8 @@ export default function Workflow() {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -344,10 +460,10 @@ export default function Workflow() {
       {/* CANVAS */}
       <div className="h-full w-full">
         <ReactFlow
-          nodes={nodes}
+          nodes={renderNodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
