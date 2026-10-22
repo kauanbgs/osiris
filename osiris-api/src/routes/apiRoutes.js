@@ -162,6 +162,8 @@ router.post(
   FileController.upload,
 );
 router.get("/file", verifyJWT, FileController.list);
+router.post("/file/logs", verifyJWT, FileController.createLog);
+router.get("/file/logs", verifyJWT, FileController.listLogs);
 router.get("/file/:id_file", verifyJWT, FileController.getById);
 router.get("/file/:id_file/download", verifyJWT, FileController.download);
 router.delete("/file/:id_file", verifyJWT, FileController.delete);
