@@ -184,38 +184,6 @@ class MemoryController {
       return next(error);
     }
   }
-
-  // =====================================================
-  // BUSCAR MEMÓRIAS PARA USAR NO PROMPT DO CHAT
-  // =====================================================
-
-  static async getMemoryContext(userId) {
-    try {
-      const [rows] = await pool.promise().execute(
-        `SELECT content, importance
-         FROM user_memory
-         WHERE fk_id_user = ?
-         ORDER BY importance DESC, updated_at DESC
-         LIMIT 50`,
-        [userId],
-      );
-
-      if (rows.length === 0) {
-        return "";
-      }
-
-      return rows
-        .map((memory) => `- ${memory.content}`)
-        .join("\n");
-    } catch (error) {
-      console.error(
-        "Erro ao buscar contexto de memória:",
-        error,
-      );
-
-      return "";
-    }
-  }
 }
 
 module.exports = MemoryController;

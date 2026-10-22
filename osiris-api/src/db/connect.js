@@ -1,12 +1,16 @@
-const mysql = require("mysql2")
-const jwt = require("jsonwebtoken");
+const mysql = require("mysql2");
 
 const pool = mysql.createPool({
-    connectionLimit:10,
-    host:process.env.DB_HOST, // Mude para o seu host (IP)
-    user:process.env.DB_USER, // Mude para o seu User do Mysql aluno
-    password:process.env.DB_PASSWORD, // Mude para a senha do seu User senai@604
-    database: process.env.DB_NAME // Mude para o seu database JÁ criado
-})
+    connectionLimit: Number(process.env.DB_POOL_LIMIT) || 20,
+    waitForConnections: true,
+    queueLimit: 100,
+    idleTimeout: 30000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 30000,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+});
 
 module.exports = pool;

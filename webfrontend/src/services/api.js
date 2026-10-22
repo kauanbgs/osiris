@@ -31,6 +31,11 @@ const sheets = {
   deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
   syncDesktopWorkspace: (folderPath) => api.post("/file/workspace", { folderPath }),
   getDesktopWorkspace: () => api.get("/file/workspace"),
+  // Terminal
+  terminalExecute: (data) => api.post("/terminal/exec", data),
+  executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
+  terminalHistory: (params) => api.get("/terminal/history", { params }),
+  terminalClearHistory: () => api.delete("/terminal/history"),
 }
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),

@@ -181,10 +181,19 @@ class AiModelController {
         `SELECT id_model, name, download_url FROM ai_model`,
       );
 
+      // Pre-fetch all existing installations in a single query to eliminate N+1 roundtrips
+      const [existingInstRows] = await pool.promise().execute(
+        `SELECT id_installation, fk_id_model FROM model_installation`,
+      );
+      const installationMap = new Map(
+        existingInstRows.map((inst) => [inst.fk_id_model, inst.id_installation]),
+      );
+
       const matchedInstallations = [];
+      const dbOperations = [];
 
       for (const file of files) {
-        // Try to match file with a model by name or download_url basename
+        // Match file with a model by download_url basename or name prefix
         const matchedModel = modelRows.find((m) => {
           const urlBasename = m.download_url?.split("/").pop()?.toLowerCase();
           const fileNameLower = file.filename.toLowerCase();
@@ -195,25 +204,25 @@ class AiModelController {
         });
 
         if (matchedModel) {
-          // Check if already in model_installation
-          const [instRows] = await pool.promise().execute(
-            `SELECT id_installation FROM model_installation WHERE fk_id_model = ? LIMIT 1`,
-            [matchedModel.id_model],
-          );
+          const existingInstId = installationMap.get(matchedModel.id_model);
 
-          if (instRows[0]) {
-            await pool.promise().execute(
-              `UPDATE model_installation
-               SET installation_status = 'installed', local_path = ?, download_date = NOW()
-               WHERE id_installation = ?`,
-              [file.path, instRows[0].id_installation],
+          if (existingInstId) {
+            dbOperations.push(
+              pool.promise().execute(
+                `UPDATE model_installation
+                 SET installation_status = 'installed', local_path = ?, download_date = NOW()
+                 WHERE id_installation = ?`,
+                [file.path, existingInstId],
+              ),
             );
           } else {
-            await pool.promise().execute(
-              `INSERT INTO model_installation
-                (installation_status, local_path, download_date, fk_id_model)
-               VALUES ('installed', ?, NOW(), ?)`,
-              [file.path, matchedModel.id_model],
+            dbOperations.push(
+              pool.promise().execute(
+                `INSERT INTO model_installation
+                  (installation_status, local_path, download_date, fk_id_model)
+                 VALUES ('installed', ?, NOW(), ?)`,
+                [file.path, matchedModel.id_model],
+              ),
             );
           }
 
@@ -225,6 +234,11 @@ class AiModelController {
             size_mb: file.size_mb,
           });
         }
+      }
+
+      // Execute all pending persistence updates in parallel
+      if (dbOperations.length > 0) {
+        await Promise.all(dbOperations);
       }
 
       return res.status(200).json({
