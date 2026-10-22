@@ -2,6 +2,7 @@ jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const {
   app,
   auth,
@@ -61,6 +62,41 @@ describe("FileController", () => {
     expect(res.status).toBe(200);
     expect(res.body.files).toHaveLength(1);
     expect(res.body.files[0].name).toBe("test.txt");
+  });
+
+  it("stores the selected desktop workspace for the signed-in user", async () => {
+    mockQueries([[]], [{ insertId: 12 }]);
+
+    const res = await request(app)
+      .post("/api/osiris/file/workspace")
+      .set(auth())
+      .send({ folderPath: path.resolve(__dirname) });
+
+    expect(res.status).toBe(200);
+    expect(res.body.folderName).toBe(path.basename(__dirname));
+  });
+
+  it("returns current names from the saved desktop workspace", async () => {
+    const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "osiris-workspace-"));
+    fs.mkdirSync(path.join(workspacePath, "docs"));
+    fs.writeFileSync(path.join(workspacePath, "docs", "readme.txt"), "sample");
+    mockQueries([[{ value: workspacePath }]]);
+
+    try {
+      const res = await request(app)
+        .get("/api/osiris/file/workspace")
+        .set(auth());
+
+      expect(res.status).toBe(200);
+      expect(res.body.workspace.folderName).toBe(path.basename(workspacePath));
+      expect(res.body.workspace.files).toContainEqual({
+        name: "readme.txt",
+        relativePath: "docs/readme.txt",
+        type: "file",
+      });
+    } finally {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
   });
 
   it("gets a file by id", async () => {

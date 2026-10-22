@@ -12,6 +12,7 @@ import {
   Save,
   X,
 } from "lucide-react";
+import sheets from "@/services/api";
 
 export default function Arquivos() {
   const [workspace, setWorkspace] = useState(null);
@@ -34,6 +35,15 @@ export default function Arquivos() {
       if (!result) return;
 
       setWorkspace(result);
+
+      try {
+        await sheets.syncDesktopWorkspace(result.folderPath);
+      } catch (syncError) {
+        console.error("Não foi possível compartilhar a pasta com o mobile:", syncError);
+        window.alert(
+          "A pasta abriu no desktop, mas não foi sincronizada com o mobile. Verifique seu login e a conexão com a API.",
+        );
+      }
 
       setOpenFiles([]);
       setActivePath(null);

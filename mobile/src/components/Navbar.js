@@ -11,7 +11,7 @@ const colors = {
 const NAV_ITEMS = [
   { key: 'home',     icon: 'home',           route: 'HomeScreen' },
   { key: 'chats',   icon: 'message-square', route: 'Chats' },
-  { key: 'folder',  icon: 'folder',          route: null },
+  { key: 'folder',  icon: 'folder',          route: 'ArquivoScreen' },
   { key: 'terminal',icon: 'terminal',        route: 'Terminal' },
   { key: 'settings',icon: 'settings',        route: 'Configuracoes' },
 ];

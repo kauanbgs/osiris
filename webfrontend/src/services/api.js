@@ -29,6 +29,8 @@ const sheets = {
   getMemory: () => api.get("/memory"),
   updateMemory: (id_memory, data) => api.put(`/memory/${id_memory}`, data),
   deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
+  syncDesktopWorkspace: (folderPath) => api.post("/file/workspace", { folderPath }),
+  getDesktopWorkspace: () => api.get("/file/workspace"),
   // Terminal
   terminalExecute: (data) => api.post("/terminal/exec", data),
   executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
