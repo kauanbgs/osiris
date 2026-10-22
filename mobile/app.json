@@ -26,7 +26,8 @@
     "plugins": [
       "expo-status-bar",
       "expo-font",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ]
   }
 }
