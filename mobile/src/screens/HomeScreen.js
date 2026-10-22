@@ -506,11 +506,6 @@ export default function HomeScreen({ navigation, route }) {
     }
   };
 
-  // ─── DITADO NATIVO VIA MICROFONE DO TECLADO ─────────────────────────
-  const handleMicPress = () => {
-    // Foca o campo de entrada para o usuário utilizar o microfone de ditado nativo do teclado
-    inputRef.current?.focus();
-  };
 
   // ─── ENVIO DE MENSAGEM ───────────────────────────────────────────────
   const handleSend = async (customText = null, customAttachment = null) => {
@@ -649,7 +644,6 @@ export default function HomeScreen({ navigation, route }) {
           value={message}
           onChangeText={setMessage}
           onSend={handleSend}
-          onMicPress={handleMicPress}
           onPlusPress={() => setPlusMenuVisible(true)}
           disabled={isAgentTyping}
           attachment={attachment}

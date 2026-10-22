@@ -35,7 +35,6 @@ export default function ChatInput({
   value,
   onChangeText,
   onSend,
-  onMicPress,
   onPlusPress,
   placeholder = "O que você quer construir?",
   disabled = false,
@@ -110,23 +109,6 @@ export default function ChatInput({
           </TouchableOpacity>
 
           <View style={styles.rightActions}>
-            {/* Botão de Microfone / Voice-to-Text */}
-            <TouchableOpacity
-              style={[
-                styles.micButton,
-                isListening && styles.micButtonActive,
-              ]}
-              onPress={onMicPress}
-              disabled={disabled}
-              activeOpacity={0.7}
-            >
-              {isListening ? (
-                <Ionicons name="radio" size={20} color={colors.white} />
-              ) : (
-                <Feather name="mic" size={20} color={colors.textPrimary} />
-              )}
-            </TouchableOpacity>
-
             {/* Botão Enviar */}
             <TouchableOpacity
               style={[
@@ -253,18 +235,6 @@ const styles = StyleSheet.create({
   rightActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  micButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "transparent",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  micButtonActive: {
-    backgroundColor: colors.blueWave,
   },
   sendButton: {
     width: 40,
