@@ -16,7 +16,6 @@ import * as Speech from "expo-speech";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,7 +23,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import BottomNav from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
 import PlusActionMenu from "../components/PlusActionMenu";
-import VoiceModal from "../components/VoiceModal";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
 
@@ -161,103 +159,6 @@ function GreetingHeader({ userName = "Usuário" }) {
   );
 }
 
-function AudioPlayerBubble({ uri, name, duration = 0, isUser = true }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const playerRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (playerRef.current) {
-        try {
-          playerRef.current.pause();
-          playerRef.current.remove();
-        } catch {}
-      }
-    };
-  }, []);
-
-  const handleTogglePlay = async () => {
-    try {
-      if (!playerRef.current) {
-        playerRef.current = createAudioPlayer(uri);
-        playerRef.current.addListener("playbackStatusUpdate", (status) => {
-          if (status.didJustFinish) {
-            setIsPlaying(false);
-          }
-        });
-      }
-
-      if (isPlaying) {
-        playerRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          allowsRecording: false,
-        });
-        playerRef.current.play();
-        setIsPlaying(true);
-      }
-    } catch (err) {
-      console.warn("Erro ao reproduzir áudio:", err);
-      setIsPlaying(false);
-    }
-  };
-
-  const formatSecs = (sec) => {
-    const s = Math.floor(sec || 0);
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    return `${m}:${rem < 10 ? "0" : ""}${rem}`;
-  };
-
-  return (
-    <View style={styles.audioBubbleContainer}>
-      <TouchableOpacity
-        style={[
-          styles.audioPlayBtn,
-          isUser ? styles.audioPlayBtnUser : styles.audioPlayBtnAgent,
-        ]}
-        onPress={handleTogglePlay}
-        activeOpacity={0.8}
-      >
-        <Ionicons
-          name={isPlaying ? "pause" : "play"}
-          size={16}
-          color="#ffffff"
-          style={!isPlaying ? { marginLeft: 2 } : {}}
-        />
-      </TouchableOpacity>
-
-      <View style={styles.audioWaveformCol}>
-        <View style={styles.audioWaveformBars}>
-          {[5, 13, 8, 17, 21, 14, 18, 10, 16, 8, 14, 20, 13, 7, 15, 9].map(
-            (barHeight, idx) => (
-              <View
-                key={idx}
-                style={[
-                  styles.audioMiniBar,
-                  {
-                    height: barHeight,
-                    backgroundColor: isPlaying
-                      ? "#60a5fa"
-                      : isUser
-                      ? "rgba(255, 255, 255, 0.75)"
-                      : "#85818c",
-                  },
-                ]}
-              />
-            )
-          )}
-        </View>
-        <Text style={styles.audioDurationText}>
-          {name || formatSecs(duration)}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function MessageBubble({ role, text, attachment }) {
   const isUser = role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -347,16 +248,6 @@ function MessageBubble({ role, text, attachment }) {
                 {attachment.name}
               </Text>
             </View>
-          )}
-
-          {/* Anexo de Áudio gravado via microfone */}
-          {attachment && attachment.type === "audio" && (
-            <AudioPlayerBubble
-              uri={attachment.uri}
-              name={attachment.name}
-              duration={attachment.duration}
-              isUser={isUser}
-            />
           )}
 
           {/* Texto da Mensagem */}
@@ -464,10 +355,8 @@ export default function HomeScreen({ navigation, route }) {
   const [plusMenuVisible, setPlusMenuVisible] = useState(false);
   const [attachment, setAttachment] = useState(null);
 
-  // Estado para VoiceModal (voz sem abrir teclado, estilo ChatGPT)
-  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
-
   const listRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -617,23 +506,10 @@ export default function HomeScreen({ navigation, route }) {
     }
   };
 
-  // ─── VOICE (Gravação real do microfone estilo ChatGPT sem abrir teclado) ──
-  const handleOpenVoice = () => {
-    Keyboard.dismiss(); // O teclado NÃO abre!
-    setVoiceModalVisible(true);
-  };
-
-  const handleVoiceSend = (voiceData) => {
-    if (!voiceData || !voiceData.uri) return;
-
-    const audioAttachment = {
-      type: "audio",
-      uri: voiceData.uri,
-      name: voiceData.name || "Mensagem de voz",
-      duration: voiceData.duration || 0,
-    };
-
-    handleSend("", audioAttachment);
+  // ─── DITADO NATIVO VIA MICROFONE DO TECLADO ─────────────────────────
+  const handleMicPress = () => {
+    // Foca o campo de entrada para o usuário utilizar o microfone de ditado nativo do teclado
+    inputRef.current?.focus();
   };
 
   // ─── ENVIO DE MENSAGEM ───────────────────────────────────────────────
@@ -769,22 +645,15 @@ export default function HomeScreen({ navigation, route }) {
         )}
 
         <ChatInput
+          inputRef={inputRef}
           value={message}
           onChangeText={setMessage}
           onSend={handleSend}
-          onMicPress={handleOpenVoice}
+          onMicPress={handleMicPress}
           onPlusPress={() => setPlusMenuVisible(true)}
           disabled={isAgentTyping}
-          isListening={voiceModalVisible}
           attachment={attachment}
           onRemoveAttachment={() => setAttachment(null)}
-        />
-
-        {/* Modal de Voz estilo ChatGPT com ondas sonoras azuis (sem abrir teclado) */}
-        <VoiceModal
-          visible={voiceModalVisible}
-          onClose={() => setVoiceModalVisible(false)}
-          onSendVoice={handleVoiceSend}
         />
 
         {/* Menu Popover acionado pelo botão + */}
@@ -963,48 +832,5 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.textSecondary,
     marginHorizontal: 2,
-  },
-
-  // Player de Áudio do Chat
-  audioBubbleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-    minWidth: 200,
-  },
-  audioPlayBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  audioPlayBtnUser: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-  },
-  audioPlayBtnAgent: {
-    backgroundColor: "#3b82f6",
-  },
-  audioWaveformCol: {
-    flex: 1,
-    justifyContent: "center",
-    gap: 4,
-  },
-  audioWaveformBars: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    height: 22,
-  },
-  audioMiniBar: {
-    width: 3,
-    borderRadius: 1.5,
-  },
-  audioDurationText: {
-    fontSize: 11,
-    color: "rgba(255, 255, 255, 0.8)",
-    fontWeight: "500",
   },
 });

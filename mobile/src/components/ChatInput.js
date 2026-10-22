@@ -31,6 +31,7 @@ const colors = {
 const fontFamily = Platform.select({ ios: "Courier", android: "monospace" });
 
 export default function ChatInput({
+  inputRef,
   value,
   onChangeText,
   onSend,
@@ -38,7 +39,6 @@ export default function ChatInput({
   onPlusPress,
   placeholder = "O que você quer construir?",
   disabled = false,
-  isListening = false,
   attachment = null,
   onRemoveAttachment,
 }) {
@@ -84,20 +84,17 @@ export default function ChatInput({
         <View style={styles.inputBox}>
           <Text style={styles.prompt}>{">"}</Text>
           <TextInput
+            ref={inputRef}
             style={styles.input}
             placeholder={
-              isListening
-                ? "Ouvindo... Fale sua mensagem"
-                : disabled
+              disabled
                 ? "Aguardando resposta do agente…"
                 : placeholder
             }
-            placeholderTextColor={
-              isListening ? colors.blueWave : colors.textPlaceholder
-            }
+            placeholderTextColor={colors.textPlaceholder}
             value={value}
             onChangeText={onChangeText}
-            editable={!disabled && !isListening}
+            editable={!disabled}
           />
         </View>
 
