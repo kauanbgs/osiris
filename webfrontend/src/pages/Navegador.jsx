@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Compass,
   ArrowLeft,
@@ -18,8 +18,11 @@ import {
   MousePointerClick,
   CheckCircle2,
   Copy,
+  Laptop,
+  AlertTriangle,
 } from "lucide-react";
 import sheets from "@/services/api";
+import { isElectron } from "@/utils/isElectron";
 
 const QUICK_BOOKMARKS = [
   { name: "Hugging Face", url: "https://huggingface.co", desc: "Modelos e datasets de IA" },
@@ -43,6 +46,9 @@ function sanitizeUrl(rawUrl) {
 }
 
 export default function NavegadorPage() {
+  const isElectronApp = isElectron();
+  const webviewRef = useRef(null);
+
   const [tabs, setTabs] = useState([
     {
       id: "tab-1",
@@ -91,6 +97,65 @@ export default function NavegadorPage() {
         });
     }
   }, [activeTabId]);
+
+  // Sincroniza eventos do Webview Nativo no Electron
+  useEffect(() => {
+    const webview = webviewRef.current;
+    if (!webview || !isElectronApp) return;
+
+    const handleStartLoading = () => {
+      updateActiveTab({ isLoading: true });
+    };
+
+    const handleStopLoading = () => {
+      updateActiveTab({ isLoading: false });
+    };
+
+    const handleNavigate = (e) => {
+      if (e.url && e.url !== activeTab.url) {
+        let displayTitle = e.url;
+        try {
+          displayTitle = new URL(e.url).hostname.replace("www.", "");
+        } catch {
+          displayTitle = e.url.slice(0, 20);
+        }
+        updateActiveTab((curr) => {
+          const newHistory = curr.history.includes(e.url)
+            ? curr.history
+            : [...curr.history.slice(0, curr.historyIndex + 1), e.url];
+          return {
+            ...curr,
+            url: e.url,
+            inputUrl: e.url,
+            title: displayTitle,
+            history: newHistory,
+            historyIndex: newHistory.indexOf(e.url) !== -1 ? newHistory.indexOf(e.url) : newHistory.length - 1,
+            isLoading: false,
+          };
+        });
+      }
+    };
+
+    const handleTitleUpdated = (e) => {
+      if (e.title) {
+        updateActiveTab({ title: e.title });
+      }
+    };
+
+    webview.addEventListener("did-start-loading", handleStartLoading);
+    webview.addEventListener("did-stop-loading", handleStopLoading);
+    webview.addEventListener("did-navigate", handleNavigate);
+    webview.addEventListener("did-navigate-in-page", handleNavigate);
+    webview.addEventListener("page-title-updated", handleTitleUpdated);
+
+    return () => {
+      webview.removeEventListener("did-start-loading", handleStartLoading);
+      webview.removeEventListener("did-stop-loading", handleStopLoading);
+      webview.removeEventListener("did-navigate", handleNavigate);
+      webview.removeEventListener("did-navigate-in-page", handleNavigate);
+      webview.removeEventListener("page-title-updated", handleTitleUpdated);
+    };
+  }, [activeTabId, activeTab.url, isElectronApp]);
 
   const addTab = async () => {
     if (tabs.length >= 10) return;
@@ -179,6 +244,15 @@ export default function NavegadorPage() {
       };
     });
 
+    // Se estiver no Electron com webview já montado, instrui o webview
+    if (isElectronApp && webviewRef.current) {
+      try {
+        webviewRef.current.loadURL(formatted);
+      } catch {
+        // Fallback
+      }
+    }
+
     // Chamada à API Osíris para navegação e extração de árvore de nós DOM
     try {
       let currentSessionId = activeTab.id_session;
@@ -239,6 +313,10 @@ export default function NavegadorPage() {
   };
 
   const handleGoBack = () => {
+    if (isElectronApp && webviewRef.current?.canGoBack?.()) {
+      webviewRef.current.goBack();
+      return;
+    }
     if (activeTab.historyIndex <= 0) return;
     const prevIdx = activeTab.historyIndex - 1;
     const targetUrl = activeTab.history[prevIdx];
@@ -263,6 +341,10 @@ export default function NavegadorPage() {
   };
 
   const handleGoForward = () => {
+    if (isElectronApp && webviewRef.current?.canGoForward?.()) {
+      webviewRef.current.goForward();
+      return;
+    }
     if (activeTab.historyIndex >= activeTab.history.length - 1) return;
     const nextIdx = activeTab.historyIndex + 1;
     const targetUrl = activeTab.history[nextIdx];
@@ -287,6 +369,10 @@ export default function NavegadorPage() {
   };
 
   const handleReload = () => {
+    if (isElectronApp && webviewRef.current) {
+      webviewRef.current.reload();
+      return;
+    }
     if (!activeTab.url) return;
     updateActiveTab({ isLoading: true });
     if (activeTab.id_session) {
@@ -321,8 +407,12 @@ export default function NavegadorPage() {
     navigateTo(activeTab.inputUrl);
   };
 
-  const canGoBack = activeTab.historyIndex > 0;
-  const canGoForward = activeTab.historyIndex < activeTab.history.length - 1;
+  const canGoBack = isElectronApp
+    ? (webviewRef.current?.canGoBack?.() ?? activeTab.historyIndex > 0)
+    : activeTab.historyIndex > 0;
+  const canGoForward = isElectronApp
+    ? (webviewRef.current?.canGoForward?.() ?? activeTab.historyIndex < activeTab.history.length - 1)
+    : activeTab.historyIndex < activeTab.history.length - 1;
   const isSecure = activeTab.url.startsWith("https://");
 
   const domElements = activeTab.dom_tree?.elements || [];
@@ -385,17 +475,24 @@ export default function NavegadorPage() {
           </button>
         </div>
 
-        {/* Indicador de Status da API */}
-        <div className="hidden pb-1 sm:flex items-center gap-2 text-[11px] font-mono text-zinc-400">
-          {activeTab.id_session ? (
-            <span className="flex items-center gap-1 text-emerald-400">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              API Conectada
+        {/* Indicador de Status do Modo (Electron vs Web) */}
+        <div className="hidden pb-1 sm:flex items-center gap-2 text-[11px] font-mono">
+          {isElectronApp ? (
+            <span className="flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-400">
+              <Laptop size={11} />
+              Webview Nativo (Electron)
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-zinc-500">
-              <span className="h-2 w-2 rounded-full bg-zinc-600" />
-              Sessão Local
+            <span className="flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-300">
+              <Globe size={11} />
+              Modo Web (Iframe)
+            </span>
+          )}
+
+          {activeTab.id_session && (
+            <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              API
             </span>
           )}
         </div>
@@ -645,10 +742,10 @@ export default function NavegadorPage() {
                   <div className="rounded-lg border border-zinc-800/40 bg-zinc-900/30 p-3">
                     <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium mb-1">
                       <ShieldCheck size={14} />
-                      <span>Sandbox Isolado</span>
+                      <span>Motor Webview Real</span>
                     </div>
                     <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Ambiente seguro para visualização de conteúdo externo.
+                      Chromium nativo sem restrições de CORS e X-Frame-Options no Desktop.
                     </p>
                   </div>
 
@@ -665,13 +762,14 @@ export default function NavegadorPage() {
               </div>
             </div>
           ) : (
-            /* Visualizador de Página Ativa */
+            /* Visualizador de Página Ativa: Webview (Electron) vs Iframe (Web) */
             <div className="flex h-full w-full flex-col">
+              {/* Barra de Metadados e Ações da Página */}
               <div className="flex items-center justify-between border-b border-zinc-800/60 bg-[#121215] px-4 py-2 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="flex items-center gap-1 text-emerald-400 font-mono text-[11px]">
                     <ShieldCheck size={13} />
-                    Sessão API:
+                    {isElectronApp ? "Webview Nativo:" : "Sessão API:"}
                   </span>
                   <span className="font-mono text-zinc-400 text-[11px] truncate max-w-[200px]">
                     {activeTab.id_session || "Local"}
@@ -701,14 +799,47 @@ export default function NavegadorPage() {
                 </div>
               </div>
 
-              <div className="relative flex-1 w-full bg-white">
-                <iframe
-                  title={activeTab.title}
-                  src={activeTab.url}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                  className="h-full w-full border-none"
-                />
-              </div>
+              {/* Renderização Condicional: Webview no Electron vs Iframe no Web */}
+              {isElectronApp ? (
+                <div className="relative flex-1 w-full h-full bg-white">
+                  <webview
+                    ref={webviewRef}
+                    src={activeTab.url}
+                    className="h-full w-full"
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                    allowpopups="true"
+                  />
+                </div>
+              ) : (
+                <div className="relative flex-1 w-full h-full flex flex-col">
+                  {/* Banner Educativo para Navegador Web Comum */}
+                  <div className="bg-amber-950/40 border-b border-amber-800/40 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+                      <span>
+                        <strong>Aviso de Compatibilidade Web:</strong> Sites como Google e GitHub bloqueiam exibição em <code>&lt;iframe&gt;</code> por segurança. Para navegar em <strong>qualquer site sem restrições</strong>, utilize o <strong>Osiris Desktop (Electron)</strong> ou abra externamente.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(activeTab.url, "_blank")}
+                      className="ml-3 shrink-0 rounded bg-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/30 transition flex items-center gap-1"
+                    >
+                      <ExternalLink size={12} />
+                      Nova aba
+                    </button>
+                  </div>
+
+                  <div className="relative flex-1 w-full bg-white">
+                    <iframe
+                      title={activeTab.title}
+                      src={activeTab.url}
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      className="h-full w-full border-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

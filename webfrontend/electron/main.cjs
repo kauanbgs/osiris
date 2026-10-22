@@ -96,6 +96,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
@@ -118,6 +119,16 @@ function createWindow() {
 
   win.webContents.session.setPermissionCheckHandler((_wc, permission) => {
     return allowedPerms.includes(permission);
+  });
+
+  // Permite que links em novas abas no webview naveguem no próprio webview
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() === "webview") {
+      contents.setWindowOpenHandler(({ url }) => {
+        contents.loadURL(url);
+        return { action: "deny" };
+      });
+    }
   });
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== "production";

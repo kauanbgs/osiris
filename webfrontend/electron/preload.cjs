@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.removeListener("terminal-exit", listener);
     };
   },
+
+  // BROWSER & ENVIRONMENT
+  isElectron: true,
 });
 
 contextBridge.exposeInMainWorld("llama", {
