@@ -398,3 +398,17 @@ CREATE TABLE agent_execution_log (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 );
+
+CREATE TABLE file_log (
+    id_file_log INT AUTO_INCREMENT PRIMARY KEY,
+    fk_id_file INT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fk_id_file)
+        REFERENCES file(id_file)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
