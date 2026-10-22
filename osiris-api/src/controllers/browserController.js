@@ -15,6 +15,16 @@ class BrowserController {
     }
   }
 
+  static async listSessions(req, res, next) {
+    try {
+      const userId = Number(req.userId);
+      const sessions = BrowserService.listUserSessions(userId);
+      return res.status(200).json({ sessions });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async getSession(req, res, next) {
     try {
       const userId = Number(req.userId);

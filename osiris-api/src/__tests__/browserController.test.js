@@ -186,4 +186,72 @@ describe("BrowserController", () => {
     expect(clickRes.status).toBe(400);
     expect(clickRes.body.error.message).toContain("is disabled");
   });
+
+  it("lists all active browser sessions for the authenticated user with isolation", async () => {
+    // 1. User 1 creates 2 sessions
+    await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(1))
+      .send({ initial_url: "https://site-a.com" });
+
+    await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(1))
+      .send({ initial_url: "https://site-b.com" });
+
+    // 2. User 2 creates 1 session
+    const u2Session = await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(2))
+      .send({ initial_url: "https://user2-site.com" });
+
+    // 3. User 1 lists sessions -> should only see 2
+    const listUser1 = await request(app)
+      .get("/api/osiris/browser/sessions")
+      .set(auth(1));
+
+    expect(listUser1.status).toBe(200);
+    expect(listUser1.body.sessions).toHaveLength(2);
+    expect(listUser1.body.sessions.every((s) => s.status === "active")).toBe(true);
+
+    // 4. User 2 lists sessions -> should only see 1
+    const listUser2 = await request(app)
+      .get("/api/osiris/browser/sessions")
+      .set(auth(2));
+
+    expect(listUser2.status).toBe(200);
+    expect(listUser2.body.sessions).toHaveLength(1);
+    expect(listUser2.body.sessions[0].current_url).toBe("https://user2-site.com");
+
+    // 5. User 1 tries to access User 2 session -> 403 Forbidden
+    const forbiddenRes = await request(app)
+      .get(`/api/osiris/browser/session/${u2Session.body.session.id_session}`)
+      .set(auth(1));
+
+    expect(forbiddenRes.status).toBe(403);
+    expect(forbiddenRes.body.error.message).toContain("do not have access");
+  });
+
+  it("returns rich DOM tree and element count on navigate", async () => {
+    const createRes = await request(app)
+      .post("/api/osiris/browser/session")
+      .set(auth(1))
+      .send({});
+    const sessionId = createRes.body.session.id_session;
+
+    const navRes = await request(app)
+      .post("/api/osiris/browser/navigate")
+      .set(auth(1))
+      .send({
+        id_session: sessionId,
+        url: "https://huggingface.co/models",
+      });
+
+    expect(navRes.status).toBe(200);
+    expect(navRes.body.elements_count).toBeGreaterThan(0);
+    expect(navRes.body.dom_tree).toBeDefined();
+    expect(Array.isArray(navRes.body.dom_tree.elements)).toBe(true);
+    expect(navRes.body.dom_tree.elements[0]).toHaveProperty("selector");
+    expect(navRes.body.dom_tree.elements[0]).toHaveProperty("tag");
+  });
 });
