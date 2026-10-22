@@ -2,11 +2,15 @@
  * Validates agent creation/update data
  */
 function validateAgent(data, isUpdate = false) {
+  if (!data || typeof data !== "object") {
+    return "Agent payload must be an object.";
+  }
+
   const { name, objective, system_prompt } = data;
 
   // Name validation
   if (!isUpdate && (!name || typeof name !== "string" || !name.trim())) {
-    return "Agent name is required and must be a valid string.";
+    return "Agent name is required.";
   }
 
   if (name !== undefined) {
@@ -14,8 +18,8 @@ function validateAgent(data, isUpdate = false) {
       return "Agent name must be a valid non-empty string.";
     }
 
-    if (name.trim().length < 3) {
-      return "Agent name must be at least 3 characters long.";
+    if (name.trim().length < 2) {
+      return "Agent name must be at least 2 characters long.";
     }
 
     if (name.trim().length > 255) {
@@ -25,7 +29,7 @@ function validateAgent(data, isUpdate = false) {
 
   // Objective validation
   if (!isUpdate && (!objective || typeof objective !== "string" || !objective.trim())) {
-    return "Agent objective is required and must be a valid string.";
+    return "Agent objective is required.";
   }
 
   if (objective !== undefined) {
@@ -33,14 +37,14 @@ function validateAgent(data, isUpdate = false) {
       return "Agent objective must be a valid non-empty string.";
     }
 
-    if (objective.trim().length < 10) {
-      return "Agent objective must be at least 10 characters long.";
+    if (objective.trim().length < 3) {
+      return "Agent objective must be at least 3 characters long.";
     }
   }
 
   // System prompt validation
   if (!isUpdate && (!system_prompt || typeof system_prompt !== "string" || !system_prompt.trim())) {
-    return "Agent system prompt is required and must be a valid string.";
+    return "Agent system prompt is required.";
   }
 
   if (system_prompt !== undefined) {
@@ -48,8 +52,8 @@ function validateAgent(data, isUpdate = false) {
       return "Agent system prompt must be a valid non-empty string.";
     }
 
-    if (system_prompt.trim().length < 10) {
-      return "Agent system prompt must be at least 10 characters long.";
+    if (system_prompt.trim().length < 3) {
+      return "Agent system prompt must be at least 3 characters long.";
     }
   }
 
@@ -61,7 +65,7 @@ function validateAgent(data, isUpdate = false) {
  */
 function validateExecutionInput(input) {
   if (!input || typeof input !== "string" || !input.trim()) {
-    return "Execution input is required and must be a valid string.";
+    return "Input is required to execute agent.";
   }
 
   if (input.trim().length < 1) {

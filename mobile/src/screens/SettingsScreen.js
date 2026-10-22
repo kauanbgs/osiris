@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,7 +15,9 @@ import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
 import BottomNav from "../components/Navbar";
 
-export default function SettingsScreen({ navigation }) {
+export default function SettingsScreen({ navigation, route }) {
+  // guestMode = true quando vindo da LoginScreen (sem estar autenticado)
+  const guestMode = route?.params?.guestMode === true;
   const [ip, setIp] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState("");
@@ -30,7 +33,11 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
     await saveIP(value);
-    navigation.goBack();
+    if (guestMode) {
+      navigation.goBack();
+    } else {
+      navigation.goBack();
+    }
   }
 
   async function handleTest() {
@@ -55,6 +62,34 @@ export default function SettingsScreen({ navigation }) {
       Alert.alert("Falha", `${msg}\n\nTentado: ${apiUrl()}/health`);
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleOpenMemory() {
+    try {
+      // A tela de configurações também pode ser aberta antes do login.
+      // Verifica a sessão antes de navegar para uma tela protegida.
+      await sheets.getMe();
+      navigation.navigate("Memoria");
+    } catch (error) {
+      if (error.response?.status === 401) {
+        Alert.alert(
+          "Sessão necessária",
+          "Entre na sua conta para acessar a memória.",
+          [
+            { text: "Cancelar", style: "cancel" },
+            {
+              text: "Fazer login",
+              onPress: () => navigation.reset({
+                index: 0,
+                routes: [{ name: "LoginScreen" }],
+              }),
+            },
+          ],
+        );
+        return;
+      }
+      Alert.alert("Erro", "Não foi possível validar sua sessão. Verifique a conexão com o servidor.");
     }
   }
 
@@ -89,63 +124,90 @@ export default function SettingsScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Conexão</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Configurações do Sistema</Text>
 
-        <Text style={styles.label}>IP do desktop</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="192.168.100.202"
-          placeholderTextColor="#666"
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={ip}
-          onChangeText={setIp}
-          returnKeyType="done"
-          onSubmitEditing={handleSave}
-        />
+        {guestMode && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>← Voltar ao login</Text>
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity style={styles.button} onPress={handleSave}>
-          <Text style={styles.buttonText}>Salvar</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.testButton]}
-          onPress={handleTest}
-          disabled={testing}
-        >
-          <Text style={styles.buttonText}>
-            {testing ? "Testando..." : "Testar conexão"}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Celular</Text>
+          <Text style={styles.sectionDescription}>
+            Use o celular como tela desktop para conectar ao Osiris.
           </Text>
-        </TouchableOpacity>
 
-        {status ? <Text style={styles.hint}>{status}</Text> : null}
+          <Text style={styles.label}>IP do desktop</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="192.168.100.202"
+            placeholderTextColor="#666"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={ip}
+            onChangeText={setIp}
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+          />
 
-        <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>← Voltar</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={handleSave}>
+            <Text style={styles.buttonText}>Salvar</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.hint}>Atual: {getIP()}</Text>
+          <TouchableOpacity
+            style={[styles.button, styles.testButton]}
+            onPress={handleTest}
+            disabled={testing}
+          >
+            <Text style={styles.buttonText}>
+              {testing ? "Testando..." : "Testar conexão"}
+            </Text>
+          </TouchableOpacity>
+
+          {status ? <Text style={styles.hint}>{status}</Text> : null}
+          <Text style={styles.hint}>Atual: {getIP()}</Text>
+        </View>
+
+        {!guestMode && (
+          <TouchableOpacity
+            style={styles.sectionCard}
+            activeOpacity={0.8}
+            onPress={handleOpenMemory}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir memória do usuário"
+          >
+            <Text style={styles.sectionTitle}>Memória</Text>
+            <Text style={styles.memoryTitle}>Memória do usuário</Text>
+            <Text style={styles.sectionDescription}>
+              Memórias definidas pelo usuário para melhorar sua experiência.
+            </Text>
+            <Text style={styles.memoryAction}>Clique para mais informações ›</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.divider} />
 
-        <TouchableOpacity
-          style={[styles.button, styles.logoutButton]}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutText}>Sair da conta</Text>
-        </TouchableOpacity>
-      </View>
+        {!guestMode && (
+          <TouchableOpacity
+            style={[styles.button, styles.logoutButton]}
+            onPress={handleLogout}
+          >
+            <Text style={styles.logoutText}>Sair da conta</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
 
-      <BottomNav
-        activeKey="settings"
-        onPressItem={(key) => {
-          if (key === "settings") return;
-          if (key === "home") navigation.navigate("HomeScreen");
-          else if (key === "chats") navigation.navigate("Chats");
-          else console.log("nav:", key);
-        }}
-      />
+      {!guestMode && (
+        <BottomNav
+          activeKey="settings"
+          navigation={navigation}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -156,15 +218,45 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
-    justifyContent: "center",
+    paddingBottom: 24,
   },
   title: {
-    fontSize: 28,
+    fontSize: 22,
     color: "#FFFFFF",
     fontWeight: "bold",
-    marginBottom: 24,
+    marginBottom: 18,
+    textAlign: "center",
+  },
+  sectionCard: {
+    backgroundColor: "#171717",
+    borderWidth: 1,
+    borderColor: "#292929",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  sectionDescription: {
+    color: "#9A9A9A",
+    fontSize: 12,
+    marginBottom: 14,
+  },
+  memoryTitle: {
+    color: "#DDDDDD",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  memoryAction: {
+    color: "#D0D0D0",
+    fontSize: 12,
+    marginTop: 6,
   },
   label: {
     fontSize: 16,
@@ -226,5 +318,16 @@ const styles = StyleSheet.create({
     color: "#e74c3c",
     fontSize: 18,
     fontWeight: "600",
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    marginBottom: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  backButtonText: {
+    color: "#BB86FC",
+    fontSize: 14,
+    fontWeight: "500",
   },
 });

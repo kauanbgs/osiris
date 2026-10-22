@@ -29,6 +29,11 @@ const sheets = {
   getMemory: () => api.get("/memory"),
   updateMemory: (id_memory, data) => api.put(`/memory/${id_memory}`, data),
   deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
+  // Terminal
+  terminalExecute: (data) => api.post("/terminal/exec", data),
+  executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
+  terminalHistory: (params) => api.get("/terminal/history", { params }),
+  terminalClearHistory: () => api.delete("/terminal/history"),
 }
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),

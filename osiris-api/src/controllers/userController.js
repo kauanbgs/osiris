@@ -2,12 +2,12 @@ const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("../db/connect");
-const emailAlreadyExists = require("../services/validateEmail");
+const emailAlreadyExists = require("../validators/validateEmail");
 const { revokeToken } = require("../services/tokenService");
 const {
   validateRegistration,
   validateLogin,
-} = require("../services/validateUser");
+} = require("../validators/validateUser");
 const {
   BadRequestError,
   UnauthorizedError,
@@ -15,7 +15,7 @@ const {
   ConflictError,
 } = require("../errors");
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 
 class UserController {
   static async register(req, res, next) {

@@ -32,5 +32,8 @@ function validateLogin({ email, password } = {}) {
   return null;
 }
 
-module.exports = { validateRegistration, validateLogin };
-
+module.exports = {
+  validateRegistration,
+  validateLogin,
+  EMAIL_PATTERN,
+};

@@ -105,11 +105,6 @@ export default function ChatsScreen({ navigation }) {
     );
   }
 
-  function handleNavPress(key) {
-    if (key === 'home') navigation.navigate('HomeScreen', { chatId: null });
-    else if (key === 'settings') navigation.navigate('Configuracoes');
-    else console.log('nav:', key);
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -157,7 +152,7 @@ export default function ChatsScreen({ navigation }) {
         />
       )}
 
-      <BottomNav activeKey="chats" onPressItem={handleNavPress} />
+      <BottomNav activeKey="chats" navigation={navigation} />
     </SafeAreaView>
   );
 }

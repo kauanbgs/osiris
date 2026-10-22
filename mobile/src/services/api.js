@@ -54,6 +54,11 @@ const sheets = {
   deleteAgent: (id_agent) => api.delete(`/agent/${id_agent}`),
   executeAgent: (id_agent, input) => api.post(`/agent/${id_agent}/execute`, { input }),
 
+  // ── User memories ──────────────────────────────────────────────────
+  getMemories: () => api.get("/memory"),
+  postMemory: (content) => api.post("/memory", { content }),
+  deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
+
   // ── Tools ─────────────────────────────────────────────────────────
   listTools: () => api.get("/tool"),
   createTool: (payload) => api.post("/tool", payload),
