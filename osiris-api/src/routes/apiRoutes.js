@@ -143,6 +143,8 @@ router.delete(
 );
 
 // File routes (standard & Notion CT18/RF10 aliases)
+router.post("/file/workspace", verifyJWT, FileController.saveWorkspace);
+router.get("/file/workspace", verifyJWT, FileController.getWorkspace);
 router.post(
   "/file",
   verifyJWT,

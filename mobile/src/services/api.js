@@ -66,7 +66,7 @@ const sheets = {
   deleteTool: (id_tool) => api.delete(`/tool/${id_tool}`),
 
   // ── Files ──────────────────────────────────────────────────────────
-  listFiles: () => api.get("/file"),
+  getDesktopWorkspace: () => api.get("/file/workspace"),
 };
 
 export default sheets;

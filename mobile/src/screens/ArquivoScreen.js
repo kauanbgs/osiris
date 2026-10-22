@@ -24,6 +24,7 @@ const colors = {
 
 export default function ArquivoScreen({ navigation }) {
   const [files, setFiles] = useState([]);
+  const [workspaceName, setWorkspaceName] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -32,10 +33,14 @@ export default function ArquivoScreen({ navigation }) {
       if (refresh) setRefreshing(true);
       else setLoading(true);
 
-      const response = await sheets.listFiles();
-      setFiles(response.data?.files || []);
+      const response = await sheets.getDesktopWorkspace();
+      const workspace = response.data?.workspace;
+      setWorkspaceName(workspace?.folderName || null);
+      setFiles(workspace?.files || []);
     } catch (error) {
-      console.warn("Não foi possível carregar os arquivos:", error?.message);
+      if (error?.response?.status !== 401) {
+        console.warn("Não foi possível carregar os arquivos:", error?.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -63,7 +68,7 @@ export default function ArquivoScreen({ navigation }) {
           >
             <Feather name="chevron-left" size={20} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.locationText}>Este computador</Text>
+          <Text style={styles.locationText}>{workspaceName || "Este computador"}</Text>
           <TouchableOpacity
             style={styles.refreshButton}
             onPress={() => loadFiles(true)}
@@ -81,7 +86,7 @@ export default function ArquivoScreen({ navigation }) {
         ) : files.length ? (
           <FlatList
             data={files}
-            keyExtractor={(file) => String(file.id_file)}
+            keyExtractor={(file) => file.relativePath}
             contentContainerStyle={styles.fileList}
             refreshControl={
               <RefreshControl
@@ -92,16 +97,24 @@ export default function ArquivoScreen({ navigation }) {
             }
             renderItem={({ item }) => (
               <View style={styles.fileRow}>
-                <Feather name="folder" size={15} color={colors.muted} />
+                <Feather
+                  name={item.type === "folder" ? "folder" : "file-text"}
+                  size={15}
+                  color={colors.muted}
+                />
                 <Text style={styles.fileName} numberOfLines={1}>
-                  {item.name}
+                  {item.relativePath}
                 </Text>
               </View>
             )}
           />
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Nenhum arquivo encontrado.</Text>
+            <Text style={styles.emptyText}>
+              {workspaceName
+                ? "Nenhum arquivo encontrado nesta pasta."
+                : "Abra uma pasta no desktop para compartilhar os arquivos."}
+            </Text>
           </View>
         )}
       </View>
