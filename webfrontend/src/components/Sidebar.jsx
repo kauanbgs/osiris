@@ -3,6 +3,7 @@ import {
   Brain,
   Check,
   CircleDot,
+  Compass,
   FileText,
   Folder,
   House,
@@ -25,6 +26,7 @@ const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
   { label: "Workflow", icon: Bot, link: "/workflow" },
   { label: "Terminal", icon: TerminalSquare, link: "/terminal" },
+  { label: "Navegador", icon: Compass, link: "/navegador" },
   { label: "Arquivos", icon: Folder, link: "/arquivos" },
 ];
 
