@@ -417,20 +417,25 @@ class AgentController {
   }
 
   /**
-   * Execute agent (basic implementation)
+   * Execute agent and save execution history
    */
   static async execute(req, res, next) {
+    let idExecution = null;
+    let idAgent = null;
+
     try {
       const { id_agent } = req.params;
       const { input } = req.body;
       const userId = req.userId;
+
+      idAgent = id_agent;
 
       const inputError = validateExecutionInput(input);
       if (inputError) {
         throw new BadRequestError(inputError);
       }
 
-      // Verify agent exists and belongs to user
+      // Verify that the agent exists and belongs to the user
       const [agentRows] = await pool.promise().execute(
         `SELECT
           a.id_agent,
@@ -451,44 +456,98 @@ class AgentController {
       }
 
       const agent = agentRows[0];
+      const startTime = Date.now();
 
-      // Update execution log to 'running'
-      await pool
-        .promise()
-        .execute(`UPDATE agent SET execution_log = ? WHERE id_agent = ?`, [
-          "running",
-          id_agent,
-        ]);
+      // Create the execution history record
+      const [insertResult] = await pool.promise().execute(
+        `INSERT INTO agent_execution_log
+          (fk_id_agent, status, input)
+         VALUES (?, 'running', ?)`,
+        [id_agent, input.trim()],
+      );
 
-      // Execute agent through autonomous execution engine
+      idExecution = insertResult.insertId;
+
+      // Update agent status
+      await pool.promise().execute(
+        `UPDATE agent
+         SET execution_log = ?
+         WHERE id_agent = ? AND fk_id_user = ?`,
+        ["running", id_agent, userId],
+      );
+
+      // Execute the agent
       const executionResult = await AgentExecutionService.run({
         agent,
         input: input.trim(),
       });
 
-      // Update execution log back to 'idle'
-      await pool
-        .promise()
-        .execute(`UPDATE agent SET execution_log = ? WHERE id_agent = ?`, [
-          "idle",
-          id_agent,
-        ]);
+      const metrics = executionResult.metrics;
 
-      const response = {
-        agent_id: agent.id_agent,
-        agent_name: agent.name,
-        input: input.trim(),
-        output: executionResult.output,
-        model_used: agent.model_name || "No model configured",
-        execution_time: new Date().toISOString(),
-        metrics: executionResult.metrics,
-      };
+      // Save the successful result
+      await pool.promise().execute(
+        `UPDATE agent_execution_log
+         SET status = 'completed',
+             output = ?,
+             input_tokens = ?,
+             output_tokens = ?,
+             response_time_ms = ?
+         WHERE id_execution = ?`,
+        [
+          executionResult.output,
+          metrics.input_tokens,
+          metrics.output_tokens,
+          Date.now() - startTime,
+          idExecution,
+        ],
+      );
+
+      await pool.promise().execute(
+        `UPDATE agent
+         SET execution_log = ?
+         WHERE id_agent = ? AND fk_id_user = ?`,
+        ["idle", id_agent, userId],
+      );
 
       return res.status(200).json({
         message: "Agent executed successfully.",
-        execution: response,
+        execution: {
+          agent_id: agent.id_agent,
+          agent_name: agent.name,
+          input: input.trim(),
+          output: executionResult.output,
+          model_used: agent.model_name || "No model configured",
+          execution_time: new Date().toISOString(),
+          metrics,
+        },
       });
     } catch (error) {
+      // Save the error in the execution history, if a record exists
+      if (idExecution !== null) {
+        try {
+          const status =
+            error.code === "AGENT_EXECUTION_CANCELLED" ? "cancelled" : "error";
+
+          await pool.promise().execute(
+            `UPDATE agent_execution_log
+             SET status = ?,
+                 output = ?,
+                 response_time_ms = COALESCE(response_time_ms, 0)
+             WHERE id_execution = ?`,
+            [status, error.message, idExecution],
+          );
+
+          await pool.promise().execute(
+            `UPDATE agent
+             SET execution_log = ?
+             WHERE id_agent = ?`,
+            [status, idAgent],
+          );
+        } catch (logError) {
+          console.error("Failed to update execution history:", logError);
+        }
+      }
+
       return next(error);
     }
   }
