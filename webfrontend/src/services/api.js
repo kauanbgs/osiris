@@ -29,6 +29,10 @@ const sheets = {
   getMemory: () => api.get("/memory"),
   updateMemory: (id_memory, data) => api.put(`/memory/${id_memory}`, data),
   deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
+  getWorkflows: () => api.get("/workflow"),
+  createWorkflow: (data) => api.post("/workflow", data),
+  getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
+  saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
   syncDesktopWorkspace: (folderPath) => api.post("/file/workspace", { folderPath }),
   getDesktopWorkspace: () => api.get("/file/workspace"),
   // Terminal

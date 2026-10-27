@@ -111,6 +111,8 @@ router.put("/memory/:id_memory", verifyJWT, MemoryController.update);
 router.delete("/memory/:id_memory", verifyJWT, MemoryController.delete);
 
 // Workflow routes
+router.get("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.getCanvas);
+router.put("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.saveCanvas);
 router.post("/workflow", verifyJWT, WorkflowController.create);
 router.get("/workflow", verifyJWT, WorkflowController.list);
 router.get("/workflow/:id_workflow", verifyJWT, WorkflowController.getById);

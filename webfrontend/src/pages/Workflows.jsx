@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import sheets from "@/services/api";
 
 import {
   Workflow,
@@ -11,78 +12,38 @@ import {
   X,
 } from "lucide-react";
 
-const initialWorkflows = [
-  {
-    id: "1",
-    name: "Research Agent",
-    description:
-      "Pesquisa informações, processa arquivos e gera relatórios automaticamente.",
-    nodes: 6,
-    updatedAt: "Há 5 minutos",
-  },
-  {
-    id: "2",
-    name: "Code Review",
-    description:
-      "Analisa arquivos do projeto e envia o código para revisão de um agente.",
-    nodes: 4,
-    updatedAt: "Há 2 horas",
-  },
-  {
-    id: "3",
-    name: "Content Generator",
-    description:
-      "Gera conteúdo automaticamente utilizando múltiplos agentes.",
-    nodes: 8,
-    updatedAt: "Ontem",
-  },
-  {
-    id: "4",
-    name: "File Analyzer",
-    description:
-      "Recebe arquivos, processa o conteúdo e extrai informações importantes.",
-    nodes: 5,
-    updatedAt: "Há 2 dias",
-  },
-];
-
 export default function Workflows() {
   const navigate = useNavigate();
 
-  const [workflows, setWorkflows] =
-    useState(initialWorkflows);
+  const [workflows, setWorkflows] = useState([]);
 
   const [createOpen, setCreateOpen] =
     useState(false);
+
+  useEffect(() => {
+    sheets.getWorkflows()
+      .then(({ data }) => setWorkflows(data.workflows || []))
+      .catch((error) => console.error("Não foi possível carregar workflows:", error));
+  }, []);
 
   function openWorkflow(id) {
     navigate(`/workflows/${id}`);
   }
 
-  function createWorkflow(data) {
-    const newWorkflow = {
-      id: crypto.randomUUID(),
-
-      name: data.name,
-
-      description:
-        data.description ||
-        "Workflow sem descrição.",
-
-      nodes: 0,
-
-      updatedAt: "Agora",
-    };
-
-    setWorkflows((current) => [
-      newWorkflow,
-      ...current,
-    ]);
-
-    setCreateOpen(false);
-
-    // Se quiser entrar automaticamente:
-    // navigate(`/workflows/${newWorkflow.id}`);
+  async function createWorkflow(data) {
+    try {
+      const { data: response } = await sheets.createWorkflow({
+        name: data.name,
+        description: data.description || "Workflow sem descrição.",
+      });
+      const created = response.workflow;
+      setWorkflows((current) => [created, ...current]);
+      setCreateOpen(false);
+      navigate(`/workflows/${created.id_workflow}`);
+    } catch (error) {
+      console.error("Não foi possível criar workflow:", error);
+      window.alert("Não foi possível criar o workflow. Verifique o login e a conexão com a API.");
+    }
   }
 
   return (
@@ -169,10 +130,10 @@ export default function Workflows() {
           >
             {workflows.map((workflow) => (
               <WorkflowCard
-                key={workflow.id}
+                key={workflow.id_workflow}
                 workflow={workflow}
                 onOpen={() =>
-                  openWorkflow(workflow.id)
+                  openWorkflow(workflow.id_workflow)
                 }
               />
             ))}
@@ -250,7 +211,7 @@ function WorkflowCard({
 
             console.log(
               "Workflow:",
-              workflow.id
+              workflow.id_workflow
             );
           }}
           className="
@@ -323,7 +284,7 @@ function WorkflowCard({
           >
             <Bot size={13} />
 
-            {workflow.nodes} nodes
+            {workflow.nodes ?? 0} nodes
           </span>
 
           <span
@@ -334,7 +295,7 @@ function WorkflowCard({
           >
             <Clock3 size={13} />
 
-            {workflow.updatedAt}
+            {workflow.updatedAt || "Agora"}
           </span>
 
         </div>

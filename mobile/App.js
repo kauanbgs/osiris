@@ -9,6 +9,7 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import MemoriaScreen from './src/screens/MemoriaScreen';
 import TerminalScreen from './src/screens/TerminalScreen';
 import ArquivoScreen from './src/screens/ArquivoScreen';
+import WorkflowScreen from './src/screens/WorkflowScreen';
 import { loadIP } from './src/services/serverConfig';
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
         <stack.Screen name="Memoria" component={MemoriaScreen} />
         <stack.Screen name="Terminal" component={TerminalScreen} />
         <stack.Screen name="ArquivoScreen" component={ArquivoScreen} />
+        <stack.Screen name="WorkflowScreen" component={WorkflowScreen} />
       </stack.Navigator>
     </NavigationContainer>
   );

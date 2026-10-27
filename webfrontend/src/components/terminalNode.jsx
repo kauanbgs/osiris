@@ -42,7 +42,12 @@ export default function TerminalNode({ id, data }) {
 
       {/* Terminal Container */}
       <div className="nodrag nowheel pointer-events-auto h-[320px] bg-[#0c0c0e] p-2">
-        <Terminal terminalId={id} mode={data?.mode} />
+        <Terminal
+          terminalId={id}
+          mode={data?.mode}
+          initialContent={data?.terminalContent || ""}
+          onContentChange={(terminalContent) => data?.onWorkflowDataChange?.(id, { terminalContent })}
+        />
       </div>
 
       <Handle
