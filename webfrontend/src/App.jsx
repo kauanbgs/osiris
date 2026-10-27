@@ -11,6 +11,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Memoria from "./pages/Memoria";
 import Workflows from "./pages/Workflows";
 import Terminal from "./pages/Terminal";
+import Navegador from "./pages/Navegador";
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
               <Route path="/workflows" element={<Workflows/>} />
               <Route path="/memoria" element={<Memoria />} />
               <Route path="/terminal" element={<Terminal />} />
+              <Route path="/navegador" element={<Navegador />} />
             </Route>
           </Route>
 

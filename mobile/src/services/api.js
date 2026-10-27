@@ -67,10 +67,28 @@ const sheets = {
 
   // ── Files ──────────────────────────────────────────────────────────
   getDesktopWorkspace: () => api.get("/file/workspace"),
+
+  // ── Workflows ───────────────────────────────────────────────────────
   getWorkflows: () => api.get("/workflow"),
   getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
   saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
+
+  // ── Terminal ───────────────────────────────────────────────────────
+  terminalExecute: (data) =>
+    api.post("/terminal/exec", data, {
+      timeout: ((data && data.timeout_ms) || 30000) + 5000,
+    }),
+  executeCommand: (commandOrPayload, timeout_ms = 30000) => {
+    const payload =
+      typeof commandOrPayload === "string"
+        ? { command: commandOrPayload, timeout_ms }
+        : commandOrPayload;
+    const timeout = ((payload && payload.timeout_ms) || timeout_ms || 30000) + 5000;
+    return api.post("/terminal/exec", payload, { timeout });
+  },
+  terminalHistory: (params) => api.get("/terminal/history", { params }),
+  terminalClearHistory: () => api.delete("/terminal/history"),
 };
 
 export default sheets;
-export { api };
+export { api, sheets };
