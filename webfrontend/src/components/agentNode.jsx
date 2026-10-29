@@ -3,6 +3,8 @@ import { Bot, GripVertical, Loader2, Play, Square, Workflow } from "lucide-react
 import WorkflowModelSelect from "@/components/WorkflowModelSelect";
 import { useWorkflowExecution } from "@/contexts/useWorkflowExecution";
 import { getAgentFileNodes } from "@/workflow/getConnectedFiles";
+import { formatAgentOutput } from "@/workflow/agentFiles";
+import { getAgentTerminals } from "@/workflow/agentTerminals";
 
 export default function AgentNode({ id, data }) {
   const { updateNodeData } = useReactFlow();
@@ -15,6 +17,7 @@ export default function AgentNode({ id, data }) {
   const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-violet-500 hover:!bg-violet-400 transition-colors";
   const hasFileInput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).inputs.length > 0);
   const hasFileOutput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).outputs.length > 0);
+  const hasTerminal = useStore((state) => getAgentTerminals(id, state.nodes, state.edges).length > 0);
   const hasAgentInput = useStore((state) => state.edges.some((edge) => edge.target === id && state.nodes.some((node) => node.id === edge.source && node.type === "agent")));
   const hasAgentOutput = useStore((state) => state.edges.some((edge) => edge.source === id && state.nodes.some((node) => node.id === edge.target && node.type === "agent")));
   const isChainRoot = hasAgentOutput;
@@ -82,6 +85,12 @@ export default function AgentNode({ id, data }) {
             </span>
           )}
 
+          {hasTerminal && (
+            <span className="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-medium text-sky-300">
+              usa terminal
+            </span>
+          )}
+
           {hasAgentInput && (
             <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
               recebe task
@@ -94,7 +103,7 @@ export default function AgentNode({ id, data }) {
             </span>
           )}
 
-          {status === "idle" && !hasFileInput && !hasFileOutput && !hasAgentInput && !hasAgentOutput && (
+          {status === "idle" && !hasFileInput && !hasFileOutput && !hasTerminal && !hasAgentInput && !hasAgentOutput && (
             <div className="flex items-center gap-1.5 text-[9px] text-zinc-600">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               online
@@ -182,7 +191,7 @@ export default function AgentNode({ id, data }) {
           <div className="nodrag nopan nowheel max-h-[320px] overflow-y-auto px-4 py-3">
             {output ? (
               <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-zinc-300">
-                {output}
+                {formatAgentOutput(output)}
               </pre>
             ) : (
               <div className="flex items-center gap-2 text-[11px] text-zinc-600">

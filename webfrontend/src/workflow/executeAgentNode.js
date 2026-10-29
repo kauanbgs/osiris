@@ -1,4 +1,5 @@
 import { prepareGroqPrompt } from "./groqBudget.js";
+import { getAgentTerminals } from "./agentTerminals.js";
 import { getAgentFileNodes, getConnectedFiles } from "./getConnectedFiles.js";
 import { getConnectedNotes, buildNoteContext } from "./getConnectedNotes.js";
 import { buildFileContext, buildFinalPrompt } from "./buildFileContext.js";
@@ -101,7 +102,8 @@ export async function executeAgentNode({
   const result = await sendPrompt({
     activeModelOverride: modelConfig,
     systemPrompt: buildAgentSystemPrompt(node.data?.label || agentId,
-      { editsFiles: getAgentFileNodes(agentId, nodes, edges).outputs.length > 0 }),
+      { editsFiles: getAgentFileNodes(agentId, nodes, edges).outputs.length > 0,
+        usesTerminal: getAgentTerminals(agentId, nodes, edges).length > 0 }),
     maxOutputTokens: groq?.maxOutputTokens,
     continueOnLength: Boolean(groq),
     onNotice,

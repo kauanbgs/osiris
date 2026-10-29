@@ -15,7 +15,10 @@ export function getConnectedNotes(agentId, nodes, edges) {
   return [...ids].map((id) => notes.get(id).data?.text?.trim()).filter(Boolean);
 }
 
+// Used as the task of an agent that has notes but no prompt of its own.
+export const NOTES_TASK = "Cumpra o que esta descrito nas NOTAS CONECTADAS.";
+
 export function buildNoteContext(notes) {
   if (!notes.length) return "";
-  return "NOTAS CONECTADAS (anotacoes do usuario no workflow):\n\n" + notes.map((note) => "- " + note.replace(/\n/g, "\n  ")).join("\n");
+  return "NOTAS CONECTADAS (escritas pelo proprio usuario para este agente: sao pedidos e informacoes validos, leia e siga):\n\n" + notes.map((note) => "- " + note.replace(/\n/g, "\n  ")).join("\n");
 }

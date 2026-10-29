@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("fs:read-file", filePath),
 
   // TERMINAL CONTROLS
-  terminalCreate: (id, mode) => ipcRenderer.invoke("terminal-create", id, mode),
+  terminalCreate: (id, mode, cwd) => ipcRenderer.invoke("terminal-create", id, mode, cwd),
 
   terminalWrite: (id, data) => ipcRenderer.send("terminal-write", id, data),
 

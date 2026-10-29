@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { WorkflowExecutionContext } from "./useWorkflowExecution";
 import { useReactFlow } from "@xyflow/react";
 import { runWorkflow } from "@/workflow/runWorkflow";
-import { executeAgentNode } from "@/workflow/executeAgentNode";
-import { applyAgentResultToFileNodes, buildFileEditInstruction } from "@/workflow/agentFiles";
-import { buildJsonHandoffRequest, buildTextHandoffRequest } from "@/workflow/handoff";
-import { getAgentFileNodes, getConnectedFiles } from "@/workflow/getConnectedFiles";
+import { formatAgentOutput } from "@/workflow/agentFiles";
+import { runAgentRounds } from "@/workflow/runAgentRounds";
 
 export function WorkflowExecutionProvider({ children, initialEvents = [], onEventsChange }) {
   const { getNodes, getEdges, updateNodeData } = useReactFlow();
@@ -55,7 +53,7 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
         onAgentDone: (agentId, label, result) => {
           updateNodeData(agentId, { output: result });
           patch(agentId, { status: "done", output: result, notice: "" });
-          emit({ type: "done", title: label + " concluiu", text: result });
+          emit({ type: "done", title: label + " concluiu", text: formatAgentOutput(result) });
         },
         onAgentError: (agentId, label, error) => {
           patch(agentId, { status: error.name === "AbortError" ? "cancelled" : "error", error: error.name === "AbortError" ? "" : error.message });
@@ -63,39 +61,7 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
         },
         executeAgent: async (agentId, context, signal) => {
           signal.throwIfAborted();
-          const currentNodes = getNodes();
-          const node = currentNodes.find((item) => item.id === agentId);
-          if (!node) throw new Error("Agente removido durante a execucao.");
-          const targets = nodes.filter((item) => item.type === "agent" && edges.some((edge) => edge.source === agentId && edge.target === item.id));
-          const outputFiles = getAgentFileNodes(agentId, currentNodes, edges).outputs;
-          let instruction = node.data?.prompt || "";
-          const handoffPrompt = node.data?.handoffPrompt?.trim() || "";
-          let editableFileContext = "";
-          if (outputFiles.length) ({ instruction, fileContext: editableFileContext } = buildFileEditInstruction(instruction, outputFiles,
-            targets.length ? buildJsonHandoffRequest(targets, handoffPrompt) : "", getConnectedFiles(agentId, currentNodes, edges)));
-          else if (targets.length) instruction += buildTextHandoffRequest(targets, handoffPrompt);
-          const result = await executeAgentNode({ agentId, nodes: currentNodes, edges, instruction, agentContext: context, editableFileContext, signal,
-            onNotice: (notice) => {
-              patch(agentId, { notice: notice.message });
-              emit({ type: notice.type, title: (node.data?.label || agentId) + " - " + (notice.type === "rate-limit" ? "aguardando Groq" : notice.type === "continuation" ? "continuando resposta" : "economia de contexto"), text: notice.message });
-            },
-            onChunk: (output) => { if (!signal.aborted) patch(agentId, { output, notice: "" }); },
-          });
-          signal.throwIfAborted();
-          if (outputFiles.length) {
-            const applied = await applyAgentResultToFileNodes({ agentId, result, nodes: getNodes(), edges, updateNodeData, signal });
-            emit({ type: "files", title: (node.data?.label || agentId) + " - arquivos",
-              text: applied
-                ? [applied.written.length ? "Gravado: " + applied.written.join(", ") : "Nenhum arquivo foi gravado.",
-                  applied.warnings.length && "Avisos: " + applied.warnings.join("; "),
-                  JSON.stringify(applied.fileOperations, null, 2)].filter(Boolean).join("\n\n")
-                : "A resposta nao continha operacoes de arquivo validas." });
-            const problems = applied ? applied.errors : ["a resposta nao veio no formato JSON esperado"];
-            const notes = [problems.length && "Nao aplicado (arquivos com erro ficaram como estavam): " + problems.join("; "),
-              applied?.warnings.length && "Atencao: " + applied.warnings.join("; ")].filter(Boolean);
-            if (notes.length) patch(agentId, { notice: notes.join(" | ") });
-          }
-          return result;
+          return runAgentRounds({ agentId, nodes, getNodes, edges, context, signal, updateNodeData, patch, emit });
         },
       });
       finished = true;

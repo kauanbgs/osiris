@@ -462,27 +462,48 @@ ipcMain.handle("llama:delete-model", async (_, modelPath) => {
 // TERMINAL IPC HANDLERS
 // ===============================
 
-ipcMain.handle("terminal-create", (event, id, mode) => {
-  if (!id || terminals.has(id)) return;
+ipcMain.handle("terminal-create", (event, id, mode, cwd) => {
+  if (!id || terminals.has(id)) return { ok: true, existing: true };
 
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return;
+  if (!win) return { ok: false, error: "Janela nao encontrada." };
 
   const shell =
     process.platform === "win32"
       ? "powershell.exe"
       : process.env.SHELL || "/bin/bash";
 
-  const terminal = pty.spawn(shell, [], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: os.homedir(),
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-    },
-  });
+  const startDir =
+    typeof cwd === "string" && cwd && fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()
+      ? cwd
+      : os.homedir();
+
+  let terminal;
+  try {
+    terminal = pty.spawn(shell, [], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: startDir,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+      },
+    });
+  } catch (err) {
+    console.error("Erro ao abrir terminal:", err);
+    if (!win.isDestroyed()) {
+      const CRLF = String.fromCharCode(13, 10);
+      const RED = String.fromCharCode(27) + "[31m";
+      const RESET = String.fromCharCode(27) + "[0m";
+      win.webContents.send(
+        "terminal-data",
+        id,
+        CRLF + RED + "Nao foi possivel abrir o terminal: " + err.message + RESET + CRLF,
+      );
+    }
+    return { ok: false, error: err.message };
+  }
 
   terminals.set(id, terminal);
 
@@ -493,6 +514,9 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
   });
 
   terminal.onExit(({ exitCode }) => {
+    // The same id can be reopened (React remounts, tab switches) before this
+    // exit arrives: only forget the entry if it still points at this process.
+    if (terminals.get(id) !== terminal) return;
     terminals.delete(id);
     if (!win.isDestroyed()) {
       win.webContents.send("terminal-exit", id, exitCode);
@@ -501,9 +525,11 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
 
   if (mode === "claude") {
     setTimeout(() => {
-      terminal.write("claude\r");
+      if (terminals.get(id) === terminal) terminal.write("claude" + String.fromCharCode(13));
     }, 400);
   }
+
+  return { ok: true };
 });
 
 ipcMain.on("terminal-write", (event, id, data) => {

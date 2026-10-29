@@ -286,7 +286,7 @@ const MAX_EDITABLE_CHARS = 30000;
  *
  * @returns {{ instruction: string, fileContext: string }}
  */
-export function buildFileEditInstruction(instruction, outputFileNodes, handoffRequest = "", contextFiles = []) {
+export function buildFileEditInstruction(instruction, outputFileNodes, handoffRequest = "", contextFiles = [], { terminals = [], history = "", shell = "" } = {}) {
   const outputFiles = outputFileNodes.flatMap((node) =>
     Array.isArray(node.data?.files) ? node.data.files : [],
   );
@@ -314,7 +314,9 @@ export function buildFileEditInstruction(instruction, outputFileNodes, handoffRe
         ([...folders, ...files].sort().map((entry) => "- " + entry).join("\n") || "(pasta vazia)");
     }).join("\n\n"));
   }
-  parts.push(outputFiles.length === 0
+  parts.push(outputFileNodes.length === 0
+    ? "ARQUIVOS EDITAVEIS: este agente nao tem FileNode de saida; nao altere arquivos (\"fileOperations\" deve ser [])."
+    : outputFiles.length === 0
     ? "ARQUIVOS EDITAVEIS: nenhum arquivo existe no FileNode de saida."
     : "ARQUIVOS EDITAVEIS: " + outputFiles.map((file) => file.fileName).join(", ") +
       (shown.length ? "\n\n" + shown.map((file) => `### Arquivo: ${file.fileName}\n\n${file.fileContent || "(arquivo vazio)"}`).join("\n\n---\n\n") : "") +
@@ -328,6 +330,24 @@ export function buildFileEditInstruction(instruction, outputFileNodes, handoffRe
   const where = roots.length
     ? "Todos os caminhos sao relativos a PASTA DO PROJETO e ficam dentro dela. Pastas intermediarias sao criadas automaticamente."
     : "Nao ha pasta do projeto conectada: arquivos novos ficam apenas no workflow (nao sao gravados no disco).";
+  const terminalField = terminals.length ? `"terminalCommands": ["comando 1", "comando 2"],
+  ` : "";
+  const pathRules = outputFileNodes.length === 0 ? "" : `CAMINHOS:
+- ${where}
+- Escreva caminhos com "/", sem "/" no inicio, sem letra de unidade e sem "..". Para arquivo que ja existe, use exatamente o caminho listado em ESTRUTURA / ARQUIVOS EDITAVEIS.
+- "mkdir" cria uma pasta (mesmo vazia). Para um arquivo novo, "create" ja cria as pastas do caminho.
+
+`;
+  const terminalRules = terminals.length ? `TERMINAL (voce pode digitar comandos):
+- Terminais conectados a voce: ${terminals.map((node) => `"${node.data?.label || "Terminal"}"`).join(", ")}. ${shell}
+- Liste em "terminalCommands" os comandos, um por linha, na ordem. Eles rodam no terminal e voce recebe a saida de cada um na proxima rodada. Para escolher o terminal use {"terminal": "nome", "command": "..."} em vez de texto.
+- Use comandos nao interativos (flags como --yes / -y) e que terminem sozinhos. Nao rode servidores que ficam abertos nem comandos que pecam senha.
+- So rode o que o pedido exige. Nao rode comandos destrutivos (apagar pastas, formatar, git reset --hard, force push) a menos que o pedido mande.
+- Depois dos comandos voce recebe a saida e responde de novo. Se NAO precisa ler a saida (ex.: so criar pastas ou instalar algo e terminar), inclua "readOutput": false: os comandos rodam e a tarefa termina sem nova chamada. Se precisa ver o resultado (testes, erros, listagens), omita ou use true.
+- Faca tudo o que e preciso na PRIMEIRA resposta (arquivos e comandos juntos). Na resposta seguinte nao repita edicoes ja feitas.
+- Quando terminar, ou se nao precisar de comandos, deixe "terminalCommands" fora do JSON (ou []) e descreva o resultado COMPLETO em "message".
+
+` : "";
 
   return {
     fileContext,
@@ -345,19 +365,14 @@ FORMATO DA RESPOSTA - responda apenas com este JSON (sem texto fora dele, sem ce
     { "action": "mkdir", "fileName": "src/components" },
     { "action": "delete", "fileName": "src/velho.js" }
   ],
-  "message": "o que voce fez, ou a resposta ao pedido"${handoffField}
+  ${terminalField}"message": "o que voce fez, ou a resposta ao pedido"${handoffField}
 }
 (o exemplo acima mostra todas as acoes possiveis; inclua so as que o pedido exige)
 ${handoffRequest ? `
 PROXIMO AGENTE:
 ${handoffRequest}
 ` : ""}
-CAMINHOS:
-- ${where}
-- Escreva caminhos com "/", sem "/" no inicio, sem letra de unidade e sem "..". Para arquivo que ja existe, use exatamente o caminho listado em ESTRUTURA / ARQUIVOS EDITAVEIS.
-- "mkdir" cria uma pasta (mesmo vazia). Para um arquivo novo, "create" ja cria as pastas do caminho.
-
-REGRAS:
+${pathRules}${terminalRules}REGRAS:
 - Altere somente o que o pedido exige. Nao reformate, renomeie, reorganize nem "melhore" o resto do arquivo.
 - "edit": cada "find" e um trecho do arquivo atual, copiado caractere por caractere, que aparece uma unica vez. Use trechos curtos, com as linhas necessarias para serem unicos. Se uma edicao falhar, o arquivo inteiro fica como estava.
 - Para apagar um trecho, use "replace": "".
@@ -366,7 +381,59 @@ REGRAS:
 - JSON valido: dentro de "content", "find" e "replace" escape aspas (\\") e quebras de linha (\\n).
 - Se o pedido nao exige mudar arquivos (pergunta, explicacao, analise, revisao), responda com "fileOperations": [] e coloque a resposta em "message".
 - Codigo novo deve ser real e funcional, sem placeholders nem TODO.
-
+${history ? `
+${history}
+` : ""}
 LEMBRETE DO PEDIDO: ${request}`,
   };
+}
+
+const OPERATION_LABELS = { edit: "editado", create: "criado", update: "reescrito", delete: "apagado", mkdir: "pasta criada" };
+
+// Text of the "message" string of a JSON answer that may still be streaming
+// (cut anywhere), or null when it has not started yet.
+function partialMessage(text) {
+  const start = /"message"\s*:\s*"/.exec(text);
+  if (!start) return null;
+  let out = "";
+  for (let i = start.index + start[0].length; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') break;
+    if (char !== "\\") { out += char; continue; }
+    const next = text[++i];
+    if (next === undefined) break;
+    out += { n: "\n", t: "\t", r: "" }[next] ?? next;
+  }
+  return out;
+}
+
+/**
+ * What to show the user for an agent answer. File agents answer in JSON
+ * ({ fileOperations, message, handoff }); the user sees the message and a
+ * short list of what changed, never the JSON. Safe to call on partial text
+ * while the answer is streaming. The raw answer is kept for the handoff.
+ */
+export function formatAgentOutput(output) {
+  if (typeof output !== "string") return output ? String(output) : "";
+  const trimmed = output.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("```")) return output;
+
+  const parsed = extractJson(trimmed);
+  if (parsed && typeof parsed === "object" && ("fileOperations" in parsed || "message" in parsed)) {
+    const operations = Array.isArray(parsed.fileOperations) ? parsed.fileOperations : [];
+    const changes = operations
+      .filter((item) => item?.action && item?.fileName)
+      .map((item) => `• ${OPERATION_LABELS[item.action] || item.action} ${item.fileName}`);
+    const commands = (Array.isArray(parsed.terminalCommands) ? parsed.terminalCommands : [])
+      .map((item) => (typeof item === "string" ? item : item?.command))
+      .filter((command) => typeof command === "string" && command.trim())
+      .map((command) => `• $ ${command.trim()}`);
+    const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
+    return [message, changes.length ? "Arquivos:\n" + changes.join("\n") : "", commands.length ? "Comandos no terminal:\n" + commands.join("\n") : ""]
+      .filter(Boolean).join("\n\n") || "Nenhuma alteracao em arquivos.";
+  }
+
+  // Still streaming: show the message as it arrives, or a placeholder.
+  const message = partialMessage(trimmed);
+  return message?.trim() ? message : "Preparando alteracoes...";
 }

@@ -69,6 +69,14 @@ export default function Terminal({ terminalId, mode, initialContent = "", onCont
         })
       : null;
 
+    const removeExitListener = window.electronAPI?.onTerminalExit
+      ? window.electronAPI.onTerminalExit((targetId, exitCode) => {
+          if (targetId === terminalId) {
+            xterm.write(String.fromCharCode(13, 10, 27) + "[90m[processo encerrado" + (exitCode ? " com codigo " + exitCode : "") + "]" + String.fromCharCode(27) + "[0m" + String.fromCharCode(13, 10));
+          }
+        })
+      : null;
+
     const resize = () => {
       try {
         fitAddon.fit();
@@ -93,6 +101,7 @@ export default function Terminal({ terminalId, mode, initialContent = "", onCont
       resizeObserver.disconnect();
       inputDisposable.dispose();
       removeDataListener?.();
+      removeExitListener?.();
       if (window.electronAPI?.terminalClose) {
         window.electronAPI.terminalClose(terminalId);
       }
