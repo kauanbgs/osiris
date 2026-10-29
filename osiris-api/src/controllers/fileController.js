@@ -133,29 +133,34 @@ class FileController {
   }
 
   static async upload(req, res, next) {
+    let file;
+
     try {
       if (!req.file) {
         throw new BadRequestError("Nenhum arquivo enviado.");
       }
 
-      const file = req.file;
+      file = req.file;
+
       const fileBuffer = fs.readFileSync(file.path);
       const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+
       const extension = path.extname(file.originalname).slice(1) || null;
       const mimeType = file.mimetype || "application/octet-stream";
 
       const [result] = await pool.promise().execute(
         `INSERT INTO file (name, path, extension, size, hash, type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          file.originalname,
-          file.path,
-          extension,
-          file.size,
-          hash,
-          mimeType,
-        ],
+        [file.originalname, file.path, extension, file.size, hash, mimeType],
       );
+
+      await FileController.registerLog({
+        id_file: result.insertId,
+        file_name: file.originalname,
+        action: "upload",
+        status: "success",
+        message: "Arquivo enviado com sucesso.",
+      });
 
       return res.status(201).json({
         message: "Arquivo enviado com sucesso.",
@@ -170,6 +175,15 @@ class FileController {
         },
       });
     } catch (error) {
+      if (file) {
+        await FileController.registerLog({
+          file_name: file.originalname,
+          action: "upload",
+          status: "error",
+          message: error.message,
+        });
+      }
+
       return next(error);
     }
   }
@@ -177,12 +191,12 @@ class FileController {
   static async list(req, res, next) {
     try {
       const [rows] = await pool.promise().execute(
-        `SELECT id_file, name, path, extension, size, hash, type FROM file ORDER BY id_file DESC`,
+        `SELECT id_file, name, path, extension, size, hash, type
+         FROM file
+         ORDER BY id_file DESC`,
       );
 
-      return res.status(200).json({
-        files: rows,
-      });
+      return res.status(200).json({ files: rows });
     } catch (error) {
       return next(error);
     }
@@ -193,7 +207,8 @@ class FileController {
       const { id_file } = req.params;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_file, name, path, extension, size, hash, type FROM file WHERE id_file = ? LIMIT 1`,
+        `SELECT id_file, name, path, extension, size, hash, type
+         FROM file WHERE id_file = ? LIMIT 1`,
         [id_file],
       );
 
@@ -201,20 +216,21 @@ class FileController {
         throw new NotFoundError("Arquivo não encontrado.");
       }
 
-      return res.status(200).json({
-        file: rows[0],
-      });
+      return res.status(200).json({ file: rows[0] });
     } catch (error) {
       return next(error);
     }
   }
 
   static async download(req, res, next) {
+    let file;
+
     try {
       const { id_file } = req.params;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_file, name, path FROM file WHERE id_file = ? LIMIT 1`,
+        `SELECT id_file, name, path
+         FROM file WHERE id_file = ? LIMIT 1`,
         [id_file],
       );
 
@@ -222,23 +238,55 @@ class FileController {
         throw new NotFoundError("Arquivo não encontrado.");
       }
 
-      const file = rows[0];
+      file = rows[0];
+
       if (!fs.existsSync(file.path)) {
         throw new NotFoundError("Arquivo físico não encontrado no servidor.");
       }
 
-      return res.download(file.path, file.name);
+      await FileController.registerLog({
+        id_file: file.id_file,
+        file_name: file.name,
+        action: "download",
+        status: "success",
+        message: "Download solicitado.",
+      });
+
+      return res.download(file.path, file.name, (error) => {
+        if (error) {
+          FileController.registerLog({
+            id_file: file.id_file,
+            file_name: file.name,
+            action: "download",
+            status: "error",
+            message: error.message,
+          });
+        }
+      });
     } catch (error) {
+      if (file) {
+        await FileController.registerLog({
+          id_file: file.id_file,
+          file_name: file.name,
+          action: "download",
+          status: "error",
+          message: error.message,
+        });
+      }
+
       return next(error);
     }
   }
 
   static async delete(req, res, next) {
+    let file;
+
     try {
       const { id_file } = req.params;
 
       const [rows] = await pool.promise().execute(
-        `SELECT id_file, path FROM file WHERE id_file = ? LIMIT 1`,
+        `SELECT id_file, name, path
+         FROM file WHERE id_file = ? LIMIT 1`,
         [id_file],
       );
 
@@ -246,24 +294,37 @@ class FileController {
         throw new NotFoundError("Arquivo não encontrado.");
       }
 
-      const file = rows[0];
+      file = rows[0];
+
       if (fs.existsSync(file.path)) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch {
-          // Continue if already deleted
-        }
+        fs.unlinkSync(file.path);
       }
 
-      await pool.promise().execute(
-        `DELETE FROM file WHERE id_file = ?`,
-        [id_file],
-      );
+      await pool
+        .promise()
+        .execute(`DELETE FROM file WHERE id_file = ?`, [id_file]);
+
+      await FileController.registerLog({
+        file_name: file.name,
+        action: "delete",
+        status: "success",
+        message: "Arquivo excluído com sucesso.",
+      });
 
       return res.status(200).json({
         message: "Arquivo excluído com sucesso.",
       });
     } catch (error) {
+      if (file) {
+        await FileController.registerLog({
+          id_file: file.id_file,
+          file_name: file.name,
+          action: "delete",
+          status: "error",
+          message: error.message,
+        });
+      }
+
       return next(error);
     }
   }

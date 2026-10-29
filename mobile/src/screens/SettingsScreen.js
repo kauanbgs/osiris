@@ -14,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
 import BottomNav from "../components/Navbar";
+import ModelSettings from "../components/ModelSettings";
 
 export default function SettingsScreen({ navigation, route }) {
   // guestMode = true quando vindo da LoginScreen (sem estar autenticado)
@@ -70,7 +71,7 @@ export default function SettingsScreen({ navigation, route }) {
       // A tela de configurações também pode ser aberta antes do login.
       // Verifica a sessão antes de navegar para uma tela protegida.
       await sheets.getMe();
-      navigation.navigate("Memoria");
+      navigation.navigate("Memoria", undefined, { pop: true });
     } catch (error) {
       if (error.response?.status === 401) {
         Alert.alert(
@@ -101,6 +102,12 @@ export default function SettingsScreen({ navigation, route }) {
         style: "destructive",
         onPress: async () => {
           try {
+            // Revoga o token na API (registra o logout em revoked_token)
+            await sheets.postLogout();
+          } catch (e) {
+            console.warn("Erro ao revogar token na API:", e?.message);
+          }
+          try {
             // Remove só os dados da sessão (o IP do servidor é mantido)
             await AsyncStorage.multiRemove([
               "token",
@@ -124,7 +131,7 @@ export default function SettingsScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Configurações do Sistema</Text>
 
         {guestMode && (
@@ -189,6 +196,8 @@ export default function SettingsScreen({ navigation, route }) {
             <Text style={styles.memoryAction}>Clique para mais informações ›</Text>
           </TouchableOpacity>
         )}
+
+        {!guestMode && <ModelSettings />}
 
         <View style={styles.divider} />
 

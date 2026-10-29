@@ -213,7 +213,7 @@ ipcMain.handle("llama:get-status", () => {
   };
 });
 
-ipcMain.handle("llama:list-local-models", () => {
+function listLocalModels() {
   const modelsDir = getModelsDir();
   const files = fs.readdirSync(modelsDir);
   const models = [];
@@ -234,7 +234,9 @@ ipcMain.handle("llama:list-local-models", () => {
   }
 
   return models;
-});
+}
+
+ipcMain.handle("llama:list-local-models", () => listLocalModels());
 
 ipcMain.handle("llama:load-model", (_, modelPath) => withLlamaLock(async () => {
   try {
@@ -327,14 +329,27 @@ ipcMain.handle("llama:prompt", async (event, payload) => {
   }
 });
 
-ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+// Envia um evento para todas as janelas, assim a tela de Modelos acompanha
+// também os downloads iniciados pelo app mobile.
+function broadcast(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
+  }
+}
+
+async function downloadModelFile(url, filename) {
   const modelsDir = getModelsDir();
   const destinationPath = path.join(modelsDir, filename);
   const tempPath = destinationPath + ".tmp";
 
   if (fs.existsSync(destinationPath)) {
     return { success: true, modelPath: destinationPath, alreadyExists: true };
+  }
+
+  if (activeDownloads.has(url)) {
+    throw new Error("Este modelo já está sendo baixado.");
   }
 
   try {
@@ -352,7 +367,15 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
     const fileStream = fs.createWriteStream(tempPath);
     const reader = response.body.getReader();
 
-    activeDownloads.set(url, { tempPath, reader });
+    const download = {
+      tempPath,
+      reader,
+      filename,
+      downloadedBytes: 0,
+      totalBytes,
+      progress: 0,
+    };
+    activeDownloads.set(url, download);
 
     while (true) {
       const { done, value } = await reader.read();
@@ -365,28 +388,36 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
         ? Math.round((downloadedBytes / totalBytes) * 100)
         : 0;
 
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("llama:download-progress", {
-          url,
-          filename,
-          downloadedBytes,
-          totalBytes,
-          progress,
-        });
-      }
+      download.downloadedBytes = downloadedBytes;
+      download.progress = progress;
+
+      broadcast("llama:download-progress", {
+        url,
+        filename,
+        downloadedBytes,
+        totalBytes,
+        progress,
+      });
     }
 
-    fileStream.end();
+    await new Promise((resolve, reject) => {
+      fileStream.on("error", reject);
+      fileStream.end(resolve);
+    });
+
+    // cancelDownload() remove o item do mapa e interrompe o reader.
+    if (!activeDownloads.has(url)) {
+      throw new Error("Download cancelado.");
+    }
+
     fs.renameSync(tempPath, destinationPath);
     activeDownloads.delete(url);
 
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("llama:download-complete", {
-        url,
-        filename,
-        modelPath: destinationPath,
-      });
-    }
+    broadcast("llama:download-complete", {
+      url,
+      filename,
+      modelPath: destinationPath,
+    });
 
     return { success: true, modelPath: destinationPath };
   } catch (err) {
@@ -399,11 +430,16 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
     console.error("Erro no download do modelo:", err);
     throw new Error(err.message || "Falha no download do modelo");
   }
-});
+}
 
-ipcMain.handle("llama:cancel-download", (_, url) => {
+ipcMain.handle("llama:download-model", (_, { url, filename }) =>
+  downloadModelFile(url, filename),
+);
+
+function cancelDownload(url) {
   const item = activeDownloads.get(url);
   if (item) {
+    activeDownloads.delete(url);
     try {
       item.reader?.cancel();
     } catch (e) {}
@@ -412,11 +448,12 @@ ipcMain.handle("llama:cancel-download", (_, url) => {
         fs.unlinkSync(item.tempPath);
       } catch (e) {}
     }
-    activeDownloads.delete(url);
     return true;
   }
   return false;
-});
+}
+
+ipcMain.handle("llama:cancel-download", (_, url) => cancelDownload(url));
 
 ipcMain.handle("llama:import-file", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -853,6 +890,112 @@ aiServer.post("/api/prompt", async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+// ===============================
+// MODELOS VIA REDE (app mobile)
+// ===============================
+
+// Só modelos do catálogo podem ser baixados pela rede: o celular escolhe pelo
+// nome do arquivo e nunca envia uma URL.
+const modelCatalog = require("./modelCatalog.json");
+
+function findCatalogModel(filename) {
+  return modelCatalog.find((model) => model.filename === filename);
+}
+
+// Aceita apenas nomes de arquivo .gguf que existam na pasta de modelos.
+function resolveLocalModelPath(filename) {
+  if (
+    typeof filename !== "string" ||
+    !filename.endsWith(".gguf") ||
+    path.basename(filename) !== filename
+  ) {
+    return null;
+  }
+  const fullPath = path.join(getModelsDir(), filename);
+  return fs.existsSync(fullPath) ? fullPath : null;
+}
+
+aiServer.get("/api/models", (req, res) => {
+  try {
+    const installed = listLocalModels().map(({ fullPath, ...model }) => model);
+    const installedNames = new Set(installed.map((model) => model.filename));
+    const downloads = {};
+
+    for (const download of activeDownloads.values()) {
+      downloads[download.filename] = {
+        progress: download.progress,
+        downloadedBytes: download.downloadedBytes,
+        totalBytes: download.totalBytes,
+      };
+    }
+
+    res.json({
+      activeModelName: activeModelPath ? path.basename(activeModelPath) : null,
+      modelLoaded: Boolean(currentSession),
+      installed,
+      catalog: modelCatalog.map(({ url, ...model }) => ({
+        ...model,
+        installed: installedNames.has(model.filename),
+      })),
+      downloads,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+aiServer.post("/api/models/download", (req, res) => {
+  const model = findCatalogModel(req.body?.filename);
+
+  if (!model) {
+    return res.status(400).json({ error: "Modelo fora do catálogo." });
+  }
+
+  if (resolveLocalModelPath(model.filename)) {
+    return res.json({ status: "installed" });
+  }
+
+  if (activeDownloads.has(model.url)) {
+    return res.status(202).json({ status: "downloading" });
+  }
+
+  // O download pode levar minutos: responde na hora e o celular acompanha
+  // o progresso por GET /api/models.
+  downloadModelFile(model.url, model.filename).catch((error) => {
+    console.error("Download pela rede falhou:", error.message);
+  });
+
+  res.status(202).json({ status: "downloading" });
+});
+
+aiServer.post("/api/models/cancel", (req, res) => {
+  const model = findCatalogModel(req.body?.filename);
+
+  if (!model) {
+    return res.status(400).json({ error: "Modelo fora do catálogo." });
+  }
+
+  res.json({ cancelled: cancelDownload(model.url) });
+});
+
+aiServer.post("/api/models/load", async (req, res) => {
+  const modelPath = resolveLocalModelPath(req.body?.filename);
+
+  if (!modelPath) {
+    return res.status(404).json({ error: "Modelo não encontrado no desktop." });
+  }
+
+  try {
+    const result = await loadModelAndNotify(modelPath);
+    res.json({
+      activeModelName: result.activeModelName,
+      modelLoaded: true,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
