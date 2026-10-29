@@ -82,6 +82,14 @@ router.post("/agent/:id_agent/pause", verifyJWT, AgentController.pause);
 router.post("/agent/:id_agent/resume", verifyJWT, AgentController.resume);
 router.post("/agent/:id_agent/cancel", verifyJWT, AgentController.cancel);
 
+//agent file management
+router.post("/agent/:id_agent/file", verifyJWT, AgentController.addFile);
+router.delete(
+  "/agent/:id_agent/file/:id_file",
+  verifyJWT,
+  AgentController.removeFile,
+);
+
 // Agent memory management
 router.post("/agent/:id_agent/memory", verifyJWT, MemoryIAController.create);
 router.get("/agent/:id_agent/memory", verifyJWT, MemoryIAController.list);

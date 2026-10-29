@@ -352,6 +352,105 @@ class AgentController {
     }
   }
 
+  static async addFile(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+      const { fk_id_file } = req.body;
+
+      if (!fk_id_file) {
+        throw new BadRequestError("File ID is required.");
+      }
+
+      const [agentRows] = await pool.promise().execute(
+        `SELECT id_agent
+         FROM agent
+         WHERE id_agent = ?
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      if (!agentRows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const [fileRows] = await pool.promise().execute(
+        `SELECT id_file
+         FROM file
+         WHERE id_file = ?
+         LIMIT 1`,
+        [fk_id_file],
+      );
+
+      if (!fileRows[0]) {
+        throw new NotFoundError("File not found.");
+      }
+
+      const [existingRows] = await pool.promise().execute(
+        `SELECT id_agent_file
+         FROM file_agent
+         WHERE fk_id_agent = ?
+           AND fk_id_file = ?
+         LIMIT 1`,
+        [id_agent, fk_id_file],
+      );
+
+      if (existingRows[0]) {
+        throw new BadRequestError("File already linked to this agent.");
+      }
+
+      await pool.promise().execute(
+        `INSERT INTO file_agent (fk_id_agent, fk_id_file)
+         VALUES (?, ?)`,
+        [id_agent, fk_id_file],
+      );
+
+      return res.status(201).json({
+        message: "File added to agent successfully.",
+        association: {
+          fk_id_agent: Number(id_agent),
+          fk_id_file: Number(fk_id_file),
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async removeFile(req, res, next) {
+    try {
+      const { id_agent, id_file } = req.params;
+
+      const [agentRows] = await pool.promise().execute(
+        `SELECT id_agent
+         FROM agent
+         WHERE id_agent = ?
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      if (!agentRows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const [result] = await pool.promise().execute(
+        `DELETE FROM file_agent
+         WHERE fk_id_agent = ?
+           AND fk_id_file = ?`,
+        [id_agent, id_file],
+      );
+
+      if (result.affectedRows === 0) {
+        throw new NotFoundError("File is not linked to this agent.");
+      }
+
+      return res.status(200).json({
+        message: "File removed from agent successfully.",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async execute(req, res, next) {
     let idExecution = null;
     let idAgent = null;
@@ -364,22 +463,23 @@ class AgentController {
       idAgent = id_agent;
 
       const inputError = validateExecutionInput(input);
+
       if (inputError) {
         throw new BadRequestError(inputError);
       }
 
       const [agentRows] = await pool.promise().execute(
         `SELECT
-          a.id_agent,
-          a.name,
-          a.objective,
-          a.system_prompt,
-          a.fk_id_model,
-          m.name AS model_name
-         FROM agent a
-         LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-         WHERE a.id_agent = ?
-         LIMIT 1`,
+        a.id_agent,
+        a.name,
+        a.objective,
+        a.system_prompt,
+        a.fk_id_model,
+        m.name AS model_name
+       FROM agent a
+       LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
+       WHERE a.id_agent = ?
+       LIMIT 1`,
         [id_agent],
       );
 
@@ -388,12 +488,28 @@ class AgentController {
       }
 
       const agent = agentRows[0];
+
+      // Busca os arquivos vinculados ao agente.
+      const [files] = await pool.promise().execute(
+        `SELECT
+        f.id_file,
+        f.name,
+        f.path,
+        f.extension,
+        f.size,
+        f.type
+       FROM file f
+       INNER JOIN file_agent fa ON f.id_file = fa.fk_id_file
+       WHERE fa.fk_id_agent = ?`,
+        [id_agent],
+      );
+
       startTime = Date.now();
 
       const [insertResult] = await pool.promise().execute(
         `INSERT INTO agent_execution_log
-          (fk_id_agent, status, input)
-         VALUES (?, 'running', ?)`,
+        (fk_id_agent, status, input)
+       VALUES (?, 'running', ?)`,
         [id_agent, input.trim()],
       );
 
@@ -406,21 +522,23 @@ class AgentController {
           id_agent,
         ]);
 
+      // Executa o agente com a entrada e os arquivos associados.
       const executionResult = await AgentExecutionService.run({
         agent,
         input: input.trim(),
+        files,
       });
 
       const metrics = executionResult.metrics;
 
       await pool.promise().execute(
         `UPDATE agent_execution_log
-         SET status = 'completed',
-             output = ?,
-             input_tokens = ?,
-             output_tokens = ?,
-             response_time_ms = ?
-         WHERE id_execution = ?`,
+       SET status = 'completed',
+           output = ?,
+           input_tokens = ?,
+           output_tokens = ?,
+           response_time_ms = ?
+       WHERE id_execution = ?`,
         [
           executionResult.output,
           metrics.input_tokens,
@@ -447,6 +565,8 @@ class AgentController {
           model_used: agent.model_name || "No model configured",
           execution_time: new Date().toISOString(),
           metrics,
+          files_read: executionResult.files_read,
+          files_skipped: executionResult.files_skipped,
         },
       });
     } catch (error) {
@@ -457,10 +577,10 @@ class AgentController {
 
           await pool.promise().execute(
             `UPDATE agent_execution_log
-             SET status = ?,
-                 output = ?,
-                 response_time_ms = ?
-             WHERE id_execution = ?`,
+           SET status = ?,
+               output = ?,
+               response_time_ms = ?
+           WHERE id_execution = ?`,
             [
               status,
               error.message,
