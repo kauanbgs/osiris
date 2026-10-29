@@ -25,6 +25,7 @@ import ChatInput from "../components/ChatInput";
 import PlusActionMenu from "../components/PlusActionMenu";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
+import { getActiveModel, sendCloudPrompt } from "../services/modelConfig";
 
 const colors = {
   background: "#0d0d0d",
@@ -122,14 +123,15 @@ async function checkDesktopConnection() {
   }
 }
 
-function StatusIndicator({ connected, modelLoaded, modelName, onPress }) {
+function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, onPress }) {
   let label = "Desktop offline";
 
-  if (connected && !modelLoaded) {
+  if (cloudModelName) {
+    connected = true;
+    label = `Nuvem • ${cloudModelName}`;
+  } else if (connected && !modelLoaded) {
     label = "Desktop conectado • sem modelo";
-  }
-
-  if (connected && modelLoaded) {
+  } else if (connected && modelLoaded) {
     label = modelName ? `Conectado • ${modelName}` : "Conectado ao desktop";
   }
 
@@ -350,6 +352,7 @@ export default function HomeScreen({ navigation, route }) {
   const [modelName, setModelName] = useState(null);
   const [isAgentTyping, setIsAgentTyping] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [activeModel, setActiveModel] = useState(null);
 
   // Estados para Anexos (Câmera, Fotos, Arquivos) e Menu do +
   const [plusMenuVisible, setPlusMenuVisible] = useState(false);
@@ -357,6 +360,18 @@ export default function HomeScreen({ navigation, route }) {
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const pickingRef = useRef(false);
+
+  // Impede abrir dois seletores nativos ao mesmo tempo (ex.: toque duplo).
+  const withPickerLock = (picker) => async () => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    try {
+      await picker();
+    } finally {
+      pickingRef.current = false;
+    }
+  };
 
   useEffect(() => {
     async function loadUser() {
@@ -403,9 +418,21 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     loadChatHistory();
-  }, [route?.params?.chatId]);
+  }, [route?.params?.chatId, route?.params?.newChat]);
+
+  // Recarrega o modelo escolhido ao voltar das Configurações.
+  useEffect(() => {
+    const refresh = () => getActiveModel().then(setActiveModel);
+    refresh();
+    return navigation.addListener("focus", refresh);
+  }, [navigation]);
+
+  const isCloudModel = activeModel?.type === "cloud";
 
   useEffect(() => {
+    // Com modelo em nuvem não há por que consultar o desktop a cada 5s.
+    if (!activeModel || isCloudModel) return undefined;
+
     let mounted = true;
 
     async function checkConnection() {
@@ -424,10 +451,10 @@ export default function HomeScreen({ navigation, route }) {
       mounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [activeModel, isCloudModel]);
 
   // ─── AÇÕES DO MENU + (Câmera, Fotos, Arquivos) ─────────────────────────
-  const handleSelectCamera = async () => {
+  const handleSelectCamera = withPickerLock(async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
@@ -454,9 +481,9 @@ export default function HomeScreen({ navigation, route }) {
     } catch (err) {
       console.warn("Erro ao abrir câmera:", err?.message);
     }
-  };
+  });
 
-  const handleSelectPhotos = async () => {
+  const handleSelectPhotos = withPickerLock(async () => {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -484,9 +511,9 @@ export default function HomeScreen({ navigation, route }) {
     } catch (err) {
       console.warn("Erro ao abrir galeria de fotos:", err?.message);
     }
-  };
+  });
 
-  const handleSelectFiles = async () => {
+  const handleSelectFiles = withPickerLock(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
@@ -504,7 +531,7 @@ export default function HomeScreen({ navigation, route }) {
     } catch (err) {
       console.warn("Erro ao selecionar arquivo:", err?.message);
     }
-  };
+  });
 
 
   // ─── ENVIO DE MENSAGEM ───────────────────────────────────────────────
@@ -532,6 +559,8 @@ export default function HomeScreen({ navigation, route }) {
     setAttachment(null);
     setIsAgentTyping(true);
 
+    let model = activeModel;
+
     try {
       let chatId = activeChatId;
       if (!chatId) {
@@ -554,10 +583,14 @@ export default function HomeScreen({ navigation, route }) {
           .catch(() => {});
       }
 
-      // Prepara o prompt para o desktop
+      // Envia para o modelo escolhido em Configurações → Modelos de IA
       const promptText = contentToSave;
       const promptWithMemory = await addMemoryContext(promptText);
-      const aiResponse = await sendPromptToDesktop(promptWithMemory);
+      model = await getActiveModel();
+      const aiResponse =
+        model.type === "cloud"
+          ? await sendCloudPrompt(model, promptWithMemory)
+          : await sendPromptToDesktop(promptWithMemory);
 
       if (chatId) {
         await sheets
@@ -572,15 +605,20 @@ export default function HomeScreen({ navigation, route }) {
       };
 
       setMessages((previous) => [...previous, agentMessage]);
-      setDesktopConnected(true);
+      if (model.type !== "cloud") setDesktopConnected(true);
     } catch (error) {
-      console.error("Erro ao falar com desktop:", error);
-      setDesktopConnected(false);
+      console.error("Erro ao falar com a IA:", error);
+      const failedOnCloud = model?.type === "cloud";
+      if (!failedOnCloud) setDesktopConnected(false);
 
       const errorMessage = {
         id: `${Date.now()}-error`,
         role: "agent",
-        text: `Não consegui falar com o desktop.\n\n${error.message}`,
+        text: `${
+          failedOnCloud
+            ? "Não consegui falar com a IA na nuvem."
+            : "Não consegui falar com o desktop."
+        }\n\n${error.message}`,
       };
 
       setMessages((previous) => [...previous, errorMessage]);
@@ -607,7 +645,8 @@ export default function HomeScreen({ navigation, route }) {
         connected={desktopConnected}
         modelLoaded={modelLoaded}
         modelName={modelName}
-        onPress={() => navigation.navigate("Configuracoes")}
+        cloudModelName={isCloudModel ? activeModel.name : null}
+        onPress={() => navigation.navigate("Configuracoes", undefined, { pop: true })}
       />
 
       <KeyboardAvoidingView
@@ -659,18 +698,7 @@ export default function HomeScreen({ navigation, route }) {
           onSelectFiles={handleSelectFiles}
         />
 
-        <BottomNav
-          activeKey="home"
-          onPressItem={(key) => {
-            if (key === "home")
-              navigation.navigate("HomeScreen", { chatId: null });
-            else if (key === "chats") navigation.navigate("Chats");
-            else if (key === "folder") navigation.navigate("ArquivoScreen");
-            else if (key === "terminal") navigation.navigate("Terminal");
-            else if (key === "settings") navigation.navigate("Configuracoes");
-            else console.log("nav:", key);
-          }}
-        />
+        <BottomNav activeKey="home" navigation={navigation} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

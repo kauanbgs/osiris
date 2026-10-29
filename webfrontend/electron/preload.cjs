@@ -88,6 +88,13 @@ contextBridge.exposeInMainWorld("llama", {
       ipcRenderer.removeListener("llama:download-complete", listener);
   },
 
+  // Disparado quando outro dispositivo (app mobile) troca o modelo carregado.
+  onModelChanged: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("llama:model-changed", listener);
+    return () => ipcRenderer.removeListener("llama:model-changed", listener);
+  },
+
   onStream: (callback) => {
     const listener = (_event, data) => {
       callback(data);

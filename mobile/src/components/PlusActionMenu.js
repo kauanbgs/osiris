@@ -1,4 +1,10 @@
 import React from "react";
+
+// Tempo para o Modal terminar de fechar antes de abrir câmera/galeria/arquivos.
+// Abrir o seletor nativo durante a animação de fechamento faz o iOS descartá-lo
+// sem resolver a promise, e o expo-document-picker fica preso em
+// "Different document picking in progress".
+const PICKER_DELAY_MS = 400;
 import {
   View,
   Text,
@@ -17,6 +23,11 @@ export default function PlusActionMenu({
   onSelectPhotos,
   onSelectFiles,
 }) {
+  const closeThen = (action) => () => {
+    onClose();
+    setTimeout(action, PICKER_DELAY_MS);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -31,10 +42,7 @@ export default function PlusActionMenu({
               {/* Item: Câmera */}
               <TouchableOpacity
                 style={styles.menuItem}
-                onPress={() => {
-                  onClose();
-                  onSelectCamera();
-                }}
+                onPress={closeThen(onSelectCamera)}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
@@ -46,10 +54,7 @@ export default function PlusActionMenu({
               {/* Item: Fotos */}
               <TouchableOpacity
                 style={styles.menuItem}
-                onPress={() => {
-                  onClose();
-                  onSelectPhotos();
-                }}
+                onPress={closeThen(onSelectPhotos)}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
@@ -61,10 +66,7 @@ export default function PlusActionMenu({
               {/* Item: Arquivos */}
               <TouchableOpacity
                 style={[styles.menuItem, styles.lastMenuItem]}
-                onPress={() => {
-                  onClose();
-                  onSelectFiles();
-                }}
+                onPress={closeThen(onSelectFiles)}
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>

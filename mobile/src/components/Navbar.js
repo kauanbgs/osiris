@@ -1,5 +1,6 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRoute } from '@react-navigation/native';
 
 const colors = {
   textMuted: '#444444',
@@ -21,28 +22,34 @@ const NAV_ITEMS = [
  * Navbar centralizada.
  * Props:
  *   - navigation  (obrigatório) — objeto de navegação do React Navigation
- *   - activeKey   (obrigatório) — key do item atual ('home' | 'chats' | 'folder' | 'terminal' | 'settings')
+ *   - activeKey   (obrigatório) — key do item atual ('home' | 'chats' | 'folder' | 'workflow' | 'terminal' | 'settings')
  *   - onPressItem (opcional)    — callback extra para casos especiais (ex: home com chatId: null)
  */
 export default function Navbar({ navigation, activeKey, onPressItem }) {
+  const route = useRoute();
+
   function handlePress(item) {
-    // Callback customizado tem prioridade (ex: HomeScreen passa chatId: null)
+    // Callback customizado tem prioridade
     if (onPressItem) {
       onPressItem(item.key);
       return;
     }
 
-    // Não navega se já está na tela ativa
-    if (item.key === activeKey) return;
-
-    if (item.route) {
-      // Home sempre inicia um novo chat
-      if (item.key === 'home') {
-        navigation.navigate(item.route, { chatId: null });
-      } else {
-        navigation.navigate(item.route);
-      }
+    // Home sempre inicia um novo chat, mesmo estando nela (newChat muda a cada
+    // toque para a Home limpar a conversa atual).
+    if (item.key === 'home') {
+      navigation.navigate('HomeScreen', { chatId: null, newChat: Date.now() }, { pop: true });
+      return;
     }
+
+    // Só ignora o toque se já estiver exatamente nessa tela (ex.: em Memória,
+    // o ícone de configurações fica aceso, mas precisa levar de volta a ela).
+    if (item.route === route.name) return;
+
+    // pop: true volta para a tela se ela já estiver aberta na pilha, em vez de
+    // empilhar uma cópia nova a cada toque (cada cópia mantinha seus timers
+    // e requisições rodando em segundo plano).
+    navigation.navigate(item.route, undefined, { pop: true });
   }
 
   return (
