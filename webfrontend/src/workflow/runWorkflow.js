@@ -73,7 +73,11 @@ export async function runWorkflow({ nodes, edges, startAgentId, onlyAgentId, exe
       const saved = onlyAgentId && !outputs.has(sourceId);
       const output = saved ? source.data?.output : outputs.get(sourceId);
       if (output === undefined || output === null || output === "") continue;
-      const transfer = { ...toAgentInput(source, output), targetId: node.id, targetLabel: label, saved: Boolean(saved) };
+      const input = toAgentInput(source, output);
+      // If the sender ignored the handoff format, still deliver what the user
+      // wrote in its "Instrucoes para o proximo agente" field.
+      if (!input.instruction && source.data?.handoffPrompt?.trim()) input.instruction = source.data.handoffPrompt.trim();
+      const transfer = { ...input, targetId: node.id, targetLabel: label, saved: Boolean(saved) };
       received.push(transfer);
       onTransfer?.(transfer);
     }

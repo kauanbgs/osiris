@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import TitleBar from "./components/TitleBar";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
@@ -11,6 +11,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Memoria from "./pages/Memoria";
 import Workflows from "./pages/Workflows";
 import Terminal from "./pages/Terminal";
+import Navegador from "./pages/Navegador";
 
 export default function App() {
   return (
@@ -29,10 +30,12 @@ export default function App() {
               <Route path="/modelos" element={<Modelos />} />
               <Route path="/arquivos" element={<Arquivos />} />
               <Route path="/workflow" element={<Workflow />} />
-              <Route path="/workflow/:id" element={<Workflow />} />
-              <Route path="/workflows" element={<Workflows/>} />
+              <Route path="/workflow/:chatId" element={<Navigate to="/workflow" replace />} />
+              <Route path="/workflows/:id" element={<Workflow />} />
+              <Route path="/workflows" element={<Workflows />} />
               <Route path="/memoria" element={<Memoria />} />
               <Route path="/terminal" element={<Terminal />} />
+              <Route path="/navegador" element={<Navegador />} />
             </Route>
           </Route>
 

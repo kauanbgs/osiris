@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
-import { useActiveProject } from "@/contexts/useActiveProject";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   ReactFlow,
@@ -23,6 +22,7 @@ import FileNode from "@/components/FileNode";
 import { WorkflowExecutionProvider } from "@/contexts/WorkflowExecutionContext";
 import WorkflowExecutionPanel from "@/components/WorkflowExecutionPanel";
 import WorkflowText from "@/components/workflowText";
+import sheets from "@/services/api";
 
 import {
   Menubar,
@@ -57,56 +57,117 @@ const edgeTypes = {
   curved: FlowEdge,
 };
 
-function SavedWorkflow({ owner, chatId }) {
-  const [loaded, setLoaded] = useState(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let cancelled = false;
-    window.electronAPI.loadWorkflow(owner, chatId).then((workflow) => {
-      if (!Array.isArray(workflow?.nodes) || !Array.isArray(workflow?.edges)) throw new Error("Workflow inválido");
-      if (!cancelled) setLoaded(workflow);
-    }).catch(() => { if (!cancelled) setError("Não foi possível abrir o workflow salvo."); });
-    return () => { cancelled = true; };
-  }, [owner, chatId]);
-  if (error) return <p role="alert" className="p-8 text-red-400">{error}</p>;
-  if (!loaded) return <p className="p-8">Carregando workflow...</p>;
-  return <WorkflowCanvas owner={owner} chatId={chatId} initialWorkflow={loaded} />;
-}
-
 export default function Workflow() {
+  const navigate = useNavigate();
   const { id } = useParams();
-  const { owner, activeId } = useActiveProject();
-  if (!window.electronAPI?.loadWorkflow) return <WorkflowCanvas initialWorkflow={{ nodes: [], edges: [] }} />;
-  if (!id && activeId) return <Navigate to={"/workflow/" + encodeURIComponent(activeId)} replace />;
-  if (!id) return <p className="p-8 text-zinc-200">Crie um projeto pelo + na barra lateral para iniciar o chat e seu workflow.</p>;
-  if (!owner) return <p role="alert" className="p-8">Usuário não identificado.</p>;
-  return <SavedWorkflow key={JSON.stringify([owner, id])} owner={owner} chatId={id} />;
-}
+  const [canvasReady, setCanvasReady] = useState(false);
+  const dirtyRef = useRef(false);
+  const changeVersionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
-  const [nodes, setNodes, onNodesChange] =
-    useNodesState(initialWorkflow.nodes.map((node, index) => node.type === "agent" && (!node.data?.label || node.data.label === "Agent")
-      ? { ...node, data: { ...node.data, label: "Agente " + (index + 1) } } : node));
-
-  const [edges, setEdges, onEdgesChange] =
-    useEdgesState(initialWorkflow.edges.map((edge) => ({ ...edge, markerEnd: { type: MarkerType.ArrowClosed } })));
-  const [executionEvents, setExecutionEvents] = useState(initialWorkflow.executionEvents || []);
-  const [viewport, setViewport] = useState(initialWorkflow.viewport);
-  const [saveAttempt, setSaveAttempt] = useState(0);
-  const [saveStatus, setSaveStatus] = useState("Salvando...");
   useEffect(() => {
-    if (!window.electronAPI?.saveWorkflow || !owner || !chatId) return;
-    let active = true;
-    window.electronAPI.saveWorkflow(owner, chatId, { nodes, edges, viewport, executionEvents }).then(() => {
-      if (active) setSaveStatus("Salvo neste computador");
-    }).catch(() => {
-      if (active) setSaveStatus("Erro ao salvar. Tente novamente.");
-    });
-    return () => { active = false; };
-  }, [owner, chatId, nodes, edges, viewport, saveAttempt, executionEvents]);
+    if (id) return undefined;
+    let cancelled = false;
+    async function openOrCreate() {
+      try {
+        const { data } = await sheets.getWorkflows();
+        let workflow = data.workflows?.[0];
+        if (!workflow) {
+          const result = await sheets.createWorkflow({ name: "Meu workflow", description: "Workflow criado pelo editor." });
+          workflow = result.data.workflow;
+        }
+        if (!cancelled) navigate(`/workflows/${workflow.id_workflow}`, { replace: true });
+      } catch (error) {
+        console.error("Não foi possível abrir o workflow:", error);
+      }
+    }
+    openOrCreate();
+    return () => { cancelled = true; };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    let cancelled = false;
+    setCanvasReady(false);
+    dirtyRef.current = false;
+    changeVersionRef.current = 0;
+    async function loadCanvas() {
+      try {
+        const { data } = await sheets.getWorkflowCanvas(id);
+        if (cancelled) return;
+        setNodes(data.canvas?.nodes || []);
+        setEdges(data.canvas?.edges || []);
+        setCanvasReady(true);
+      } catch (error) {
+        console.error("Não foi possível carregar o workflow:", error);
+        if (!cancelled) setCanvasReady(true);
+      }
+    }
+    loadCanvas();
+    const interval = setInterval(async () => {
+      if (cancelled || dirtyRef.current || saveInFlightRef.current) return;
+      try {
+        const { data } = await sheets.getWorkflowCanvas(id);
+        if (cancelled || dirtyRef.current) return;
+        const remoteNodes = data.canvas?.nodes || [];
+        const remoteEdges = data.canvas?.edges || [];
+        setNodes((current) => JSON.stringify(current) === JSON.stringify(remoteNodes) ? current : remoteNodes);
+        setEdges((current) => JSON.stringify(current) === JSON.stringify(remoteEdges) ? current : remoteEdges);
+      } catch (error) {
+        console.warn("Não foi possível atualizar o workflow:", error?.message);
+      }
+    }, 1500);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [id, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!id || !canvasReady || !dirtyRef.current) return undefined;
+    const version = changeVersionRef.current;
+    const timeout = setTimeout(async () => {
+      saveInFlightRef.current = true;
+      try {
+        await sheets.saveWorkflowCanvas(id, { nodes, edges });
+        if (changeVersionRef.current === version) dirtyRef.current = false;
+      } catch (error) {
+        console.error("Não foi possível salvar o workflow:", error);
+      } finally {
+        saveInFlightRef.current = false;
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [id, canvasReady, nodes, edges]);
+
+  const handleNodesChange = useCallback((changes) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    onNodesChange(changes);
+  }, [onNodesChange]);
+
+  const handleEdgesChange = useCallback((changes) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    onEdgesChange(changes);
+  }, [onEdgesChange]);
+
+  const updateNodeData = useCallback((nodeId, patch) => {
+    dirtyRef.current = true;
+    changeVersionRef.current += 1;
+    setNodes((current) => current.map((node) => node.id === nodeId
+      ? { ...node, data: { ...node.data, ...patch } }
+      : node));
+  }, [setNodes]);
+
+  const renderNodes = useMemo(() => nodes.map((node) => ({
+    ...node,
+    data: { ...node.data, onWorkflowDataChange: updateNodeData },
+  })), [nodes, updateNodeData]);
 
   const onConnect = useCallback(
-    (params) =>
+    (params) => {
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setEdges((eds) =>
         addEdge(
           {
@@ -116,7 +177,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
           },
           eds
         )
-      ),
+      );
+    },
     [setEdges]
   );
 
@@ -143,6 +205,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         { ...newNode, data: { ...newNode.data, label: "Agente " + (nodes.filter((node) => node.type === "agent").length + 1) } },
@@ -171,6 +235,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -205,6 +271,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -239,6 +307,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
         dragHandle: ".drag-handle",
       };
 
+      dirtyRef.current = true;
+      changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
         newNode,
@@ -249,13 +319,8 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
 
   return (
     <ReactFlowProvider>
-    <WorkflowExecutionProvider initialEvents={initialWorkflow.executionEvents} onEventsChange={setExecutionEvents}>
+    <WorkflowExecutionProvider>
     <div className="relative h-full w-full overflow-hidden bg-[#141414]">
-      {chatId && <div className="absolute bottom-4 left-16 z-50 flex items-center gap-4 rounded bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
-        <Link to={"/home/" + chatId}>Abrir chat do projeto</Link>
-        <span role="status">{saveStatus}</span>
-        <button type="button" onClick={() => { setSaveStatus("Salvando..."); setSaveAttempt((value) => value + 1); }}>Salvar</button>
-      </div>}
       <WorkflowExecutionPanel />
       {/* NAVBAR */}
       <section className="absolute top-6 left-1/2 z-50 -translate-x-1/2">
@@ -397,18 +462,16 @@ function WorkflowCanvas({ owner, chatId, initialWorkflow }) {
       {/* CANVAS */}
       <div className="h-full w-full">
         <ReactFlow
-          nodes={nodes}
+          nodes={renderNodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
           onConnect={onConnect}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
           defaultEdgeOptions={{ type: "curved", markerEnd: { type: MarkerType.ArrowClosed } }}
-          defaultViewport={initialWorkflow.viewport}
-          onMoveEnd={(_event, nextViewport) => setViewport(nextViewport)}
-          fitView={!initialWorkflow.viewport}
+          fitView
           minZoom={0.1}
           maxZoom={4}
           connectionRadius={40}

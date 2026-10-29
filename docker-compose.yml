@@ -1,0 +1,65 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: osiris-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-osiris}
+      MYSQL_USER: ${DB_USER:-osiris_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-osiris_password}
+    ports:
+      - "${DB_PORT:-3308}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./osiris-api/mysql-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD:-root} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - osiris-network
+
+  osiris-api:
+    build:
+      context: ./osiris-api
+      dockerfile: Dockerfile
+    container_name: osiris-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      PORT: "5000"
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: ${DB_USER:-osiris_user}
+      DB_PASSWORD: ${DB_PASSWORD:-osiris_password}
+      DB_NAME: ${DB_NAME:-osiris}
+      JWT_SECRET: ${JWT_SECRET:-osiris_jwt_super_secret_key_2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - api_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/osiris/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - osiris-network
+
+volumes:
+  mysql_data:
+  api_uploads:
+
+networks:
+  osiris-network:
+    driver: bridge

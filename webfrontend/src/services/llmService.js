@@ -59,7 +59,79 @@ export const CLOUD_PROVIDERS = [
       { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7 (Enterprise)" },
     ],
   },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    placeholder: "Cole sua chave sk-or-v1-...",
+    getKeyUrl: "https://openrouter.ai/keys",
+    models: [
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash 1017", default: true },
+      { id: "deepseek/deepseek-chat", name: "DeepSeek V3" },
+      { id: "deepseek/deepseek-r1", name: "DeepSeek R1" },
+      { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet" },
+      { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" },
+      { id: "openai/gpt-4o", name: "GPT-4o" },
+      { id: "openai/gpt-4o-mini", name: "GPT-4o Mini" },
+      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
+      { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B" },
+      { id: "mistralai/mistral-small-24b-instruct-2501", name: "Mistral Small 24B" },
+      { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (Gratuito)" },
+      { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Gratuito)" },
+    ],
+  },
 ];
+
+const CUSTOM_PROVIDER_MODELS_KEY = "osiris_custom_provider_models";
+
+export function getCustomProviderModels(providerId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CUSTOM_PROVIDER_MODELS_KEY) || "{}");
+    return Array.isArray(all[providerId]) ? all[providerId] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomProviderModels(providerId, models) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CUSTOM_PROVIDER_MODELS_KEY) || "{}");
+    all[providerId] = models;
+    localStorage.setItem(CUSTOM_PROVIDER_MODELS_KEY, JSON.stringify(all));
+    window.dispatchEvent(new CustomEvent("osiris:model-changed"));
+  } catch (e) {
+    console.error("Erro ao salvar modelos customizados:", e);
+  }
+}
+
+export function getAllProviderModels(provider) {
+  if (!provider) return [];
+  const custom = getCustomProviderModels(provider.id);
+  const base = provider.models || [];
+  const existingIds = new Set(base.map((m) => m.id));
+  const mergedCustom = custom.filter((m) => !existingIds.has(m.id));
+  return [...base, ...mergedCustom];
+}
+
+export async function fetchOpenRouterModels(apiKey) {
+  const headers = {};
+  if (apiKey?.trim()) {
+    headers["Authorization"] = `Bearer ${apiKey.trim()}`;
+  }
+  const response = await fetch("https://openrouter.ai/api/v1/models", { headers });
+  if (!response.ok) {
+    throw new Error(`Erro ${response.status} ao carregar modelos do OpenRouter.`);
+  }
+  const data = await response.json();
+  return (data.data || []).map((m) => ({
+    id: m.id,
+    name: m.name || m.id,
+    description: m.description,
+    context_length: m.context_length,
+    pricing: m.pricing,
+  }));
+}
 
 // Self-hosted OpenAI-compatible server (Ollama, vLLM, llama.cpp), usually
 // reached through an SSH tunnel. Models come from the server's /models list.
@@ -266,6 +338,23 @@ export async function testProviderKey(providerId, apiKey) {
     return true;
   }
 
+  if (providerId === "openrouter") {
+    const res = await fetch("https://openrouter.ai/api/v1/auth/key", {
+      headers: {
+        Authorization: `Bearer ${trimmedKey}`,
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        err.error?.message || `Erro ${res.status}: Verifique sua chave OpenRouter.`,
+      );
+    }
+
+    return true;
+  }
+
   throw new Error("Provedor desconhecido.");
 }
 
@@ -353,10 +442,12 @@ async function streamOpenAICompatible({
   const baseLength = messages.length;
   const maxParts = isGroq && continueOnLength ? 3 : 1;
   let fullText = "";
+  let affordCap = null; // set from a "can only afford N" error, then the call is retried once
   for (let part = 0; part < maxParts; part++) {
     signal?.throwIfAborted();
     const estimatedInput = Math.ceil(new TextEncoder().encode(JSON.stringify(messages)).length / 3);
-    const outputBudget = isGroq ? Math.min(maxOutputTokens || 4096, 7000 - estimatedInput) : maxOutputTokens;
+    let outputBudget = isGroq ? Math.min(maxOutputTokens || 4096, 7000 - estimatedInput) : maxOutputTokens;
+    if (affordCap) outputBudget = Math.min(outputBudget || affordCap, affordCap);
     if (isGroq && outputBudget < 256) throw new Error("A resposta e o contexto excederam o espaco seguro da cota de 8000 tokens do Groq. Divida esta etapa em mais agentes. Nenhum resultado incompleto foi aplicado aos arquivos.");
     const request = () => fetch(endpoint, {
       method: "POST",
@@ -369,7 +460,16 @@ async function streamOpenAICompatible({
     const response = isGroq ? await scheduleGroqRequest({ model, signal, onNotice, request, estimatedTokens: estimatedInput + outputBudget }) : await request();
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error?.message || "Erro " + response.status + " na API de IA.");
+      const message = error.error?.message || "Erro " + response.status + " na API de IA.";
+      // OpenRouter: "requested up to X tokens, but can only afford Y". Retry with Y.
+      const afford = Number(/can only afford (\d+)/i.exec(message)?.[1]);
+      if (!affordCap && afford - 16 >= 256) {
+        affordCap = afford - 16;
+        onNotice?.({ type: "continuation", message: "Saldo limita a resposta a " + affordCap + " tokens; repetindo a chamada com esse limite." });
+        part--;
+        continue;
+      }
+      throw new Error(afford ? message + " Adicione creditos ou escolha um modelo mais barato/gratuito." : message);
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -683,6 +783,26 @@ ${prompt}
         history,
         onChunk,
         signal,
+      });
+    }
+
+    if (activeModel.provider === "openrouter") {
+      return streamOpenAICompatible({
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        model: activeModel.model || "deepseek/deepseek-chat",
+        apiKey,
+        headers: {
+          "HTTP-Referer": "https://github.com/kauanbgs/osiris",
+          "X-Title": "Osiris",
+        },
+        prompt: promptWithMemory,
+        systemPrompt,
+        history,
+        onChunk,
+        signal,
+        // Without a cap OpenRouter reserves the model's maximum and rejects low balances.
+        maxOutputTokens: maxOutputTokens || 8192,
+        onNotice,
       });
     }
   }

@@ -1,4 +1,4 @@
-CREATE DATABASE osiris;
+CREATE DATABASE IF NOT EXISTS osiris;
 
 USE osiris;
 
@@ -7,7 +7,7 @@ CREATE TABLE `user` (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE ai_model (
     id_model INT AUTO_INCREMENT PRIMARY KEY,
@@ -20,7 +20,7 @@ CREATE TABLE ai_model (
     ram_requirement INT,
     tags VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO ai_model (name, provider, size, status, download_url, description, ram_requirement, tags) VALUES
 ('SmolLM2 1.7B Instruct', 'HuggingFace', 1200, 'available',
@@ -75,7 +75,7 @@ CREATE TABLE permission (
     id_permission INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE tool (
     id_tool INT AUTO_INCREMENT PRIMARY KEY,
@@ -83,7 +83,7 @@ CREATE TABLE tool (
     description TEXT,
     type VARCHAR(50),
     active BOOLEAN NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE file (
     id_file INT AUTO_INCREMENT PRIMARY KEY,
@@ -93,7 +93,7 @@ CREATE TABLE file (
     size INT NOT NULL,
     hash VARCHAR(255) NOT NULL,
     type VARCHAR(100) NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE agent (
     id_agent INT AUTO_INCREMENT PRIMARY KEY,
@@ -111,7 +111,7 @@ CREATE TABLE agent (
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE workflows (
     id_workflow INT AUTO_INCREMENT PRIMARY KEY,
@@ -122,7 +122,7 @@ CREATE TABLE workflows (
         REFERENCES `user`(id_user)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE chat (
     id_chat INT AUTO_INCREMENT PRIMARY KEY,
@@ -132,7 +132,7 @@ CREATE TABLE chat (
         REFERENCES `user`(id_user)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE node (
     id_node INT AUTO_INCREMENT PRIMARY KEY,
@@ -149,7 +149,7 @@ CREATE TABLE node (
         REFERENCES workflows(id_workflow)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE connection (
     id_connection INT AUTO_INCREMENT PRIMARY KEY,
@@ -163,7 +163,7 @@ CREATE TABLE connection (
         REFERENCES node(id_node)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE agent_memory (
     id_memory INT AUTO_INCREMENT PRIMARY KEY,
@@ -178,7 +178,7 @@ CREATE TABLE agent_memory (
         REFERENCES agent(id_agent)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE user_memory (
     id_memory INT AUTO_INCREMENT PRIMARY KEY,
@@ -193,7 +193,7 @@ CREATE TABLE user_memory (
         REFERENCES `user`(id_user)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE configuration (
     id_configuration INT AUTO_INCREMENT PRIMARY KEY,
@@ -207,7 +207,7 @@ CREATE TABLE configuration (
         REFERENCES `user`(id_user)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE user_permission (
     id_user_permission INT AUTO_INCREMENT PRIMARY KEY,
@@ -221,7 +221,7 @@ CREATE TABLE user_permission (
         REFERENCES permission(id_permission)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE model_installation (
     id_installation INT AUTO_INCREMENT PRIMARY KEY,
@@ -233,7 +233,7 @@ CREATE TABLE model_installation (
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE api_key (
     id_api_key INT AUTO_INCREMENT PRIMARY KEY,
@@ -249,7 +249,7 @@ CREATE TABLE api_key (
         REFERENCES `user`(id_user)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE tool_agent (
     id_tool_agent INT AUTO_INCREMENT PRIMARY KEY,
@@ -263,7 +263,7 @@ CREATE TABLE tool_agent (
         REFERENCES agent(id_agent)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE agent_permission (
     id_agent_permission INT AUTO_INCREMENT PRIMARY KEY,
@@ -277,7 +277,7 @@ CREATE TABLE agent_permission (
         REFERENCES permission(id_permission)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE file_agent (
     id_agent_file INT AUTO_INCREMENT PRIMARY KEY,
@@ -291,7 +291,7 @@ CREATE TABLE file_agent (
         REFERENCES agent(id_agent)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE file_workflow (
     id_file_workflow INT AUTO_INCREMENT PRIMARY KEY,
@@ -305,7 +305,7 @@ CREATE TABLE file_workflow (
         REFERENCES workflows(id_workflow)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE messages (
     id_message INT AUTO_INCREMENT PRIMARY KEY,
@@ -322,7 +322,7 @@ CREATE TABLE messages (
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE file_chat (
     id_chat_file INT AUTO_INCREMENT PRIMARY KEY,
@@ -336,7 +336,7 @@ CREATE TABLE file_chat (
         REFERENCES file(id_file)
         ON DELETE SET NULL
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE usage_metrics (
     id_metric INT AUTO_INCREMENT PRIMARY KEY,
@@ -366,7 +366,7 @@ CREATE TABLE usage_metrics (
         REFERENCES `user`(id_user)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE revoked_token (
     id_revocation INT AUTO_INCREMENT PRIMARY KEY,
@@ -380,4 +380,4 @@ CREATE TABLE revoked_token (
         REFERENCES `user`(id_user)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

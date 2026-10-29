@@ -1,15 +1,17 @@
 import { Handle, Position, useReactFlow } from "@xyflow/react";
 import {
   FileText,
+  FolderOpen,
   GripVertical,
   Upload,
   X,
 } from "lucide-react";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { applyDiskChange } from "@/workflow/diskSync";
 
 export default function FileNode({ id, data }) {
-  const { updateNodeData } = useReactFlow();
+  const { updateNodeData, getNode } = useReactFlow();
 
   const [draggingOver, setDraggingOver] =
     useState(false);
@@ -23,6 +25,67 @@ export default function FileNode({ id, data }) {
   const files = Array.isArray(data?.files)
     ? data.files
     : [];
+
+  /*
+   * Sincroniza com o disco: quando um arquivo é salvo fora do Osiris (VS Code,
+   * por exemplo) o conteúdo no node é atualizado sozinho.
+   */
+  const rootPath = data?.rootPath || null;
+  const watchKey = JSON.stringify([
+    rootPath,
+    rootPath ? [] : files.map((file) => file.filePath).filter(Boolean).sort(),
+  ]);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.watchFiles || !api?.onFileChanged) return undefined;
+    const [root, filePaths] = JSON.parse(watchKey);
+    if (!root && !filePaths.length) return undefined;
+
+    let active = true;
+    const read = () => getNode(id)?.data || {};
+    const apply = (patch) => { if (active && patch) updateNodeData(id, patch); };
+    const off = api.onFileChanged(async (event) => {
+      if (event.watchId !== id) return;
+      if (event.kind === "rescan") {
+        if (!root) return;
+        try {
+          const scan = await api.scanWorkspace(root);
+          apply({ files: scan.files, folders: scan.folders, truncated: scan.truncated });
+        } catch (error) {
+          console.error("[FileNode] Erro ao reler a pasta:", error);
+        }
+        return;
+      }
+      apply(applyDiskChange(read(), event));
+    });
+
+    api.watchFiles(id, { rootPath: root, filePaths }).then(async () => {
+      // O workflow pode ter sido salvo antes de o arquivo mudar no disco.
+      try {
+        if (root) {
+          const scan = await api.scanWorkspace(root);
+          const current = read();
+          const same = JSON.stringify(scan.files.map((f) => [f.fileName, f.fileContent])) ===
+            JSON.stringify((current.files || []).map((f) => [f.fileName, f.fileContent]));
+          if (!same) apply({ files: scan.files, folders: scan.folders, truncated: scan.truncated });
+        } else {
+          for (const filePath of filePaths) {
+            const fresh = await api.readFile(filePath).catch(() => null);
+            if (fresh) apply(applyDiskChange(read(), { kind: "update", filePath, fileContent: fresh.fileContent }));
+          }
+        }
+      } catch (error) {
+        console.error("[FileNode] Erro ao sincronizar com o disco:", error);
+      }
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+      off?.();
+      api.unwatchFiles?.(id);
+    };
+  }, [id, watchKey, getNode, updateNodeData]);
 
   /*
    * Seleciona arquivo através do Electron.
@@ -79,6 +142,34 @@ export default function FileNode({ id, data }) {
         error
       );
     }
+  }
+
+  /*
+   * Pasta do projeto: o agente passa a poder criar/editar/apagar arquivos e
+   * criar pastas, sempre dentro dela (o Electron valida cada caminho).
+   */
+  async function selectProject() {
+    try {
+      if (!window.electronAPI?.selectWorkspace) {
+        console.error("[FileNode] electronAPI.selectWorkspace não está disponível.");
+        return;
+      }
+      const workspace = await window.electronAPI.selectWorkspace();
+      if (!workspace) return;
+      updateNodeData(id, {
+        rootPath: workspace.rootPath,
+        rootName: workspace.rootName,
+        folders: workspace.folders,
+        files: workspace.files,
+        truncated: workspace.truncated,
+      });
+    } catch (error) {
+      console.error("[FileNode] Erro ao selecionar pasta:", error);
+    }
+  }
+
+  function clearProject() {
+    updateNodeData(id, { rootPath: null, rootName: null, folders: [], truncated: false });
   }
 
   /*
@@ -269,6 +360,38 @@ export default function FileNode({ id, data }) {
 
         </div>
 
+      </div>
+
+      {/* PASTA DO PROJETO */}
+      <div className="nodrag nopan px-4 pb-3">
+        {data?.rootPath ? (
+          <div className="rounded-xl border border-emerald-900/40 bg-emerald-500/5 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2 text-[11px] text-emerald-300">
+                <FolderOpen size={12} className="shrink-0" />
+                <span className="truncate" title={data.rootPath}>{data.rootName}</span>
+              </div>
+              <button type="button" onClick={clearProject} title="Desconectar pasta"
+                className="rounded p-0.5 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400">
+                <X size={11} />
+              </button>
+            </div>
+            <div className="mt-1 text-[9px] text-zinc-500">
+              {(data.folders || []).length} pasta{(data.folders || []).length !== 1 ? "s" : ""} · agentes ligados à saída podem criar e editar aqui
+            </div>
+            {data.truncated && (
+              <div className="mt-1 text-[9px] text-amber-400">
+                Pasta grande: arquivos grandes ou além do limite não foram carregados.
+              </div>
+            )}
+          </div>
+        ) : (
+          <button type="button" onClick={selectProject}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-800 py-2 text-[11px] text-zinc-500 transition-colors hover:border-zinc-700 hover:bg-zinc-900/40">
+            <FolderOpen size={12} />
+            Selecionar pasta do projeto
+          </button>
+        )}
       </div>
 
       {/* FILES */}

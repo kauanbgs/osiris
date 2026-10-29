@@ -111,6 +111,8 @@ router.put("/memory/:id_memory", verifyJWT, MemoryController.update);
 router.delete("/memory/:id_memory", verifyJWT, MemoryController.delete);
 
 // Workflow routes
+router.get("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.getCanvas);
+router.put("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.saveCanvas);
 router.post("/workflow", verifyJWT, WorkflowController.create);
 router.get("/workflow", verifyJWT, WorkflowController.list);
 router.get("/workflow/:id_workflow", verifyJWT, WorkflowController.getById);
@@ -171,6 +173,7 @@ router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard
 
 // Browser navigation engine & interaction for agents
 router.post("/browser/session", verifyJWT, BrowserController.createSession);
+router.get("/browser/sessions", verifyJWT, BrowserController.listSessions);
 router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSession);
 router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
 router.post("/browser/navigate", verifyJWT, BrowserController.navigate);

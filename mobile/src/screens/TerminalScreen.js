@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,307 +9,500 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
-  Animated,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, Feather } from '@expo/vector-icons';
-import BottomNav from '../components/Navbar';
-import { aiUrl } from '../services/serverConfig';
+  ScrollView,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import BottomNav from "../components/Navbar";
+import sheets from "../services/api";
+import { getIP, loadIP } from "../services/serverConfig";
 
 const colors = {
-  background: '#0a0a0a',
-  surface: '#111111',
-  surfaceAlt: '#161616',
-  border: '#1f1f1f',
-  borderActive: '#2a2a2a',
-  textPrimary: '#e8e8e8',
-  textSecondary: '#888888',
-  textMuted: '#555555',
-  green: '#32cd17dd',
-  greenDim: '#1a7a08',
-  purple: '#7c5cff',
-  purpleDim: '#3d2e80',
-  red: '#ff4444',
-  yellow: '#f5a623',
-  cyan: '#00d4ff',
-  white: '#ffffff',
+  background: "#0d0d0d",
+  surface: "#141414",
+  surfaceCard: "#19191d",
+  border: "#262626",
+  textPrimary: "#f0f0f0",
+  textSecondary: "#85818c",
+  textMuted: "#52525b",
+  purple: "#7c5cff",
+  purpleBright: "#9d85ff",
+  green: "#2ecc71",
+  red: "#ef4444",
 };
 
-const fontFamily = Platform.select({ ios: 'Courier', android: 'monospace' });
+const fontFamily = Platform.select({
+  ios: "Menlo",
+  android: "monospace",
+});
 
-// Histórico de comandos sugeridos
-const QUICK_COMMANDS = [
-  { label: 'ls', cmd: 'ls' },
-  { label: 'pwd', cmd: 'pwd' },
-  { label: 'whoami', cmd: 'whoami' },
-  { label: 'dir', cmd: 'dir' },
-  { label: 'ipconfig', cmd: 'ipconfig' },
-  { label: 'top', cmd: 'top -bn1 | head -20' },
-];
-
-function TerminalLine({ item, index }) {
-  const anim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const animStyle = {
-    opacity: anim,
-    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
-  };
-
-  if (item.type === 'command') {
-    return (
-      <Animated.View style={[styles.lineRow, animStyle]}>
-        <Text style={styles.promptArrow}>❯</Text>
-        <Text style={styles.commandText}>{item.text}</Text>
-      </Animated.View>
-    );
-  }
-
-  if (item.type === 'separator') {
-    return <View style={styles.separator} />;
-  }
-
-  const isError = item.type === 'stderr' || item.type === 'error';
-  const isInfo = item.type === 'info';
-  const isSuccess = item.type === 'success';
-
-  return (
-    <Animated.View style={[styles.lineRow, animStyle]}>
-      {isError && <Text style={styles.errorPrefix}>✗ </Text>}
-      {isSuccess && <Text style={styles.successPrefix}>✓ </Text>}
-      {isInfo && <Text style={styles.infoPrefix}>ℹ </Text>}
-      <Text
-        style={[
-          styles.outputText,
-          isError && styles.outputError,
-          isInfo && styles.outputInfo,
-          isSuccess && styles.outputSuccess,
-        ]}
-        selectable
-      >
-        {item.text}
-      </Text>
-    </Animated.View>
+// Remove códigos ANSI de escape das saídas do terminal
+function stripAnsi(str) {
+  if (typeof str !== "string") return "";
+  return str.replace(
+    // eslint-disable-next-line no-control-regex
+    /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
+    ""
   );
 }
 
 export default function TerminalScreen({ navigation }) {
-  const [command, setCommand] = useState('');
-  const [lines, setLines] = useState([
-    { id: 'welcome-1', type: 'info', text: 'Osiris Terminal — conectado ao PC desktop' },
-    { id: 'welcome-2', type: 'info', text: `Digite um comando e pressione ›` },
-    { id: 'welcome-sep', type: 'separator' },
+  const [currentIp, setCurrentIp] = useState(getIP());
+  const [connected, setConnected] = useState(null); // true | false | null
+
+  // Abas do terminal (múltiplas sessões simultâneas)
+  const [tabs, setTabs] = useState([
+    {
+      id: "term-1",
+      label: "Terminal 1",
+      lines: [
+        {
+          id: "init-1",
+          type: "system",
+          text: `Osíris Terminal — Conectado ao PC (${getIP()}:5000)`,
+        },
+        {
+          id: "init-2",
+          type: "system",
+          text: "Digite qualquer comando do sistema operacional do seu desktop.",
+        },
+      ],
+      command: "",
+      loading: false,
+      cmdHistory: [],
+      historyIdx: -1,
+    },
   ]);
-  const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const listRef = useRef(null);
+  const [activeTabId, setActiveTabId] = useState("term-1");
+
+  const flatListRef = useRef(null);
   const inputRef = useRef(null);
 
-  function addLines(newLines) {
-    setLines(prev => [...prev, ...newLines]);
-    setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+  // Aba atualmente selecionada
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+
+  // Carrega IP e testa status da API do PC
+  const checkConnection = useCallback(async () => {
+    try {
+      const ip = await loadIP();
+      if (ip) setCurrentIp(ip);
+      await sheets.health();
+      setConnected(true);
+    } catch {
+      setConnected(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Scroll automático para o final quando novas linhas chegam
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
     }, 60);
-  }
+    return () => clearTimeout(timer);
+  }, [activeTab.lines.length, activeTab.loading]);
 
-  async function executeCommand(cmd) {
-    const trimmed = cmd.trim();
-    if (!trimmed || loading) return;
+  // Atualiza propriedades da aba ativa
+  const updateActiveTab = useCallback(
+    (updater) => {
+      setTabs((prevTabs) =>
+        prevTabs.map((t) => (t.id === activeTabId ? updater(t) : t))
+      );
+    },
+    [activeTabId]
+  );
 
-    // Adiciona comando ao histórico
-    setHistory(prev => [trimmed, ...prev.filter(h => h !== trimmed)].slice(0, 50));
-    setHistoryIndex(-1);
-    setCommand('');
-    setLoading(true);
+  // Adicionar nova aba
+  const handleAddTab = () => {
+    if (tabs.length >= 6) return;
+    const newIdx = tabs.length + 1;
+    const newId = `term-${Date.now()}`;
+    const newTab = {
+      id: newId,
+      label: `Terminal ${newIdx}`,
+      lines: [
+        {
+          id: `init-${Date.now()}-1`,
+          type: "system",
+          text: `Osíris Terminal [Sessão ${newIdx}] — PC (${currentIp}:5000)`,
+        },
+        {
+          id: `init-${Date.now()}-2`,
+          type: "system",
+          text: "Sessão iniciada. Digite qualquer comando do PC.",
+        },
+      ],
+      command: "",
+      loading: false,
+      cmdHistory: [...(activeTab.cmdHistory || [])],
+      historyIdx: -1,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
 
-    const cmdLine = { id: `cmd-${Date.now()}`, type: 'command', text: trimmed };
-    addLines([cmdLine]);
+  // Fechar aba
+  const handleRemoveTab = (tabIdToRemove) => {
+    if (tabs.length <= 1) return;
+    const nextTabs = tabs.filter((t) => t.id !== tabIdToRemove);
+    setTabs(nextTabs);
+    if (activeTabId === tabIdToRemove) {
+      setActiveTabId(nextTabs[nextTabs.length - 1].id);
+    }
+  };
+
+  // Limpar a aba atual
+  const handleClear = () => {
+    updateActiveTab((t) => ({
+      ...t,
+      lines: [
+        {
+          id: `clear-${Date.now()}`,
+          type: "system",
+          text: "Terminal limpo.",
+        },
+      ],
+    }));
+  };
+
+  // Navegar no histórico de comandos (↑ / ↓)
+  const navigateHistory = (direction) => {
+    const history = activeTab.cmdHistory;
+    if (!history.length) return;
+    let nextIdx = activeTab.historyIdx;
+    if (direction === "up") {
+      nextIdx = Math.min(activeTab.historyIdx + 1, history.length - 1);
+    } else {
+      nextIdx = Math.max(activeTab.historyIdx - 1, -1);
+    }
+    updateActiveTab((t) => ({
+      ...t,
+      historyIdx: nextIdx,
+      command: nextIdx === -1 ? "" : history[nextIdx],
+    }));
+  };
+
+  // Executar comando no PC
+  const handleExecute = async () => {
+    const cmd = activeTab.command.trim();
+    if (!cmd || activeTab.loading) return;
+
+    // Atualiza histórico de comandos digitados
+    const updatedHistory = [
+      cmd,
+      ...activeTab.cmdHistory.filter((c) => c !== cmd),
+    ].slice(0, 30);
+
+    const cmdLine = {
+      id: `cmd-${Date.now()}`,
+      type: "command",
+      text: cmd,
+    };
+
+    updateActiveTab((t) => ({
+      ...t,
+      command: "",
+      loading: true,
+      cmdHistory: updatedHistory,
+      historyIdx: -1,
+      lines: [...t.lines, cmdLine],
+    }));
 
     try {
-      const res = await fetch(`${aiUrl()}/api/exec`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: trimmed }),
-        timeout: 32000,
-      });
+      const response = await sheets.executeCommand(cmd, 30000);
+      const data = response?.data || {};
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      const stdout = stripAnsi(data.stdout || "").trimEnd();
+      const stderr = stripAnsi(data.stderr || "").trimEnd();
+      const newItems = [];
 
-      const data = await res.json();
-      const newLines = [];
-
-      if (data.stdout) {
-        const stdoutLines = data.stdout.trimEnd().split('\n');
-        stdoutLines.forEach((line, i) => {
-          newLines.push({
-            id: `stdout-${Date.now()}-${i}`,
-            type: 'output',
-            text: line,
-          });
+      if (stdout) {
+        newItems.push({
+          id: `out-${Date.now()}`,
+          type: "stdout",
+          text: stdout,
         });
       }
 
-      if (data.stderr) {
-        const stderrLines = data.stderr.trimEnd().split('\n');
-        stderrLines.forEach((line, i) => {
-          newLines.push({
-            id: `stderr-${Date.now()}-${i}`,
-            type: 'stderr',
-            text: line,
-          });
-        });
-      }
-
-      if (!data.stdout && !data.stderr && !data.error) {
-        newLines.push({
-          id: `done-${Date.now()}`,
-          type: 'success',
-          text: 'Comando executado (sem output)',
-        });
-      }
-
-      if (data.error) {
-        newLines.push({
+      if (stderr) {
+        newItems.push({
           id: `err-${Date.now()}`,
-          type: 'error',
-          text: data.error,
+          type: "stderr",
+          text: stderr,
         });
       }
 
-      newLines.push({ id: `sep-${Date.now()}`, type: 'separator' });
-      addLines(newLines);
+      if (!stdout && !stderr) {
+        newItems.push({
+          id: `done-${Date.now()}`,
+          type: "system",
+          text: `[Comando finalizado com sucesso — código ${data.exit_code ?? 0}]`,
+        });
+      }
+
+      setConnected(true);
+      updateActiveTab((t) => ({
+        ...t,
+        loading: false,
+        lines: [...t.lines, ...newItems],
+      }));
     } catch (err) {
-      addLines([
-        {
-          id: `fetch-err-${Date.now()}`,
-          type: 'error',
-          text: `Não foi possível conectar ao desktop: ${err.message}`,
-        },
-        { id: `sep-err-${Date.now()}`, type: 'separator' },
-      ]);
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
+      let errMsg = "Erro de conexão com o terminal do PC.";
+      if (err?.response?.status === 401) {
+        errMsg = "Não autorizado (401). Faça login no aplicativo.";
+      } else if (err?.response?.data?.error?.message) {
+        errMsg = err.response.data.error.message;
+      } else if (err?.message) {
+        errMsg = err.message;
+      }
+
+      setConnected(false);
+      updateActiveTab((t) => ({
+        ...t,
+        loading: false,
+        lines: [
+          ...t.lines,
+          {
+            id: `err-${Date.now()}`,
+            type: "stderr",
+            text: errMsg,
+          },
+        ],
+      }));
     }
-  }
+  };
 
-  function handleClear() {
-    setLines([{ id: `clear-${Date.now()}`, type: 'info', text: 'Terminal limpo.' }]);
-  }
+  const renderLine = ({ item }) => {
+    if (item.type === "command") {
+      return (
+        <View style={styles.commandRow}>
+          <Text style={styles.promptSign}>❯</Text>
+          <Text style={styles.commandText} selectable>
+            {item.text}
+          </Text>
+        </View>
+      );
+    }
 
-  function handleQuickCommand(cmd) {
-    executeCommand(cmd);
-  }
+    if (item.type === "stderr") {
+      return (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
+          <Text style={styles.stderrText} selectable>
+            {item.text}
+          </Text>
+        </ScrollView>
+      );
+    }
+
+    if (item.type === "stdout") {
+      return (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
+          <Text style={styles.stdoutText} selectable>
+            {item.text}
+          </Text>
+        </ScrollView>
+      );
+    }
+
+    return (
+      <Text style={styles.systemText} selectable>
+        {item.text}
+      </Text>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
+      {/* Top Header enxuto e limpo */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.terminalDots}>
-            <View style={[styles.dot, { backgroundColor: colors.red }]} />
-            <View style={[styles.dot, { backgroundColor: colors.yellow }]} />
-            <View style={[styles.dot, { backgroundColor: colors.green }]} />
-          </View>
+          <Text style={styles.title}>Terminal</Text>
+          <TouchableOpacity
+            style={styles.statusPill}
+            onPress={checkConnection}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    connected === true
+                      ? colors.green
+                      : connected === false
+                      ? colors.red
+                      : colors.textMuted,
+                },
+              ]}
+            />
+            <Text style={styles.statusText}>
+              {connected === true
+                ? `${currentIp}`
+                : connected === false
+                ? "Offline"
+                : "Conectando..."}
+            </Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.headerTitle}>Terminal</Text>
-        <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
-          <Feather name="trash-2" size={16} color={colors.textMuted} />
+
+        <TouchableOpacity
+          style={styles.clearBtn}
+          onPress={handleClear}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Feather name="trash-2" size={16} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      {/* Quick commands */}
-      <View style={styles.quickRow}>
-        <FlatList
+      {/* Barra de Abas compacta e moderna */}
+      <View style={styles.tabsBar}>
+        <ScrollView
           horizontal
-          data={QUICK_COMMANDS}
-          keyExtractor={item => item.cmd}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickList}
-          renderItem={({ item }) => (
+          contentContainerStyle={styles.tabsScroll}
+        >
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.tabItem, isActive && styles.tabItemActive]}
+                onPress={() => setActiveTabId(tab.id)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.tabDot,
+                    isActive ? styles.tabDotActive : styles.tabDotInactive,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.tabText,
+                    isActive && styles.tabTextActive,
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+                {tabs.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.tabCloseBtn}
+                    onPress={() => handleRemoveTab(tab.id)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Feather name="x" size={11} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+
+          {tabs.length < 6 && (
             <TouchableOpacity
-              style={styles.quickChip}
-              onPress={() => handleQuickCommand(item.cmd)}
+              style={styles.addTabBtn}
+              onPress={handleAddTab}
               activeOpacity={0.7}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Text style={styles.quickChipText}>{item.label}</Text>
+              <Feather name="plus" size={13} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-        />
+        </ScrollView>
       </View>
 
-      {/* Output area */}
+      {/* Viewport do Terminal */}
       <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flexContainer}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <FlatList
-          ref={listRef}
-          data={lines}
-          keyExtractor={item => item.id}
-          renderItem={({ item, index }) => <TerminalLine item={item} index={index} />}
-          contentContainerStyle={styles.outputContainer}
-          style={styles.outputList}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          ref={flatListRef}
+          data={activeTab.lines}
+          keyExtractor={(item) => item.id}
+          renderItem={renderLine}
+          contentContainerStyle={styles.terminalContent}
+          style={styles.terminalList}
           keyboardShouldPersistTaps="handled"
           ListFooterComponent={
-            loading ? (
+            activeTab.loading ? (
               <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={colors.green} />
+                <ActivityIndicator size="small" color={colors.purple} />
                 <Text style={styles.loadingText}>Executando...</Text>
               </View>
             ) : null
           }
         />
 
-        {/* Input */}
-        <View style={styles.inputWrapper}>
-          <View style={styles.inputCard}>
+        {/* Barra de input enxuta */}
+        <View style={styles.inputArea}>
+          {activeTab.cmdHistory.length > 0 && (
+            <View style={styles.historyRow}>
+              <TouchableOpacity
+                style={styles.historyBtn}
+                onPress={() => navigateHistory("up")}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Feather name="arrow-up" size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.historyBtn}
+                onPress={() => navigateHistory("down")}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Feather name="arrow-down" size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={styles.inputBox}>
             <Text style={styles.inputPrompt}>❯</Text>
             <TextInput
               ref={inputRef}
               style={styles.input}
-              placeholder="Comando no PC"
+              placeholder="Digite um comando..."
               placeholderTextColor={colors.textMuted}
-              value={command}
-              onChangeText={setCommand}
-              onSubmitEditing={() => executeCommand(command)}
+              value={activeTab.command}
+              onChangeText={(text) =>
+                updateActiveTab((t) => ({ ...t, command: text }))
+              }
+              onSubmitEditing={handleExecute}
               returnKeyType="send"
-              editable={!loading}
+              editable={!activeTab.loading}
               autoCorrect={false}
               autoCapitalize="none"
-              selectionColor={colors.green}
+              spellCheck={false}
             />
             <TouchableOpacity
-              style={[styles.sendButton, loading && styles.sendButtonDisabled]}
-              onPress={() => executeCommand(command)}
-              disabled={loading}
-              activeOpacity={0.8}
+              style={[
+                styles.sendBtn,
+                (!activeTab.command.trim() || activeTab.loading) &&
+                  styles.sendBtnDisabled,
+              ]}
+              onPress={handleExecute}
+              disabled={!activeTab.command.trim() || activeTab.loading}
             >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.white} />
+              {activeTab.loading ? (
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons name="send" size={16} color={colors.white} />
+                <Ionicons name="arrow-up" size={16} color="#fff" />
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Bottom Nav */}
-        <BottomNav
-          activeKey="terminal"
-          navigation={navigation}
-        />
+        {/* Navbar */}
+        <BottomNav activeKey="terminal" navigation={navigation} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -320,198 +513,241 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  flex: {
+  flexContainer: {
     flex: 1,
   },
 
-  // Header
+  // Header minimalista
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   headerLeft: {
-    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  terminalDots: {
-    flexDirection: 'row',
+  title: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  headerTitle: {
-    fontFamily,
-    fontSize: 14,
-    color: colors.textSecondary,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  clearButton: {
-    flex: 1,
-    alignItems: 'flex-end',
-    padding: 4,
-  },
-
-  // Quick commands
-  quickRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-  },
-  quickList: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  quickChip: {
-    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
   },
-  quickChipText: {
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
     fontFamily,
-    fontSize: 12,
-    color: colors.green,
+    color: colors.textSecondary,
+  },
+  clearBtn: {
+    padding: 6,
+    borderRadius: 6,
   },
 
-  // Output
-  outputList: {
+  // Barra de abas compacta
+  tabsBar: {
+    height: 36,
+    backgroundColor: "#111114",
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tabsScroll: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  tabItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "transparent",
+  },
+  tabItemActive: {
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  tabDotActive: {
+    backgroundColor: colors.purpleBright,
+  },
+  tabDotInactive: {
+    backgroundColor: colors.textMuted,
+  },
+  tabText: {
+    fontSize: 11,
+    fontFamily,
+    color: colors.textMuted,
+  },
+  tabTextActive: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  tabCloseBtn: {
+    marginLeft: 2,
+    padding: 2,
+  },
+  addTabBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 5,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 2,
+  },
+
+  // Área de terminal pura
+  terminalList: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  outputContainer: {
-    padding: 12,
-    paddingBottom: 4,
+  terminalContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexGrow: 1,
+    gap: 6,
   },
-
-  // Lines
-  lineRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 2,
-    flexWrap: 'wrap',
+  commandRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 8,
+    gap: 8,
   },
-  promptArrow: {
+  promptSign: {
     fontFamily,
     fontSize: 13,
-    color: colors.purple,
-    marginRight: 8,
-    lineHeight: 20,
+    fontWeight: "900",
+    color: colors.purpleBright,
+    lineHeight: 18,
   },
   commandText: {
     fontFamily,
     fontSize: 13,
-    color: colors.white,
-    lineHeight: 20,
-    flex: 1,
-  },
-  outputText: {
-    fontFamily,
-    fontSize: 12,
+    fontWeight: "700",
     color: colors.textPrimary,
-    lineHeight: 19,
+    lineHeight: 18,
     flex: 1,
   },
-  outputError: {
-    color: colors.red,
+  stdoutText: {
+    fontFamily,
+    fontSize: 12,
+    color: "#d4d4d8",
+    lineHeight: 18,
   },
-  outputInfo: {
-    color: colors.cyan,
-  },
-  outputSuccess: {
-    color: colors.green,
-  },
-  errorPrefix: {
+  stderrText: {
     fontFamily,
     fontSize: 12,
     color: colors.red,
-    lineHeight: 19,
+    lineHeight: 18,
   },
-  successPrefix: {
+  systemText: {
     fontFamily,
-    fontSize: 12,
-    color: colors.green,
-    lineHeight: 19,
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 16,
+    marginVertical: 2,
   },
-  infoPrefix: {
-    fontFamily,
-    fontSize: 12,
-    color: colors.cyan,
-    lineHeight: 19,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 8,
-  },
-
-  // Loading
   loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingVertical: 8,
   },
   loadingText: {
     fontFamily,
-    fontSize: 12,
-    color: colors.green,
+    fontSize: 11,
+    color: colors.textMuted,
   },
 
-  // Input
-  inputWrapper: {
+  // Área de input limpa
+  inputArea: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
-    backgroundColor: colors.background,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    gap: 8,
   },
-  inputCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  historyRow: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  historyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.borderActive,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderColor: colors.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  inputBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 8,
   },
   inputPrompt: {
     fontFamily,
-    fontSize: 15,
-    color: colors.green,
-    marginRight: 10,
+    fontSize: 14,
+    fontWeight: "900",
+    color: colors.purpleBright,
   },
   input: {
     flex: 1,
     fontFamily,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textPrimary,
     padding: 0,
   },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  sendBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
     backgroundColor: colors.purple,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  sendButtonDisabled: {
-    backgroundColor: colors.purpleDim,
+  sendBtnDisabled: {
+    opacity: 0.35,
   },
 });

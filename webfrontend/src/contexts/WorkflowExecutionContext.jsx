@@ -85,9 +85,15 @@ export function WorkflowExecutionProvider({ children, initialEvents = [], onEven
           if (outputFiles.length) {
             const applied = await applyAgentResultToFileNodes({ agentId, result, nodes: getNodes(), edges, updateNodeData, signal });
             emit({ type: "files", title: (node.data?.label || agentId) + " - arquivos",
-              text: applied ? JSON.stringify(applied.fileOperations, null, 2) : "A resposta nao continha operacoes de arquivo validas." });
+              text: applied
+                ? [applied.written.length ? "Gravado: " + applied.written.join(", ") : "Nenhum arquivo foi gravado.",
+                  applied.warnings.length && "Avisos: " + applied.warnings.join("; "),
+                  JSON.stringify(applied.fileOperations, null, 2)].filter(Boolean).join("\n\n")
+                : "A resposta nao continha operacoes de arquivo validas." });
             const problems = applied ? applied.errors : ["a resposta nao veio no formato JSON esperado"];
-            if (problems.length) patch(agentId, { notice: "Edicoes nao aplicadas (o arquivo ficou como estava): " + problems.join("; ") });
+            const notes = [problems.length && "Nao aplicado (arquivos com erro ficaram como estavam): " + problems.join("; "),
+              applied?.warnings.length && "Atencao: " + applied.warnings.join("; ")].filter(Boolean);
+            if (notes.length) patch(agentId, { notice: notes.join(" | ") });
           }
           return result;
         },

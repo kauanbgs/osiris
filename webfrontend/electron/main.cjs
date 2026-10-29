@@ -5,6 +5,7 @@ const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
 const { createWorkflowStore } = require("./workflowStore.cjs");
+const workspaceFs = require("./workspaceFs.cjs");
 
 const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
 ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
@@ -141,6 +142,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
@@ -163,6 +165,16 @@ function createWindow() {
 
   win.webContents.session.setPermissionCheckHandler((_wc, permission) => {
     return allowedPerms.includes(permission);
+  });
+
+  // Permite que links em novas abas no webview naveguem no próprio webview
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() === "webview") {
+      contents.setWindowOpenHandler(({ url }) => {
+        contents.loadURL(url);
+        return { action: "deny" };
+      });
+    }
   });
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== "production";
@@ -542,6 +554,7 @@ ipcMain.handle("fs:write-file", async (_, { filePath, content }) => {
   }
 
   try {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, content, "utf-8");
     return { success: true, filePath };
   } catch (err) {
@@ -660,6 +673,55 @@ ipcMain.handle("fs:select-folder", async () => {
     tree,
   };
 });
+
+// ======================================================
+// PASTA DE PROJETO (workspace) - toda escrita fica dentro da pasta escolhida
+// ======================================================
+
+ipcMain.handle("fs:select-workspace", async () => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (result.canceled || !result.filePaths.length) return null;
+  return workspaceFs.scanWorkspace(result.filePaths[0]);
+});
+
+ipcMain.handle("fs:workspace-write", async (_, { rootPath, relPath, content }) => {
+  const filePath = await workspaceFs.writeIn(rootPath, relPath, content);
+  return { success: true, filePath };
+});
+
+ipcMain.handle("fs:workspace-mkdir", async (_, { rootPath, relPath }) => {
+  const folderPath = await workspaceFs.mkdirIn(rootPath, relPath);
+  return { success: true, folderPath };
+});
+
+ipcMain.handle("fs:workspace-delete", async (_, { rootPath, relPath }) => {
+  return { success: await workspaceFs.deleteIn(rootPath, relPath) };
+});
+
+// Observa arquivos/pastas no disco e avisa a janela quando mudam (ex.: salvos no VS Code).
+const fileWatchers = new Map();
+
+ipcMain.handle("fs:watch", (event, { watchId, rootPath, filePaths }) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+  const sender = event.sender;
+  try {
+    const close = workspaceFs.createWatcher({ rootPath, filePaths }, (payload) => {
+      if (!sender.isDestroyed()) sender.send("fs:changed", { watchId, ...payload });
+    });
+    fileWatchers.set(watchId, close);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("fs:unwatch", (_, watchId) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+});
+
+ipcMain.handle("fs:scan-workspace", (_, rootPath) => workspaceFs.scanWorkspace(rootPath));
 
 // ======================================================
 // LER ARQUIVO

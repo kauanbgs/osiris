@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CLOUD_PROVIDERS, CUSTOM_PROVIDER_ID, getActiveModel, getCustomServer, getStoredCloudKeys } from "@/services/llmService";
+import { CLOUD_PROVIDERS, CUSTOM_PROVIDER_ID, getActiveModel, getAllProviderModels, getCustomServer, getStoredCloudKeys } from "@/services/llmService";
 import { workflowModelKey } from "@/workflow/modelSelection";
 
 export default function WorkflowModelSelect({ data, disabled, onChange }) {
@@ -39,7 +39,7 @@ export default function WorkflowModelSelect({ data, disabled, onChange }) {
   const localOptions = localModels.map((model) => ({
     type: "local", modelPath: model.fullPath, name: model.filename,
   }));
-  const cloudOptions = CLOUD_PROVIDERS.flatMap((provider) => provider.models.map((model) => ({
+  const cloudOptions = CLOUD_PROVIDERS.flatMap((provider) => getAllProviderModels(provider).map((model) => ({
     type: "cloud", provider: provider.id, model: model.id, name: provider.name + " - " + model.name,
   })));
   const customOptions = customServer.models.map((model) => ({

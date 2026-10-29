@@ -71,109 +71,96 @@ export function applyEdits(content, edits) {
   return next;
 }
 
+/**
+ * Normaliza um caminho relativo vindo do modelo. Rejeita caminhos absolutos,
+ * "..", unidades de disco e vazios: o agente so enxerga a pasta do projeto.
+ */
+export function normalizeRelPath(value) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("caminho vazio");
+  const clean = value.trim().replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\.\//, "");
+  if (clean.includes("\0")) throw new Error(`caminho invalido: "${value}"`);
+  if (clean.startsWith("/") || /^[a-zA-Z]:/.test(clean)) throw new Error(`use caminho relativo a pasta do projeto, nao absoluto: "${value}"`);
+  const parts = clean.split("/").filter(Boolean);
+  if (!parts.length || parts.some((part) => part === "..")) throw new Error(`caminho fora da pasta do projeto: "${value}"`);
+  return parts.join("/");
+}
+
+// Nome exato; se o modelo citou so o nome base ("app.js" para "src/app.js"),
+// aceita quando ha exatamente um arquivo com esse final.
+function findFileIndex(files, name) {
+  const exact = files.findIndex((file) => file.fileName === name);
+  if (exact !== -1 || name.includes("/")) return exact;
+  const matches = files.map((file, index) => ({ file, index })).filter(({ file }) => file.fileName.endsWith("/" + name));
+  return matches.length === 1 ? matches[0].index : -1;
+}
+
+function fileFrom(name, operation, previous = {}) {
+  const content = operation.content ?? "";
+  return {
+    ...previous,
+    fileName: previous.fileName ?? name,
+    fileContent: content,
+    fileType: operation.fileType ?? previous.fileType ?? "text/plain",
+    fileSize: new Blob([content]).size,
+    // O caminho em disco nunca vem do modelo: so de um arquivo ja conhecido
+    // ou da pasta do projeto, resolvido na hora de gravar.
+    filePath: previous.filePath ?? null,
+  };
+}
+
 export function applyFileOperations(files, operations, errors = []) {
   let nextFiles = [...files];
 
   for (const operation of operations) {
     const action = operation?.action;
-    const fileName = operation?.fileName;
+    if (!action || !operation?.fileName || action === "mkdir") continue;
 
-    if (!action || !fileName) {
+    let name;
+    try {
+      name = normalizeRelPath(operation.fileName);
+    } catch (err) {
+      errors.push(`${operation.fileName}: ${err.message}`);
       continue;
     }
+    const index = findFileIndex(nextFiles, name);
 
     if (action === "edit") {
-      const existingIndex = nextFiles.findIndex(
-        (file) => file.fileName === fileName,
-      );
-
       // Outro FileNode de saida pode ter o arquivo; a falta e conferida no fim.
-      if (existingIndex === -1) continue;
-
+      if (index === -1) continue;
       try {
         const content = applyEdits(
-          nextFiles[existingIndex].fileContent ?? "",
+          nextFiles[index].fileContent ?? "",
           Array.isArray(operation.edits) ? operation.edits : [],
         );
-
-        nextFiles[existingIndex] = {
-          ...nextFiles[existingIndex],
-          fileContent: content,
-          fileSize: new Blob([content]).size,
-        };
+        nextFiles[index] = { ...nextFiles[index], fileContent: content, fileSize: new Blob([content]).size };
       } catch (err) {
-        errors.push(`${fileName}: ${err.message}`);
+        errors.push(`${nextFiles[index].fileName}: ${err.message}`);
       }
-    }
-
-    if (action === "create") {
-      const content = operation.content ?? "";
-
-      const existingIndex = nextFiles.findIndex(
-        (file) => file.fileName === fileName,
-      );
-
-      const newFile = {
-        fileName,
-        fileContent: content,
-        fileType: operation.fileType ?? "text/plain",
-        fileSize: new Blob([content]).size,
-        filePath: operation.filePath ?? null,
-      };
-
-      if (existingIndex !== -1) {
-        nextFiles[existingIndex] = {
-          ...nextFiles[existingIndex],
-          ...newFile,
-        };
-      } else {
-        nextFiles.push(newFile);
-      }
-    }
-
-    if (action === "update") {
-      const existingIndex = nextFiles.findIndex(
-        (file) => file.fileName === fileName,
-      );
-
-      const content = operation.content ?? "";
-
-      // Se não existir, cria automaticamente
-      if (existingIndex === -1) {
-        nextFiles.push({
-          fileName,
-          fileContent: content,
-          fileType: operation.fileType ?? "text/plain",
-          fileSize: new Blob([content]).size,
-          filePath: operation.filePath ?? null,
-        });
-
-        continue;
-      }
-
-      nextFiles[existingIndex] = {
-        ...nextFiles[existingIndex],
-        // Preserva o filePath original — o LLM não conhece o caminho real
-        fileContent: content,
-        fileSize: new Blob([content]).size,
-        fileType:
-          operation.fileType ??
-          nextFiles[existingIndex].fileType ??
-          "text/plain",
-      };
-    }
-
-    if (action === "delete") {
-      nextFiles = nextFiles.filter((file) => file.fileName !== fileName);
+    } else if (action === "create" || action === "update") {
+      // Criar em cima de um arquivo existente o sobrescreve; "update" de um
+      // arquivo inexistente o cria.
+      if (index === -1) nextFiles.push(fileFrom(name, operation));
+      else nextFiles[index] = fileFrom(name, operation, nextFiles[index]);
+    } else if (action === "delete") {
+      if (index !== -1) nextFiles = nextFiles.filter((_, i) => i !== index);
+    } else {
+      errors.push(`${name}: acao desconhecida "${action}"`);
     }
   }
 
   return nextFiles;
 }
 
+function parentFolders(relPath) {
+  const parts = relPath.split("/");
+  return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join("/"));
+}
+
 /**
- * Aplica o resultado de um agente nos FileNodes de saída conectados.
- * Reutilizável tanto na execução isolada quanto na cadeia.
+ * Aplica o resultado de um agente nos FileNodes de saida conectados e grava
+ * no disco. Com uma pasta de projeto (`data.rootPath`) o agente cria, edita e
+ * apaga arquivos e cria pastas, sempre dentro dela. Reutilizavel tanto na
+ * execucao isolada quanto na cadeia.
  */
 export async function applyAgentResultToFileNodes({
   agentId,
@@ -182,6 +169,7 @@ export async function applyAgentResultToFileNodes({
   edges,
   updateNodeData,
   signal,
+  fsApi = typeof window === "undefined" ? undefined : window.electronAPI,
 }) {
   const outputFileNodes = getAgentFileNodes(agentId, nodes, edges).outputs;
 
@@ -192,48 +180,103 @@ export async function applyAgentResultToFileNodes({
   if (!parsed || !Array.isArray(parsed.fileOperations)) return null;
 
   const errors = [];
+  const warnings = [];
+  const written = [];
+  const filesOf = (node) => (Array.isArray(node.data?.files) ? node.data.files : []);
+
+  // Cada operacao vai para o FileNode que ja tem o arquivo; o que e novo vai
+  // para o primeiro FileNode com pasta de projeto (ou o primeiro de saida).
+  const homeForNew = outputFileNodes.find((node) => node.data?.rootPath) || outputFileNodes[0];
+  const opsByNode = new Map(outputFileNodes.map((node) => [node.id, []]));
+  const foldersByNode = new Map(outputFileNodes.map((node) => [node.id, []]));
+  for (const operation of parsed.fileOperations) {
+    if (!operation?.action || !operation?.fileName) continue;
+    let name;
+    try {
+      name = normalizeRelPath(operation.fileName);
+    } catch (err) {
+      errors.push(`${operation.fileName}: ${err.message}`);
+      continue;
+    }
+    if (operation.action === "mkdir") {
+      foldersByNode.get(homeForNew.id).push(name);
+      continue;
+    }
+    const owner = outputFileNodes.find((node) => findFileIndex(filesOf(node), name) !== -1);
+    if (owner) opsByNode.get(owner.id).push(operation);
+    else if (operation.action === "edit") errors.push(`${name}: arquivo nao existe no FileNode de saida`);
+    else if (operation.action !== "delete") opsByNode.get(homeForNew.id).push(operation);
+  }
 
   for (const fileNode of outputFileNodes) {
     signal?.throwIfAborted();
-    const currentFiles = Array.isArray(fileNode.data?.files)
-      ? fileNode.data.files
-      : [];
+    const currentFiles = filesOf(fileNode);
+    const operations = opsByNode.get(fileNode.id);
+    const newFolders = foldersByNode.get(fileNode.id);
+    if (!operations.length && !newFolders.length) continue;
 
-    const nextFiles = applyFileOperations(currentFiles, parsed.fileOperations, errors);
+    const rootPath = fileNode.data?.rootPath || null;
+    const disk = fsApi;
+    let nextFiles = applyFileOperations(currentFiles, operations, errors);
+    const before = new Map(currentFiles.map((file) => [file.fileName, file]));
+    const after = new Set(nextFiles.map((file) => file.fileName));
 
-    // Atualiza o FileNode visualmente
-    updateNodeData(fileNode.id, { files: nextFiles });
-
-    // Escrever no arquivo real (Electron) apenas o que mudou de fato
-    for (const originalFile of currentFiles) {
-      const nextFile = nextFiles.find((f) => f.fileName === originalFile.fileName);
-      if (!nextFile || nextFile.fileContent === originalFile.fileContent) continue;
-
-      if (!originalFile.filePath) {
-        console.warn("[agentNode] Arquivo sem filePath:", originalFile.fileName);
-        continue;
-      }
-
-      signal?.throwIfAborted();
+    for (const folder of newFolders) {
+      if (!rootPath) { warnings.push(`${folder}/: pasta so no workflow (conecte uma pasta do projeto para criar no disco)`); continue; }
+      if (typeof disk?.workspaceMkdir !== "function") { warnings.push(`${folder}/: disco indisponivel fora do Electron`); continue; }
       try {
-        await window.electronAPI.writeFile(originalFile.filePath, nextFile.fileContent);
-        console.log("[agentNode] Arquivo salvo com sucesso:", originalFile.filePath);
-      } catch (writeErr) {
-        console.error("[agentNode] Erro ao salvar arquivo:", writeErr);
-        errors.push(`${originalFile.fileName}: falha ao salvar no disco`);
+        await disk.workspaceMkdir(rootPath, folder);
+        written.push(`pasta ${folder}/`);
+      } catch (err) {
+        errors.push(`${folder}/: falha ao criar pasta (${err.message})`);
       }
     }
-  }
 
-  const knownNames = new Set(outputFileNodes.flatMap((node) => (node.data?.files || []).map((file) => file.fileName)));
-  for (const operation of parsed.fileOperations) {
-    if (operation?.action === "edit" && !knownNames.has(operation.fileName)) {
-      errors.push(`${operation.fileName}: arquivo nao existe no FileNode de saida`);
+    for (const original of currentFiles) {
+      if (after.has(original.fileName)) continue;
+      signal?.throwIfAborted();
+      if (!rootPath) { warnings.push(`${original.fileName}: removido so do workflow (o arquivo no disco foi mantido)`); continue; }
+      if (typeof disk?.workspaceDelete !== "function") { warnings.push(`${original.fileName}: disco indisponivel fora do Electron`); continue; }
+      try {
+        await disk.workspaceDelete(rootPath, original.fileName);
+        written.push(`apagado ${original.fileName}`);
+      } catch (err) {
+        errors.push(`${original.fileName}: falha ao apagar (${err.message})`);
+      }
     }
+
+    nextFiles = await Promise.all(nextFiles.map(async (file) => {
+      const previous = before.get(file.fileName);
+      if (previous && previous.fileContent === file.fileContent) return file;
+      signal?.throwIfAborted();
+      const label = previous ? "salvo" : "criado";
+      try {
+        if (rootPath && typeof disk?.workspaceWrite === "function") {
+          const saved = await disk.workspaceWrite(rootPath, file.fileName, file.fileContent);
+          written.push(`${label} ${file.fileName}`);
+          return { ...file, filePath: saved?.filePath || file.filePath };
+        }
+        if (file.filePath && typeof disk?.writeFile === "function") {
+          await disk.writeFile(file.filePath, file.fileContent);
+          written.push(`${label} ${file.fileName}`);
+        } else {
+          warnings.push(`${file.fileName}: ${previous ? "alterado" : "criado"} so no workflow (${rootPath ? "disco indisponivel fora do Electron" : "conecte uma pasta do projeto para gravar no disco"})`);
+        }
+      } catch (err) {
+        errors.push(`${file.fileName}: falha ao salvar no disco (${err.message})`);
+      }
+      return file;
+    }));
+
+    const folders = new Set([...(fileNode.data?.folders || []), ...newFolders, ...newFolders.flatMap((folder) => parentFolders(folder + "/x"))]);
+    for (const file of nextFiles) if (!before.has(file.fileName)) parentFolders(file.fileName).forEach((folder) => folders.add(folder));
+    updateNodeData(fileNode.id, { files: nextFiles, folders: [...folders].sort() });
   }
 
-  return { ...parsed, errors: [...new Set(errors)] };
+  return { ...parsed, errors: [...new Set(errors)], warnings: [...new Set(warnings)], written };
 }
+
+const MAX_EDITABLE_CHARS = 30000;
 
 /**
  * Monta o pedido para um agente com FileNodes de saida. Retorna a instrucao
@@ -247,20 +290,44 @@ export function buildFileEditInstruction(instruction, outputFileNodes, handoffRe
   const outputFiles = outputFileNodes.flatMap((node) =>
     Array.isArray(node.data?.files) ? node.data.files : [],
   );
+  const roots = outputFileNodes.filter((node) => node.data?.rootPath);
   const key = (file) => file.filePath || file.fileName;
   const inContext = new Set(contextFiles.map(key));
   const missing = outputFiles.filter((file) => !inContext.has(key(file)));
 
-  const fileContext = outputFiles.length === 0
+  // Conteudo dos arquivos editaveis, dentro de um orcamento: o que passar dele
+  // fica so listado e nao pode ser editado (edit exige o trecho exato).
+  let budget = MAX_EDITABLE_CHARS;
+  const shown = [];
+  const omitted = [];
+  for (const file of missing) {
+    const size = (file.fileContent || "").length;
+    if (size <= budget) { budget -= size; shown.push(file); } else omitted.push(file);
+  }
+
+  const parts = [];
+  if (roots.length) {
+    parts.push(roots.map((node) => {
+      const folders = (node.data.folders || []).map((folder) => folder + "/");
+      const files = (node.data.files || []).map((file) => file.fileName);
+      return `PASTA DO PROJETO: ${node.data.rootName || node.data.rootPath}\nESTRUTURA (caminhos relativos a pasta):\n` +
+        ([...folders, ...files].sort().map((entry) => "- " + entry).join("\n") || "(pasta vazia)");
+    }).join("\n\n"));
+  }
+  parts.push(outputFiles.length === 0
     ? "ARQUIVOS EDITAVEIS: nenhum arquivo existe no FileNode de saida."
     : "ARQUIVOS EDITAVEIS: " + outputFiles.map((file) => file.fileName).join(", ") +
-      (missing.length
-        ? "\n\n" + missing.map((file) => `### Arquivo: ${file.fileName}\n\n${file.fileContent || "(arquivo vazio)"}`).join("\n\n---\n\n")
-        : " (conteudo atual acima, em ARQUIVOS / CONTEXTO)");
+      (shown.length ? "\n\n" + shown.map((file) => `### Arquivo: ${file.fileName}\n\n${file.fileContent || "(arquivo vazio)"}`).join("\n\n---\n\n") : "") +
+      (missing.length === 0 ? " (conteudo atual acima, em ARQUIVOS / CONTEXTO)" : "") +
+      (omitted.length ? `\n\nCONTEUDO OMITIDO (grande demais; NAO edite estes arquivos, so crie novos): ${omitted.map((file) => file.fileName).join(", ")}` : ""));
+  const fileContext = parts.join("\n\n");
 
   const request = instruction.trim() || "(este agente nao tem pedido proprio: siga a TAREFA ENCAMINHADA acima)";
   const handoffField = handoffRequest ? `,
   "handoff": "Tarefa: ...\\nUse: ...\\nPronto quando: ..."` : "";
+  const where = roots.length
+    ? "Todos os caminhos sao relativos a PASTA DO PROJETO e ficam dentro dela. Pastas intermediarias sao criadas automaticamente."
+    : "Nao ha pasta do projeto conectada: arquivos novos ficam apenas no workflow (nao sao gravados no disco).";
 
   return {
     fileContext,
@@ -269,28 +336,34 @@ ${request}
 
 Faca exatamente o que o pedido diz, e nada alem disso.
 
-FORMATO DA RESPOSTA - responda apenas com este JSON:
+FORMATO DA RESPOSTA - responda apenas com este JSON (sem texto fora dele, sem cercas Markdown):
 {
   "fileOperations": [
-    {
-      "action": "edit",
-      "fileName": "nome exato do arquivo",
-      "edits": [
-        { "find": "trecho copiado exatamente do arquivo atual", "replace": "trecho novo" }
-      ]
-    }
+    { "action": "edit", "fileName": "src/app.js", "edits": [ { "find": "trecho copiado exatamente do arquivo atual", "replace": "trecho novo" } ] },
+    { "action": "create", "fileName": "src/utils/novo.js", "content": "conteudo completo do arquivo novo" },
+    { "action": "update", "fileName": "README.md", "content": "arquivo completo reescrito" },
+    { "action": "mkdir", "fileName": "src/components" },
+    { "action": "delete", "fileName": "src/velho.js" }
   ],
   "message": "o que voce fez, ou a resposta ao pedido"${handoffField}
 }
+(o exemplo acima mostra todas as acoes possiveis; inclua so as que o pedido exige)
 ${handoffRequest ? `
 PROXIMO AGENTE:
 ${handoffRequest}
 ` : ""}
+CAMINHOS:
+- ${where}
+- Escreva caminhos com "/", sem "/" no inicio, sem letra de unidade e sem "..". Para arquivo que ja existe, use exatamente o caminho listado em ESTRUTURA / ARQUIVOS EDITAVEIS.
+- "mkdir" cria uma pasta (mesmo vazia). Para um arquivo novo, "create" ja cria as pastas do caminho.
+
 REGRAS:
 - Altere somente o que o pedido exige. Nao reformate, renomeie, reorganize nem "melhore" o resto do arquivo.
-- "edit": cada "find" e um trecho do arquivo atual, copiado caractere por caractere, que aparece uma unica vez. Use trechos curtos, com as linhas necessarias para serem unicos.
+- "edit": cada "find" e um trecho do arquivo atual, copiado caractere por caractere, que aparece uma unica vez. Use trechos curtos, com as linhas necessarias para serem unicos. Se uma edicao falhar, o arquivo inteiro fica como estava.
 - Para apagar um trecho, use "replace": "".
-- Use {"action": "update", "fileName": "...", "content": "arquivo completo"} somente se o arquivo estiver vazio ou se o pedido for reescreve-lo inteiro.
+- "create" serve para arquivos que nao existem; "update" somente se o arquivo estiver vazio ou se o pedido for reescreve-lo inteiro.
+- "delete" so se o pedido mandar apagar o arquivo.
+- JSON valido: dentro de "content", "find" e "replace" escape aspas (\\") e quebras de linha (\\n).
 - Se o pedido nao exige mudar arquivos (pergunta, explicacao, analise, revisao), responda com "fileOperations": [] e coloque a resposta em "message".
 - Codigo novo deve ser real e funcional, sem placeholders nem TODO.
 
