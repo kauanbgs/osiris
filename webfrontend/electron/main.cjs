@@ -4,6 +4,13 @@ const os = require("os");
 const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
+const { createWorkflowStore } = require("./workflowStore.cjs");
+const workspaceFs = require("./workspaceFs.cjs");
+
+const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
+ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
+ipcMain.handle("workflow:save", (_event, owner, chatId, workflow) => workflowStore().save(owner, chatId, workflow));
+ipcMain.handle("workflow:delete", (_event, owner, chatId) => workflowStore().remove(owner, chatId));
 
 
 // Habilita Web Speech API e acesso ao microfone no Chromium do Electron
@@ -19,7 +26,30 @@ let currentSession = null;
 let activeModelPath = null;
 const activeDownloads = new Map();
 
-async function runLlamaPrompt(payload, onTextChunk) {
+// Serializes load/prompt/delete: a single session can't run prompts
+// concurrently, and swapping the model mid-prompt disposes it underneath.
+let llamaQueue = Promise.resolve();
+function withLlamaLock(fn) {
+  const run = llamaQueue.then(fn, fn);
+  llamaQueue = run.catch(() => {});
+  return run;
+}
+
+async function disposeCurrentModel() {
+  const model = currentModel;
+  currentModel = null;
+  currentSession = null;
+  activeModelPath = null;
+  if (model) {
+    try {
+      await model.dispose();
+    } catch (err) {
+      console.error("Erro ao descartar modelo antigo:", err);
+    }
+  }
+}
+
+async function runLlamaPrompt(payload, onTextChunk, signal) {
   if (!currentSession) {
     throw new Error("Nenhum modelo carregado");
   }
@@ -36,10 +66,10 @@ async function runLlamaPrompt(payload, onTextChunk) {
     throw new Error("Prompt inválido");
   }
 
-  if (
-    history.length > 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
+  const systemPrompt =
+    typeof payload?.systemPrompt === "string" ? payload.systemPrompt.trim() : "";
+
+  if (typeof currentSession.setChatHistory === "function") {
     const chatHistory = history.map((msg) => {
       if (msg.role === "assistant") {
         return {
@@ -53,15 +83,31 @@ async function runLlamaPrompt(payload, onTextChunk) {
         text: msg.content || "",
       };
     });
-    currentSession.setChatHistory(chatHistory);
-  } else if (
-    history.length === 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
-    currentSession.setChatHistory([]);
+    currentSession.setChatHistory(
+      systemPrompt ? [{ type: "system", text: systemPrompt }, ...chatHistory] : chatHistory,
+    );
+  }
+
+  // Old history may be shifted out, but the current prompt must fit whole:
+  // its beginning carries the upstream agents' handoff.
+  if (currentModel) {
+    const contextSize = currentSession.context.contextSize;
+    const inputTokens = currentModel.tokenize(
+      [systemPrompt, promptText].join("\n"),
+    ).length;
+    if (inputTokens > contextSize - 512) {
+      throw new Error(
+        `O prompt tem cerca de ${inputTokens} tokens e o contexto do modelo local comporta ${contextSize}. ` +
+          "Conecte menos arquivos ou divida a etapa em mais agentes.",
+      );
+    }
   }
 
   return currentSession.prompt(promptText, {
+    // Stop returns the partial text instead of throwing, so the session
+    // stays usable for the next prompt.
+    signal,
+    stopOnAbortSignal: true,
     onTextChunk(chunk) {
       const text =
         typeof chunk === "string"
@@ -192,32 +238,34 @@ function listLocalModels() {
 
 ipcMain.handle("llama:list-local-models", () => listLocalModels());
 
-async function loadModelFromPath(modelPath) {
+ipcMain.handle("llama:load-model", (_, modelPath) => withLlamaLock(async () => {
   try {
     if (!fs.existsSync(modelPath)) {
       throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
     }
 
+    if (currentSession && activeModelPath === modelPath) {
+      return {
+        success: true,
+        activeModelPath,
+        activeModelName: path.basename(modelPath),
+      };
+    }
+
     const llama = await getLlamaModule();
     const { LlamaChatSession } = await import("node-llama-cpp");
 
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (err) {
-        console.error("Erro ao descartar modelo antigo:", err);
-      }
-    }
+    await disposeCurrentModel();
 
-    currentModel = await llama.loadModel({
+    const model = await llama.loadModel({
       modelPath: modelPath,
     });
 
-    const context = await currentModel.createContext();
+    const context = await model.createContext();
     currentSession = new LlamaChatSession({
       contextSequence: context.getSequence(),
     });
-
+    currentModel = model;
     activeModelPath = modelPath;
 
     return {
@@ -229,35 +277,39 @@ async function loadModelFromPath(modelPath) {
     console.error("Erro ao carregar modelo:", err);
     throw new Error(err.message || "Falha ao carregar o modelo GGUF");
   }
-}
+}));
 
-// Avisa as janelas (ex.: tela Modelos da web) quando o modelo muda pela rede.
-async function loadModelAndNotify(modelPath) {
-  const result = await loadModelFromPath(modelPath);
-  broadcast("llama:model-changed", result);
-  return result;
-}
+// Running or queued prompts by request id, so the renderer can stop them.
+const llamaPromptAborts = new Map();
 
-ipcMain.handle("llama:load-model", (_, modelPath) =>
-  loadModelFromPath(modelPath),
-);
+ipcMain.handle("llama:abort", (_, requestId) => {
+  llamaPromptAborts.get(requestId)?.abort();
+});
 
 ipcMain.handle("llama:prompt", async (event, payload) => {
   const sender = event.sender;
+  const requestId = payload?.requestId;
+  const abort = new AbortController();
+  if (requestId) llamaPromptAborts.set(requestId, abort);
 
   try {
-    const response = await runLlamaPrompt(payload, (chunk) => {
-      if (!sender.isDestroyed()) {
-        sender.send("llama:stream", {
-          type: "chunk",
-          text: chunk,
-        });
-      }
+    const response = await withLlamaLock(() => {
+      if (abort.signal.aborted) return "";
+      return runLlamaPrompt(payload, (chunk) => {
+        if (!sender.isDestroyed()) {
+          sender.send("llama:stream", {
+            type: "chunk",
+            text: chunk,
+            requestId,
+          });
+        }
+      }, abort.signal);
     });
 
     if (!sender.isDestroyed()) {
       sender.send("llama:stream", {
         type: "done",
+        requestId,
       });
     }
 
@@ -267,10 +319,13 @@ ipcMain.handle("llama:prompt", async (event, payload) => {
       sender.send("llama:stream", {
         type: "error",
         error: error.message,
+        requestId,
       });
     }
 
     throw error;
+  } finally {
+    if (requestId) llamaPromptAborts.delete(requestId);
   }
 });
 
@@ -428,16 +483,11 @@ ipcMain.handle("llama:import-file", async (event) => {
 });
 
 ipcMain.handle("llama:delete-model", async (_, modelPath) => {
-  if (activeModelPath === modelPath) {
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (e) {}
-      currentModel = null;
-      currentSession = null;
-      activeModelPath = null;
+  await withLlamaLock(async () => {
+    if (activeModelPath === modelPath) {
+      await disposeCurrentModel();
     }
-  }
+  });
 
   if (fs.existsSync(modelPath)) {
     fs.unlinkSync(modelPath);
@@ -449,27 +499,48 @@ ipcMain.handle("llama:delete-model", async (_, modelPath) => {
 // TERMINAL IPC HANDLERS
 // ===============================
 
-ipcMain.handle("terminal-create", (event, id, mode) => {
-  if (!id || terminals.has(id)) return;
+ipcMain.handle("terminal-create", (event, id, mode, cwd) => {
+  if (!id || terminals.has(id)) return { ok: true, existing: true };
 
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return;
+  if (!win) return { ok: false, error: "Janela nao encontrada." };
 
   const shell =
     process.platform === "win32"
       ? "powershell.exe"
       : process.env.SHELL || "/bin/bash";
 
-  const terminal = pty.spawn(shell, [], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: os.homedir(),
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-    },
-  });
+  const startDir =
+    typeof cwd === "string" && cwd && fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()
+      ? cwd
+      : os.homedir();
+
+  let terminal;
+  try {
+    terminal = pty.spawn(shell, [], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: startDir,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+      },
+    });
+  } catch (err) {
+    console.error("Erro ao abrir terminal:", err);
+    if (!win.isDestroyed()) {
+      const CRLF = String.fromCharCode(13, 10);
+      const RED = String.fromCharCode(27) + "[31m";
+      const RESET = String.fromCharCode(27) + "[0m";
+      win.webContents.send(
+        "terminal-data",
+        id,
+        CRLF + RED + "Nao foi possivel abrir o terminal: " + err.message + RESET + CRLF,
+      );
+    }
+    return { ok: false, error: err.message };
+  }
 
   terminals.set(id, terminal);
 
@@ -480,6 +551,9 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
   });
 
   terminal.onExit(({ exitCode }) => {
+    // The same id can be reopened (React remounts, tab switches) before this
+    // exit arrives: only forget the entry if it still points at this process.
+    if (terminals.get(id) !== terminal) return;
     terminals.delete(id);
     if (!win.isDestroyed()) {
       win.webContents.send("terminal-exit", id, exitCode);
@@ -488,9 +562,11 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
 
   if (mode === "claude") {
     setTimeout(() => {
-      terminal.write("claude\r");
+      if (terminals.get(id) === terminal) terminal.write("claude" + String.fromCharCode(13));
     }, 400);
   }
+
+  return { ok: true };
 });
 
 ipcMain.on("terminal-write", (event, id, data) => {
@@ -541,6 +617,7 @@ ipcMain.handle("fs:write-file", async (_, { filePath, content }) => {
   }
 
   try {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, content, "utf-8");
     return { success: true, filePath };
   } catch (err) {
@@ -659,6 +736,55 @@ ipcMain.handle("fs:select-folder", async () => {
     tree,
   };
 });
+
+// ======================================================
+// PASTA DE PROJETO (workspace) - toda escrita fica dentro da pasta escolhida
+// ======================================================
+
+ipcMain.handle("fs:select-workspace", async () => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (result.canceled || !result.filePaths.length) return null;
+  return workspaceFs.scanWorkspace(result.filePaths[0]);
+});
+
+ipcMain.handle("fs:workspace-write", async (_, { rootPath, relPath, content }) => {
+  const filePath = await workspaceFs.writeIn(rootPath, relPath, content);
+  return { success: true, filePath };
+});
+
+ipcMain.handle("fs:workspace-mkdir", async (_, { rootPath, relPath }) => {
+  const folderPath = await workspaceFs.mkdirIn(rootPath, relPath);
+  return { success: true, folderPath };
+});
+
+ipcMain.handle("fs:workspace-delete", async (_, { rootPath, relPath }) => {
+  return { success: await workspaceFs.deleteIn(rootPath, relPath) };
+});
+
+// Observa arquivos/pastas no disco e avisa a janela quando mudam (ex.: salvos no VS Code).
+const fileWatchers = new Map();
+
+ipcMain.handle("fs:watch", (event, { watchId, rootPath, filePaths }) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+  const sender = event.sender;
+  try {
+    const close = workspaceFs.createWatcher({ rootPath, filePaths }, (payload) => {
+      if (!sender.isDestroyed()) sender.send("fs:changed", { watchId, ...payload });
+    });
+    fileWatchers.set(watchId, close);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("fs:unwatch", (_, watchId) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+});
+
+ipcMain.handle("fs:scan-workspace", (_, rootPath) => workspaceFs.scanWorkspace(rootPath));
 
 // ======================================================
 // LER ARQUIVO

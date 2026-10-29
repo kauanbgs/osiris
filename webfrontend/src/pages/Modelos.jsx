@@ -13,11 +13,23 @@ import {
   KeyRound,
   Loader2,
   Play,
+  Plus,
+  Search,
+  Server,
   Trash2,
+  X,
 } from 'lucide-react';
 import {
   CLOUD_PROVIDERS,
+  CUSTOM_PROVIDER_ID,
+  fetchCustomServerModels,
+  fetchOpenRouterModels,
   getActiveModel,
+  getAllProviderModels,
+  getCustomProviderModels,
+  getCustomServer,
+  saveCustomProviderModels,
+  saveCustomServer,
   setActiveModel,
   testProviderKey,
 } from '@/services/llmService';
@@ -56,8 +68,70 @@ function ProviderCard({
 }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [customModels, setCustomModels] = useState(() => getCustomProviderModels(provider.id));
+  const [newModelId, setNewModelId] = useState('');
+  const [showCatalogModal, setShowCatalogModal] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogModels, setCatalogModels] = useState([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogError, setCatalogError] = useState(null);
 
   const hasKey = Boolean(value?.trim());
+
+  useEffect(() => {
+    const handleSync = () => setCustomModels(getCustomProviderModels(provider.id));
+    window.addEventListener('osiris:model-changed', handleSync);
+    return () => window.removeEventListener('osiris:model-changed', handleSync);
+  }, [provider.id]);
+
+  const allModels = useMemo(() => {
+    const base = provider.models || [];
+    const existingIds = new Set(base.map((m) => m.id));
+    const merged = customModels.filter((m) => !existingIds.has(m.id));
+    return [...base, ...merged];
+  }, [provider.models, customModels]);
+
+  const handleAddCustomModel = (idToAdd, nameToAdd) => {
+    const cleanId = (idToAdd || newModelId).trim();
+    if (!cleanId) return;
+    if (allModels.some((m) => m.id === cleanId)) {
+      setNewModelId('');
+      return;
+    }
+    const updated = [...customModels, { id: cleanId, name: nameToAdd || cleanId, isCustom: true }];
+    setCustomModels(updated);
+    saveCustomProviderModels(provider.id, updated);
+    setNewModelId('');
+  };
+
+  const handleRemoveCustomModel = (modelId) => {
+    const updated = customModels.filter((m) => m.id !== modelId);
+    setCustomModels(updated);
+    saveCustomProviderModels(provider.id, updated);
+  };
+
+  async function handleOpenCatalog() {
+    setShowCatalogModal(true);
+    if (catalogModels.length > 0) return;
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const list = await fetchOpenRouterModels(value);
+      setCatalogModels(list);
+    } catch (err) {
+      setCatalogError(err.message || 'Erro ao carregar catálogo.');
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  const filteredCatalog = useMemo(() => {
+    if (!catalogSearch.trim()) return catalogModels;
+    const term = catalogSearch.toLowerCase().trim();
+    return catalogModels.filter(
+      (m) => m.id.toLowerCase().includes(term) || (m.name && m.name.toLowerCase().includes(term)),
+    );
+  }, [catalogModels, catalogSearch]);
 
   async function handleTest() {
     if (!hasKey) return;
@@ -169,13 +243,50 @@ function ProviderCard({
         </div>
       )}
 
-      {provider.models.length > 0 && (
-        <div className="mt-3.5 space-y-1.5">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-            Modelos disponíveis:
-          </p>
+      {allModels.length > 0 && (
+        <div className="mt-3.5 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Modelos disponíveis ({allModels.length}):
+            </p>
+            {provider.id === 'openrouter' && (
+              <button
+                type="button"
+                onClick={handleOpenCatalog}
+                className="flex items-center gap-1 text-[11px] font-medium text-violet-400 transition-colors hover:text-violet-300"
+              >
+                <Search size={11} />
+                Explorar catálogo OpenRouter
+              </button>
+            )}
+          </div>
+
+          {provider.id === 'openrouter' && (
+            <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-[#121212] p-1.5">
+              <input
+                type="text"
+                value={newModelId}
+                onChange={(e) => setNewModelId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddCustomModel();
+                }}
+                placeholder="Digitar ID de outro modelo (ex: meta-llama/llama-3.2-3b-instruct)..."
+                className="h-7 min-w-0 flex-1 bg-transparent px-2 font-mono text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => handleAddCustomModel()}
+                disabled={!newModelId.trim()}
+                className="flex h-7 items-center gap-1 rounded bg-violet-600 px-2.5 text-[10px] font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+              >
+                <Plus size={11} />
+                Adicionar
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {provider.models.map((model) => {
+            {allModels.map((model) => {
               const isActive =
                 activeModelConfig?.type === 'cloud' &&
                 activeModelConfig?.provider === provider.id &&
@@ -191,46 +302,279 @@ function ProviderCard({
                   }`}
                 >
                   <div className="min-w-0 flex-1 pr-2">
-                    <p className="truncate font-mono text-[11px] font-medium text-zinc-200">
-                      {model.name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate font-mono text-[11px] font-medium text-zinc-200">
+                        {model.name}
+                      </p>
+                      {model.isCustom && (
+                        <span className="rounded bg-violet-500/20 px-1 py-0.2 text-[8px] font-mono text-violet-300">
+                          personalizado
+                        </span>
+                      )}
+                    </div>
                     <p className="truncate font-mono text-[9px] text-zinc-500">
                       {model.id}
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={!hasKey || isActive}
-                    onClick={() =>
-                      onActivateModel({
-                        type: 'cloud',
-                        provider: provider.id,
-                        model: model.id,
-                        name: `${provider.name} - ${model.name}`,
-                      })
-                    }
-                    className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] font-semibold transition-colors ${
-                      isActive
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : hasKey
-                        ? 'bg-violet-600 text-white hover:bg-violet-500'
-                        : 'cursor-not-allowed bg-zinc-800 text-zinc-600'
-                    }`}
-                  >
-                    {isActive ? (
-                      <>
-                        <Check size={11} />
-                        Em uso
-                      </>
-                    ) : (
-                      'Ativar'
+                  <div className="flex items-center gap-1">
+                    {model.isCustom && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomModel(model.id)}
+                        title="Remover modelo da lista"
+                        className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 size={11} />
+                      </button>
                     )}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={!hasKey || isActive}
+                      onClick={() =>
+                        onActivateModel({
+                          type: 'cloud',
+                          provider: provider.id,
+                          model: model.id,
+                          name: `${provider.name} - ${model.name}`,
+                        })
+                      }
+                      className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] font-semibold transition-colors ${
+                        isActive
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : hasKey
+                          ? 'bg-violet-600 text-white hover:bg-violet-500'
+                          : 'cursor-not-allowed bg-zinc-800 text-zinc-600'
+                      }`}
+                    >
+                      {isActive ? (
+                        <>
+                          <Check size={11} />
+                          Em uso
+                        </>
+                      ) : (
+                        'Ativar'
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {showCatalogModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-zinc-700 bg-[#161616] p-5 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                  <Cloud size={15} className="text-violet-400" />
+                  Catálogo de Modelos do OpenRouter
+                </h3>
+                <p className="text-[11px] text-zinc-400">
+                  Pesquise e escolha qualquer modelo suportado pelo OpenRouter.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCatalogModal(false)}
+                className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-700 bg-[#101010] px-3 py-1.5">
+              <Search size={14} className="text-zinc-500" />
+              <input
+                type="text"
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                placeholder="Filtrar por nome ou ID (ex: deepseek, llama, claude, :free)..."
+                className="w-full bg-transparent text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+                autoFocus
+              />
+              {catalogSearch && (
+                <button
+                  type="button"
+                  onClick={() => setCatalogSearch('')}
+                  className="text-zinc-500 hover:text-zinc-300"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {catalogLoading ? (
+              <div className="flex flex-1 flex-col items-center justify-center py-12 text-zinc-400">
+                <Loader2 size={24} className="mb-2 animate-spin text-violet-400" />
+                <span className="text-xs">Carregando catálogo de modelos do OpenRouter...</span>
+              </div>
+            ) : catalogError ? (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-xs text-red-400">
+                {catalogError}
+              </div>
+            ) : (
+              <div className="flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-700">
+                {filteredCatalog.length === 0 ? (
+                  <p className="py-8 text-center text-xs text-zinc-500">
+                    Nenhum modelo encontrado com "{catalogSearch}".
+                  </p>
+                ) : (
+                  filteredCatalog.slice(0, 80).map((m) => {
+                    const isAdded = allModels.some((item) => item.id === m.id);
+                    const isActive =
+                      activeModelConfig?.type === 'cloud' &&
+                      activeModelConfig?.provider === provider.id &&
+                      activeModelConfig?.model === m.id;
+
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between rounded-lg border border-zinc-800 bg-[#111111] p-2.5 hover:border-zinc-700"
+                      >
+                        <div className="min-w-0 flex-1 pr-3">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-mono text-xs font-medium text-zinc-200">
+                              {m.name}
+                            </span>
+                            {m.context_length && (
+                              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400">
+                                {Math.round(m.context_length / 1024)}k ctx
+                              </span>
+                            )}
+                          </div>
+                          <span className="block truncate font-mono text-[10px] text-zinc-500">
+                            {m.id}
+                          </span>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          {isAdded ? (
+                            <span className="text-[10px] font-medium text-zinc-500">Na lista</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleAddCustomModel(m.id, m.name)}
+                              className="rounded bg-zinc-800 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                            >
+                              + Adicionar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={!hasKey || isActive}
+                            onClick={() => {
+                              if (!isAdded) handleAddCustomModel(m.id, m.name);
+                              onActivateModel({
+                                type: 'cloud',
+                                provider: provider.id,
+                                model: m.id,
+                                name: `${provider.name} - ${m.name}`,
+                              });
+                              setShowCatalogModal(false);
+                            }}
+                            className={`rounded px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                              isActive
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : hasKey
+                                ? 'bg-violet-600 text-white hover:bg-violet-500'
+                                : 'cursor-not-allowed bg-zinc-800 text-zinc-600'
+                            }`}
+                          >
+                            {isActive ? 'Em uso' : 'Ativar'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {filteredCatalog.length > 80 && (
+                  <p className="py-2 text-center text-[10px] text-zinc-500">
+                    Mostrando os primeiros 80 modelos. Refine a busca para encontrar modelos específicos.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CustomServerCard({ activeModelConfig, onActivateModel }) {
+  const [server, setServer] = useState(getCustomServer);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function handleConnect() {
+    setLoading(true);
+    setResult(null);
+    try {
+      const models = await fetchCustomServerModels(server.baseUrl, server.apiKey);
+      const next = { ...server, models };
+      setServer(next);
+      saveCustomServer(next);
+      setResult({ ok: true, msg: models.length ? `${models.length} modelo(s) encontrado(s).` : 'Conectado, mas o servidor nao tem modelos.' });
+    } catch (err) {
+      setResult({ ok: false, msg: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputClass = 'h-8 min-w-0 rounded-md border border-zinc-700 bg-[#101010] px-2.5 font-mono text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none';
+
+  return (
+    <section className="rounded-lg border border-zinc-700/80 bg-[#181818] p-3.5">
+      <div className="mb-1 flex items-center gap-2">
+        <Server size={13} className="text-violet-400" />
+        <h3 className="text-[13px] font-semibold text-zinc-100">Servidor proprio (VPS)</h3>
+      </div>
+      <p className="mb-2.5 text-[10px] leading-4 text-zinc-500">
+        Ollama, vLLM ou llama.cpp com API compativel com OpenAI. Abra o tunel SSH antes de conectar.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input aria-label="Endereco do servidor" value={server.baseUrl} placeholder="http://localhost:11434/v1"
+          onChange={(event) => setServer({ ...server, baseUrl: event.target.value })} className={inputClass + ' flex-1'} />
+        <input aria-label="Chave do servidor (opcional)" type="password" value={server.apiKey} placeholder="chave (opcional)"
+          onChange={(event) => setServer({ ...server, apiKey: event.target.value })} className={inputClass + ' w-36'} />
+        <button type="button" onClick={handleConnect} disabled={loading || !server.baseUrl.trim()}
+          className="flex h-8 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50">
+          {loading && <Loader2 size={12} className="animate-spin" />}
+          Conectar e listar modelos
+        </button>
+      </div>
+
+      {result && (
+        <div className={`mt-2 rounded px-2 py-1 text-[11px] ${result.ok
+          ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+          : 'border border-red-500/20 bg-red-500/10 text-red-400'}`}>
+          {result.msg}
+        </div>
+      )}
+
+      {server.models.length > 0 && (
+        <div className="mt-3.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {server.models.map((model) => {
+            const isActive = activeModelConfig?.provider === CUSTOM_PROVIDER_ID && activeModelConfig?.model === model;
+            return (
+              <div key={model} className={`flex items-center justify-between rounded-md border p-2 ${isActive
+                ? 'border-violet-500/80 bg-violet-950/20' : 'border-zinc-800 bg-[#121212]'}`}>
+                <p className="min-w-0 truncate font-mono text-[11px] text-zinc-200">{model}</p>
+                <button type="button" disabled={isActive}
+                  onClick={() => onActivateModel({ type: 'cloud', provider: CUSTOM_PROVIDER_ID, model, name: `Servidor proprio - ${model}` })}
+                  className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] font-semibold ${isActive
+                    ? 'bg-emerald-500/20 text-emerald-400' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
+                  {isActive ? <><Check size={11} />Em uso</> : 'Ativar'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -425,7 +769,7 @@ export default function Modelos() {
             }`}
           >
             <Cloud size={13} />
-            Modelos em Nuvem (Gemini, ChatGPT, Claude)
+            Modelos em Nuvem (Gemini, ChatGPT, Claude, OpenRouter)
           </button>
           <button
             type="button"
@@ -449,6 +793,7 @@ export default function Modelos() {
             </p>
 
             <div className="space-y-3.5">
+              <CustomServerCard activeModelConfig={activeModelConfig} onActivateModel={handleActivateCloudModel} />
               {CLOUD_PROVIDERS.map((provider) => (
                 <ProviderCard
                   key={provider.id}

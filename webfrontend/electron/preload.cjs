@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  loadWorkflow: (owner, chatId) => ipcRenderer.invoke("workflow:load", owner, chatId),
+  saveWorkflow: (owner, chatId, workflow) => ipcRenderer.invoke("workflow:save", owner, chatId, workflow),
+  deleteWorkflow: (owner, chatId) => ipcRenderer.invoke("workflow:delete", owner, chatId),
   // WINDOW CONTROLS
   minimize: () => ipcRenderer.send("window-minimize"),
   maximize: () => ipcRenderer.send("window-maximize"),
@@ -18,12 +21,32 @@ contextBridge.exposeInMainWorld("electronAPI", {
   selectFolder: () =>
     ipcRenderer.invoke("fs:select-folder"),
 
+  // Pasta de projeto: leitura da arvore e escrita confinada a ela
+  selectWorkspace: () => ipcRenderer.invoke("fs:select-workspace"),
+  workspaceWrite: (rootPath, relPath, content) =>
+    ipcRenderer.invoke("fs:workspace-write", { rootPath, relPath, content }),
+  workspaceMkdir: (rootPath, relPath) =>
+    ipcRenderer.invoke("fs:workspace-mkdir", { rootPath, relPath }),
+  workspaceDelete: (rootPath, relPath) =>
+    ipcRenderer.invoke("fs:workspace-delete", { rootPath, relPath }),
+
+  // Sincronizacao com o disco: avisa quando um arquivo muda fora do Osiris
+  watchFiles: (watchId, { rootPath, filePaths }) =>
+    ipcRenderer.invoke("fs:watch", { watchId, rootPath, filePaths }),
+  unwatchFiles: (watchId) => ipcRenderer.invoke("fs:unwatch", watchId),
+  scanWorkspace: (rootPath) => ipcRenderer.invoke("fs:scan-workspace", rootPath),
+  onFileChanged: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("fs:changed", listener);
+    return () => ipcRenderer.removeListener("fs:changed", listener);
+  },
+
   // Ler conteúdo de um arquivo
   readFile: (filePath) =>
     ipcRenderer.invoke("fs:read-file", filePath),
 
   // TERMINAL CONTROLS
-  terminalCreate: (id, mode) => ipcRenderer.invoke("terminal-create", id, mode),
+  terminalCreate: (id, mode, cwd) => ipcRenderer.invoke("terminal-create", id, mode, cwd),
 
   terminalWrite: (id, data) => ipcRenderer.send("terminal-write", id, data),
 
@@ -70,6 +93,7 @@ contextBridge.exposeInMainWorld("llama", {
   prompt: (payload) => {
     return ipcRenderer.invoke("llama:prompt", payload);
   },
+  abort: (requestId) => ipcRenderer.invoke("llama:abort", requestId),
   importFile: () => ipcRenderer.invoke("llama:import-file"),
   deleteModel: (modelPath) =>
     ipcRenderer.invoke("llama:delete-model", modelPath),

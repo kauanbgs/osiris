@@ -10,7 +10,7 @@ services:
       MYSQL_USER: ${DB_USER:-osiris_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-osiris_password}
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "${DB_PORT:-3308}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./osiris-api/mysql-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

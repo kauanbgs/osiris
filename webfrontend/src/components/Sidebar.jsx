@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { activeProjectKey, useActiveProject } from "@/contexts/useActiveProject";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const workspaceItems = [
@@ -37,6 +38,7 @@ const environmentItems = [
 ];
 
 function NavGroup({ title, items }) {
+  const { activeId } = useActiveProject();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,13 +51,15 @@ function NavGroup({ title, items }) {
       <nav className="space-y-0.5">
         {items.map((item) => {
           const Icon = item.icon;
-          const isActive = item.link && location.pathname === item.link;
+          const target = activeId && (item.link === "/home" || item.link === "/workflow")
+            ? item.link + "/" + encodeURIComponent(activeId) : item.link;
+          const isActive = item.link && (location.pathname === item.link || location.pathname.startsWith(item.link + "/"));
 
           return (
             <button
               key={item.label}
               type="button"
-              onClick={() => item.link && navigate(item.link)}
+              onClick={() => target && navigate(target)}
               className={`group flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors ${
                 isActive
                   ? "bg-zinc-800/90 text-zinc-100 font-medium"
@@ -86,6 +90,7 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
   const [renameValue, setRenameValue] = useState(chat.title ?? "");
   const inputRef = useRef(null);
 
+  const { user } = useAuth();
   const chatId = chat.id_chat ?? chat.id;
 
   useEffect(() => {
@@ -112,6 +117,11 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
   async function handleDelete() {
     try {
       await sheets.deleteChat(chatId);
+      if (window.electronAPI?.deleteWorkflow) {
+        try {
+          await window.electronAPI.deleteWorkflow(user?.id_user ?? user?.id ?? user?.email, chatId);
+        } catch (error) { console.error("Erro ao remover workflow local:", error); }
+      }
       onDeleted(chatId);
     } catch (e) {
       console.error("Erro ao deletar chat:", e);
@@ -172,7 +182,8 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
           <span className="truncate text-[12px]">{chat.title ?? "Chat sem título"}</span>
         </button>
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {window.electronAPI?.loadWorkflow && <button type="button" title="Abrir workflow do projeto" aria-label="Abrir workflow do projeto" onClick={() => navigate('/workflow/' + chatId)} className="flex h-5 w-5 items-center justify-center rounded text-violet-400 hover:bg-zinc-700"><Bot size={12} /></button>}
           <button
             type="button"
             title="Renomear"
@@ -214,6 +225,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { owner, activeId } = useActiveProject();
 
   const [chats, setChats] = useState([]);
 
@@ -249,8 +261,9 @@ export default function Sidebar() {
   }
 
   function handleChatDeleted(chatId) {
+    if (String(activeId) === String(chatId) && owner) localStorage.removeItem(activeProjectKey(owner));
     setChats((prev) => prev.filter((c) => (c.id_chat ?? c.id) !== chatId));
-    if (location.pathname === `/home/${chatId}`) {
+    if (location.pathname === `/home/${chatId}` || location.pathname === `/workflow/${chatId}`) {
       navigate("/home");
     }
     window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
@@ -286,7 +299,7 @@ export default function Sidebar() {
         <section>
           <div className="mb-2 flex items-center justify-between px-2">
             <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500">
-              Chats
+              Projetos
             </h2>
             <button
               type="button"
@@ -302,7 +315,7 @@ export default function Sidebar() {
           <div className="space-y-0.5">
             {chats.map((chat) => {
               const chatId = chat.id_chat ?? chat.id;
-              const isActive = location.pathname === `/home/${chatId}`;
+              const isActive = location.pathname === `/home/${chatId}` || location.pathname === `/workflow/${chatId}`;
               return (
                 <ChatItem
                   key={chatId}

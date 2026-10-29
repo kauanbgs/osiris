@@ -1,4 +1,4 @@
-import sheets from "./api";
+import { scheduleGroqRequest } from "./groqRateLimit.js";
 
 export const CLOUD_PROVIDERS = [
   {
@@ -44,16 +44,131 @@ export const CLOUD_PROVIDERS = [
   },
   {
     id: "groq",
-    name: "Groq (Llama / Mixtral)",
+    name: "Groq",
     placeholder: "Cole sua chave gsk_...",
     getKeyUrl: "https://console.groq.com/keys",
+    // https://console.groq.com/docs/models (verified 2026-10-20)
     models: [
-      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B", default: true },
-      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B" },
-      { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B" },
+      { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B", default: true },
+      { id: "openai/gpt-oss-20b", name: "GPT-OSS 20B" },
+      { id: "qwen/qwen3.8-27b", name: "Qwen 3.8 27B (Preview)" },
+      { id: "openai/gpt-oss-safeguard-20b", name: "GPT-OSS Safeguard 20B (Moderacao)" },
+      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Enterprise)" },
+      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Enterprise)" },
+      { id: "meta-models/muse-spark-open", name: "Muse Spark Open (Enterprise)" },
+      { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7 (Enterprise)" },
+    ],
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    placeholder: "Cole sua chave sk-or-v1-...",
+    getKeyUrl: "https://openrouter.ai/keys",
+    models: [
+      { id: "deepseek/deepseek-v4.1-flash-1017", name: "DeepSeek V4.1 Flash 1017", default: true },
+      { id: "deepseek/deepseek-chat", name: "DeepSeek V3" },
+      { id: "deepseek/deepseek-r1", name: "DeepSeek R1" },
+      { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet" },
+      { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" },
+      { id: "openai/gpt-4o", name: "GPT-4o" },
+      { id: "openai/gpt-4o-mini", name: "GPT-4o Mini" },
+      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "google/gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
+      { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B" },
+      { id: "mistralai/mistral-small-24b-instruct-2501", name: "Mistral Small 24B" },
+      { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (Gratuito)" },
+      { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Gratuito)" },
     ],
   },
 ];
+
+const CUSTOM_PROVIDER_MODELS_KEY = "osiris_custom_provider_models";
+
+export function getCustomProviderModels(providerId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CUSTOM_PROVIDER_MODELS_KEY) || "{}");
+    return Array.isArray(all[providerId]) ? all[providerId] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomProviderModels(providerId, models) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CUSTOM_PROVIDER_MODELS_KEY) || "{}");
+    all[providerId] = models;
+    localStorage.setItem(CUSTOM_PROVIDER_MODELS_KEY, JSON.stringify(all));
+    window.dispatchEvent(new CustomEvent("osiris:model-changed"));
+  } catch (e) {
+    console.error("Erro ao salvar modelos customizados:", e);
+  }
+}
+
+export function getAllProviderModels(provider) {
+  if (!provider) return [];
+  const custom = getCustomProviderModels(provider.id);
+  const base = provider.models || [];
+  const existingIds = new Set(base.map((m) => m.id));
+  const mergedCustom = custom.filter((m) => !existingIds.has(m.id));
+  return [...base, ...mergedCustom];
+}
+
+export async function fetchOpenRouterModels(apiKey) {
+  const headers = {};
+  if (apiKey?.trim()) {
+    headers["Authorization"] = `Bearer ${apiKey.trim()}`;
+  }
+  const response = await fetch("https://openrouter.ai/api/v1/models", { headers });
+  if (!response.ok) {
+    throw new Error(`Erro ${response.status} ao carregar modelos do OpenRouter.`);
+  }
+  const data = await response.json();
+  return (data.data || []).map((m) => ({
+    id: m.id,
+    name: m.name || m.id,
+    description: m.description,
+    context_length: m.context_length,
+    pricing: m.pricing,
+  }));
+}
+
+// Self-hosted OpenAI-compatible server (Ollama, vLLM, llama.cpp), usually
+// reached through an SSH tunnel. Models come from the server's /models list.
+export const CUSTOM_PROVIDER_ID = "custom";
+const CUSTOM_SERVER_KEY = "osiris_custom_server";
+const DEFAULT_CUSTOM_SERVER = { baseUrl: "http://localhost:11434/v1", apiKey: "", models: [] };
+
+export function getCustomServer() {
+  try {
+    return { ...DEFAULT_CUSTOM_SERVER, ...JSON.parse(localStorage.getItem(CUSTOM_SERVER_KEY) || "{}") };
+  } catch {
+    return { ...DEFAULT_CUSTOM_SERVER };
+  }
+}
+
+export function saveCustomServer(server) {
+  localStorage.setItem(CUSTOM_SERVER_KEY, JSON.stringify(server));
+  window.dispatchEvent(new CustomEvent("osiris:model-changed"));
+}
+
+function customServerUrl(baseUrl, path) {
+  return baseUrl.trim().replace(/\/+$/, "") + path;
+}
+
+export async function fetchCustomServerModels(baseUrl, apiKey) {
+  let response;
+  try {
+    response = await fetch(customServerUrl(baseUrl, "/models"), {
+      headers: apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {},
+    });
+  } catch {
+    throw new Error("Servidor inacessivel em " + baseUrl + ". O tunel SSH esta aberto?");
+  }
+  if (!response.ok) throw new Error("Erro " + response.status + " ao listar modelos do servidor.");
+  const body = await response.json();
+  return (body.data || []).map((model) => model.id).filter(Boolean).sort();
+}
 
 export function getStoredCloudKeys() {
   try {
@@ -180,7 +295,7 @@ export async function testProviderKey(providerId, apiKey) {
         Authorization: `Bearer ${trimmedKey}`,
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "openai/gpt-oss-20b",
         messages: [{ role: "user", content: "Hello" }],
         max_tokens: 5,
       }),
@@ -223,6 +338,23 @@ export async function testProviderKey(providerId, apiKey) {
     return true;
   }
 
+  if (providerId === "openrouter") {
+    const res = await fetch("https://openrouter.ai/api/v1/auth/key", {
+      headers: {
+        Authorization: `Bearer ${trimmedKey}`,
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        err.error?.message || `Erro ${res.status}: Verifique sua chave OpenRouter.`,
+      );
+    }
+
+    return true;
+  }
+
   throw new Error("Provedor desconhecido.");
 }
 
@@ -231,6 +363,7 @@ async function streamGoogleGemini({
   model,
   apiKey,
   prompt,
+  systemPrompt,
   history = [],
   onChunk,
   signal,
@@ -249,7 +382,10 @@ async function streamGoogleGemini({
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents }),
+    body: JSON.stringify({
+      contents,
+      ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
+    }),
     signal,
   });
 
@@ -297,81 +433,88 @@ async function streamGoogleGemini({
 }
 
 async function streamOpenAICompatible({
-  endpoint,
-  model,
-  apiKey,
-  prompt,
-  history = [],
-  onChunk,
-  signal,
-  headers = {},
+  endpoint, model, apiKey, prompt, systemPrompt, history = [], onChunk, signal,
+  headers = {}, maxOutputTokens, onNotice, continueOnLength = false,
 }) {
-  const messages = [
-    ...history.map((msg) => ({ role: msg.role, content: msg.content })),
-    { role: "user", content: prompt },
-  ];
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...headers,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(
-      err.error?.message || `Erro ${response.status} na API de IA.`,
-    );
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
+  const isGroq = endpoint.startsWith("https://api.groq.com/");
+  const messages = [...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+    ...history.map((msg) => ({ role: msg.role, content: msg.content })), { role: "user", content: prompt }];
+  const baseLength = messages.length;
+  const maxParts = isGroq && continueOnLength ? 3 : 1;
   let fullText = "";
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === "[DONE]") break;
-        if (!jsonStr) continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const chunkText = parsed.choices?.[0]?.delta?.content || "";
-          if (chunkText) {
-            fullText += chunkText;
-            onChunk?.(fullText);
-          }
-        } catch {
-          // ignore
-        }
+  let affordCap = null; // set from a "can only afford N" error, then the call is retried once
+  for (let part = 0; part < maxParts; part++) {
+    signal?.throwIfAborted();
+    const estimatedInput = Math.ceil(new TextEncoder().encode(JSON.stringify(messages)).length / 3);
+    let outputBudget = isGroq ? Math.min(maxOutputTokens || 4096, 7000 - estimatedInput) : maxOutputTokens;
+    if (affordCap) outputBudget = Math.min(outputBudget || affordCap, affordCap);
+    if (isGroq && outputBudget < 256) throw new Error("A resposta e o contexto excederam o espaco seguro da cota de 8000 tokens do Groq. Divida esta etapa em mais agentes. Nenhum resultado incompleto foi aplicado aos arquivos.");
+    const request = () => fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, ...headers },
+      body: JSON.stringify({ model, messages, stream: true,
+        ...(outputBudget ? { max_completion_tokens: outputBudget } : {}),
+        ...(isGroq && ["openai/gpt-oss-20b", "openai/gpt-oss-120b"].includes(model) ? { reasoning_effort: "low" } : {}),
+      }), signal,
+    });
+    const response = isGroq ? await scheduleGroqRequest({ model, signal, onNotice, request, estimatedTokens: estimatedInput + outputBudget }) : await request();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = error.error?.message || "Erro " + response.status + " na API de IA.";
+      // OpenRouter: "requested up to X tokens, but can only afford Y". Retry with Y.
+      const afford = Number(/can only afford (\d+)/i.exec(message)?.[1]);
+      if (!affordCap && afford - 16 >= 256) {
+        affordCap = afford - 16;
+        onNotice?.({ type: "continuation", message: "Saldo limita a resposta a " + affordCap + " tokens; repetindo a chamada com esse limite." });
+        part--;
+        continue;
       }
+      throw new Error(afford ? message + " Adicione creditos ou escolha um modelo mais barato/gratuito." : message);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "", partText = "", truncated = false;
+    function consume(line) {
+      if (!line.startsWith("data:")) return;
+      const raw = line.slice(5).trim();
+      if (!raw || raw === "[DONE]") return;
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { return; }
+      if (parsed.error) throw new Error(parsed.error.message || "Erro na resposta do modelo.");
+      if (parsed.choices?.[0]?.finish_reason === "length") truncated = true;
+      const content = parsed.choices?.[0]?.delta?.content || "";
+      if (content) { partText += content; onChunk?.(fullText + partText); }
+    }
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        signal?.throwIfAborted();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) consume(line);
+      }
+      consume(buffer + decoder.decode());
+    } finally { reader.releaseLock(); }
+    fullText += partText;
+    if (!truncated) return fullText;
+    if (part + 1 === maxParts) throw new Error("A resposta atingiu o limite de tokens mesmo apos as continuacoes permitidas. Divida esta etapa em mais agentes; o resultado incompleto nao foi aplicado aos arquivos.");
+    onNotice?.({ type: "continuation", message: "A resposta precisa de mais espaco. Continuando automaticamente (parte " + (part + 2) + "/" + maxParts + "), respeitando a cota do Groq." });
+    // Send the complete prefix, so continuation can close an unfinished JSON
+    // string or source file without restarting or discarding previous output.
+    if (partText) {
+      messages.splice(baseLength);
+      messages.push({ role: "assistant", content: fullText }, { role: "user", content: "Continue exatamente do ponto em que a resposta parou. Retorne apenas a continuacao, sem repetir o prefixo, sem comentarios e sem novas cercas Markdown. Termine o JSON ou arquivo iniciado." });
     }
   }
-
-  return fullText;
 }
 
 async function streamAnthropic({
   model,
   apiKey,
   prompt,
+  systemPrompt,
   history = [],
   onChunk,
   signal,
@@ -392,6 +535,7 @@ async function streamAnthropic({
     body: JSON.stringify({
       model,
       max_tokens: 4096,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
       messages,
       stream: true,
     }),
@@ -469,13 +613,51 @@ function formatMemoryForPrompt(memory) {
 
 // Unified LLM Request Runner
 
-export async function sendPrompt({
+// llama.cpp uses a shared session: serialize local calls so agents cannot
+// swap the loaded model or consume another request's stream mid-generation.
+let localPromptQueue = Promise.resolve();
+let groqPromptQueue = Promise.resolve();
+
+// Rejects as soon as `signal` aborts, even while `promise` is still waiting
+// in a queue; the queued work then sees the aborted signal and does nothing.
+export function abortable(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new DOMException("Interrompido", "AbortError"));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+export function sendPrompt(options) {
+  const activeModel = options.activeModelOverride || getActiveModel();
+  const run = async () => {
+    options.signal?.throwIfAborted();
+    return runPrompt({ ...options, activeModelOverride: activeModel });
+  };
+  if (activeModel.type === "cloud" && activeModel.provider === "groq") {
+    const result = groqPromptQueue.then(run);
+    groqPromptQueue = result.catch(() => {});
+    return abortable(result, options.signal);
+  }
+  if (activeModel.type === "cloud") return abortable(run(), options.signal);
+  const result = localPromptQueue.then(run);
+  localPromptQueue = result.catch(() => {});
+  return abortable(result, options.signal);
+}
+
+async function runPrompt({
   prompt,
+  systemPrompt,
   history = [],
   memory = [],
   onChunk,
   signal,
   activeModelOverride,
+  maxOutputTokens,
+  onNotice,
+  continueOnLength,
 }) {
   const activeModel = activeModelOverride || getActiveModel();
 
@@ -501,6 +683,25 @@ ${prompt}
   // MODELOS CLOUD
   // ============================================
 
+  if (activeModel.type === "cloud" && activeModel.provider === CUSTOM_PROVIDER_ID) {
+    const server = getCustomServer();
+    return streamOpenAICompatible({
+      endpoint: customServerUrl(server.baseUrl, "/chat/completions"),
+      model: activeModel.model,
+      // Ollama ignores the key; other servers may require one.
+      apiKey: server.apiKey?.trim() || "none",
+      prompt: promptWithMemory,
+      systemPrompt,
+      history,
+      onChunk,
+      signal,
+      maxOutputTokens,
+    }).catch((error) => {
+      if (error.name === "TypeError") throw new Error("Servidor proprio inacessivel em " + server.baseUrl + ". O tunel SSH esta aberto?");
+      throw error;
+    });
+  }
+
   if (activeModel.type === "cloud") {
     const keys = getStoredCloudKeys();
 
@@ -525,6 +726,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -541,6 +743,7 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
@@ -552,15 +755,19 @@ ${prompt}
       return streamOpenAICompatible({
         endpoint: "https://api.groq.com/openai/v1/chat/completions",
 
-        model: activeModel.model || "llama-3.3-70b-versatile",
+        model: activeModel.model || "openai/gpt-oss-120b",
 
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
         signal,
+        maxOutputTokens: maxOutputTokens || 4096,
+        onNotice,
+        continueOnLength,
       });
     }
 
@@ -571,22 +778,58 @@ ${prompt}
         apiKey,
 
         prompt: promptWithMemory,
+        systemPrompt,
 
         history,
         onChunk,
         signal,
       });
     }
+
+    if (activeModel.provider === "openrouter") {
+      return streamOpenAICompatible({
+        endpoint: "https://openrouter.ai/api/v1/chat/completions",
+        model: activeModel.model || "deepseek/deepseek-chat",
+        apiKey,
+        headers: {
+          "HTTP-Referer": "https://github.com/kauanbgs/osiris",
+          "X-Title": "Osiris",
+        },
+        prompt: promptWithMemory,
+        systemPrompt,
+        history,
+        onChunk,
+        signal,
+        // Without a cap OpenRouter reserves the model's maximum and rejects low balances.
+        maxOutputTokens: maxOutputTokens || 8192,
+        onNotice,
+      });
+    }
   }
+
+  if (activeModel.type === "cloud") throw new Error("Provedor de nuvem desconhecido: " + activeModel.provider);
 
   // MODELO LOCAL
   if (typeof window !== "undefined" && window.llama?.prompt) {
+    signal?.throwIfAborted();
+    if (activeModel.modelPath) {
+      if (!window.llama.getStatus || !window.llama.loadModel) throw new Error("Motor local indisponivel.");
+      const status = await window.llama.getStatus();
+      if (!status.isLoaded || status.activeModelPath !== activeModel.modelPath) {
+        await window.llama.loadModel(activeModel.modelPath);
+      }
+      signal?.throwIfAborted();
+    }
     let accumulated = "";
     let cleanup = null;
+    const requestId = crypto.randomUUID();
+    const stop = () => window.llama.abort?.(requestId);
+    signal?.addEventListener("abort", stop, { once: true });
 
     if (window.llama.onStream && onChunk) {
       cleanup = window.llama.onStream((data) => {
-        if (data.type === "chunk" && data.text) {
+        if (data.requestId && data.requestId !== requestId) return;
+        if (!signal?.aborted && data.type === "chunk" && data.text) {
           accumulated += data.text;
           onChunk(accumulated);
         }
@@ -602,7 +845,9 @@ ${prompt}
 
       res = await window.llama.prompt({
         prompt: promptWithMemory,
+        systemPrompt,
         history,
+        requestId,
       });
 
       console.log("[CHAT] Resposta principal finalizada");
@@ -612,12 +857,14 @@ ${prompt}
       // principal ANTES de pedir análise
       // de memória.
       cleanup?.();
+      signal?.removeEventListener("abort", stop);
     }
 
     // ==============================
     // RETORNO DA RESPOSTA
     // ==============================
 
+    signal?.throwIfAborted();
     return accumulated || res || "";
   }
 

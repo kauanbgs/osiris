@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import {
   ReactFlow,
+  ReactFlowProvider,
+  MarkerType,
   Background,
   Controls,
   useNodesState,
@@ -17,6 +19,8 @@ import TerminalNode from "@/components/terminalNode";
 import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
 import FileNode from "@/components/FileNode";
+import { WorkflowExecutionProvider } from "@/contexts/WorkflowExecutionContext";
+import WorkflowExecutionPanel from "@/components/WorkflowExecutionPanel";
 import WorkflowText from "@/components/workflowText";
 import sheets from "@/services/api";
 
@@ -37,7 +41,6 @@ import {
   MousePointer2,
   SquareTerminal,
   PaperclipIcon,
-  FileTextIcon,
   CaseSensitiveIcon,
   Bot,
   TerminalIcon,
@@ -54,8 +57,6 @@ const edgeTypes = {
   curved: FlowEdge,
 };
 
-const initialNodes = [];
-
 export default function Workflow() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -63,11 +64,8 @@ export default function Workflow() {
   const dirtyRef = useRef(false);
   const changeVersionRef = useRef(0);
   const saveInFlightRef = useRef(false);
-  const [nodes, setNodes, onNodesChange] =
-    useNodesState(initialNodes);
-
-  const [edges, setEdges, onEdgesChange] =
-    useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     if (id) return undefined;
@@ -175,6 +173,7 @@ export default function Workflow() {
           {
             ...params,
             type: "curved",
+            markerEnd: { type: MarkerType.ArrowClosed },
           },
           eds
         )
@@ -198,7 +197,7 @@ export default function Workflow() {
         },
 
         data: {
-          label: "Agent",
+          label: "Agente",
 
           mode,
         },
@@ -210,7 +209,7 @@ export default function Workflow() {
       changeVersionRef.current += 1;
       setNodes((nodes) => [
         ...nodes,
-        newNode,
+        { ...newNode, data: { ...newNode.data, label: "Agente " + (nodes.filter((node) => node.type === "agent").length + 1) } },
       ]);
     },
     [setNodes]
@@ -319,7 +318,10 @@ export default function Workflow() {
   );
 
   return (
+    <ReactFlowProvider>
+    <WorkflowExecutionProvider>
     <div className="relative h-full w-full overflow-hidden bg-[#141414]">
+      <WorkflowExecutionPanel />
       {/* NAVBAR */}
       <section className="absolute top-6 left-1/2 z-50 -translate-x-1/2">
         <Menubar className="gap-5 rounded-full border border-zinc-800/80 bg-background/40 p-3 shadow-lg backdrop-blur-md">
@@ -468,8 +470,11 @@ export default function Workflow() {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          defaultEdgeOptions={{ type: "curved" }}
+          defaultEdgeOptions={{ type: "curved", markerEnd: { type: MarkerType.ArrowClosed } }}
           fitView
+          minZoom={0.1}
+          maxZoom={4}
+          connectionRadius={40}
         >
           <Background
             gap={30}
@@ -480,5 +485,7 @@ export default function Workflow() {
         </ReactFlow>
       </div>
     </div>
+    </WorkflowExecutionProvider>
+    </ReactFlowProvider>
   );
 }
