@@ -7,48 +7,36 @@ const {
 } = require("../validators/validateAgent");
 
 class AgentController {
-  /**
-   * Create a new agent
-   */
   static async create(req, res, next) {
     try {
-      const {
-        name,
-        objective,
-        system_prompt,
-        fk_id_model,
-      } = req.body;
-      const userId = req.userId;
+      const { name, objective, system_prompt, fk_id_model } = req.body;
 
-      // Validate required fields via dedicated validator
       const validationError = validateAgent(req.body, false);
       if (validationError) {
         throw new BadRequestError(validationError);
       }
 
-      // Verify model exists if provided
       if (fk_id_model) {
-        const [modelRows] = await pool.promise().execute(
-          `SELECT id_model FROM ai_model WHERE id_model = ? LIMIT 1`,
-          [fk_id_model],
-        );
+        const [modelRows] = await pool
+          .promise()
+          .execute("SELECT id_model FROM ai_model WHERE id_model = ? LIMIT 1", [
+            fk_id_model,
+          ]);
 
         if (!modelRows[0]) {
           throw new NotFoundError("AI model not found.");
         }
       }
 
-      // Create agent with 'idle' as default execution log
       const [result] = await pool.promise().execute(
         `INSERT INTO agent
-          (name, objective, execution_log, system_prompt, fk_id_user, fk_id_model)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (name, objective, execution_log, system_prompt, fk_id_model)
+         VALUES (?, ?, ?, ?, ?)`,
         [
           name.trim(),
           objective.trim(),
           "idle",
           system_prompt.trim(),
-          userId,
           fk_id_model || null,
         ],
       );
@@ -61,7 +49,6 @@ class AgentController {
           objective: objective.trim(),
           execution_log: "idle",
           system_prompt: system_prompt.trim(),
-          fk_id_user: userId,
           fk_id_model: fk_id_model || null,
         },
       });
@@ -70,13 +57,8 @@ class AgentController {
     }
   }
 
-  /**
-   * List all agents for the authenticated user
-   */
   static async list(req, res, next) {
     try {
-      const userId = req.userId;
-
       const [rows] = await pool.promise().execute(
         `SELECT
           a.id_agent,
@@ -84,32 +66,23 @@ class AgentController {
           a.objective,
           a.execution_log,
           a.system_prompt,
-          a.fk_id_user,
           a.fk_id_model,
           m.name AS model_name,
           m.provider AS model_provider
          FROM agent a
          LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-         WHERE a.fk_id_user = ?
          ORDER BY a.id_agent DESC`,
-        [userId],
       );
 
-      return res.status(200).json({
-        agents: rows,
-      });
+      return res.status(200).json({ agents: rows });
     } catch (error) {
       return next(error);
     }
   }
 
-  /**
-   * Get agent by ID
-   */
   static async getById(req, res, next) {
     try {
       const { id_agent } = req.params;
-      const userId = req.userId;
 
       const [rows] = await pool.promise().execute(
         `SELECT
@@ -118,22 +91,20 @@ class AgentController {
           a.objective,
           a.execution_log,
           a.system_prompt,
-          a.fk_id_user,
           a.fk_id_model,
           m.name AS model_name,
           m.provider AS model_provider
          FROM agent a
          LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-         WHERE a.id_agent = ? AND a.fk_id_user = ?
+         WHERE a.id_agent = ?
          LIMIT 1`,
-        [id_agent, userId],
+        [id_agent],
       );
 
       if (!rows[0]) {
         throw new NotFoundError("Agent not found.");
       }
 
-      // Get tools associated with this agent
       const [tools] = await pool.promise().execute(
         `SELECT
           t.id_tool,
@@ -147,7 +118,6 @@ class AgentController {
         [id_agent],
       );
 
-      // Get files associated with this agent
       const [files] = await pool.promise().execute(
         `SELECT
           f.id_file,
@@ -174,37 +144,26 @@ class AgentController {
     }
   }
 
-  /**
-   * Update agent
-   */
   static async update(req, res, next) {
     try {
       const { id_agent } = req.params;
-      const {
-        name,
-        objective,
-        system_prompt,
-        fk_id_model,
-      } = req.body;
-      const userId = req.userId;
+      const { name, objective, system_prompt, fk_id_model } = req.body;
 
-      // Verify agent exists and belongs to user
-      const [agentRows] = await pool.promise().execute(
-        `SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1`,
-        [id_agent, userId],
-      );
+      const [agentRows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
 
       if (!agentRows[0]) {
         throw new NotFoundError("Agent not found.");
       }
 
-      // Validate update payload via dedicated validator
       const validationError = validateAgent(req.body, true);
       if (validationError) {
         throw new BadRequestError(validationError);
       }
 
-      // Build dynamic update query
       const updates = [];
       const values = [];
 
@@ -227,11 +186,12 @@ class AgentController {
         if (fk_id_model === null) {
           updates.push("fk_id_model = NULL");
         } else {
-          // Verify model exists
-          const [modelRows] = await pool.promise().execute(
-            `SELECT id_model FROM ai_model WHERE id_model = ? LIMIT 1`,
-            [fk_id_model],
-          );
+          const [modelRows] = await pool
+            .promise()
+            .execute(
+              "SELECT id_model FROM ai_model WHERE id_model = ? LIMIT 1",
+              [fk_id_model],
+            );
 
           if (!modelRows[0]) {
             throw new NotFoundError("AI model not found.");
@@ -246,15 +206,15 @@ class AgentController {
         throw new BadRequestError("No fields to update.");
       }
 
-      // Add id_agent to values for WHERE clause
-      values.push(id_agent, userId);
+      values.push(id_agent);
 
       await pool.promise().execute(
-        `UPDATE agent SET ${updates.join(", ")} WHERE id_agent = ? AND fk_id_user = ?`,
+        `UPDATE agent
+         SET ${updates.join(", ")}
+         WHERE id_agent = ?`,
         values,
       );
 
-      // Fetch updated agent
       const [updatedRows] = await pool.promise().execute(
         `SELECT
           id_agent,
@@ -262,7 +222,6 @@ class AgentController {
           objective,
           execution_log,
           system_prompt,
-          fk_id_user,
           fk_id_model
          FROM agent
          WHERE id_agent = ?
@@ -279,29 +238,23 @@ class AgentController {
     }
   }
 
-  /**
-   * Delete agent
-   */
   static async delete(req, res, next) {
     try {
       const { id_agent } = req.params;
-      const userId = req.userId;
 
-      // Verify agent exists and belongs to user
-      const [agentRows] = await pool.promise().execute(
-        `SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1`,
-        [id_agent, userId],
-      );
+      const [agentRows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
 
       if (!agentRows[0]) {
         throw new NotFoundError("Agent not found.");
       }
 
-      // Delete agent (CASCADE will handle related records)
-      await pool.promise().execute(
-        `DELETE FROM agent WHERE id_agent = ? AND fk_id_user = ?`,
-        [id_agent, userId],
-      );
+      await pool
+        .promise()
+        .execute("DELETE FROM agent WHERE id_agent = ?", [id_agent]);
 
       return res.status(200).json({
         message: "Agent deleted successfully.",
@@ -311,42 +264,40 @@ class AgentController {
     }
   }
 
-  /**
-   * Add tool to agent
-   */
   static async addTool(req, res, next) {
     try {
       const { id_agent } = req.params;
       const { fk_id_tool } = req.body;
-      const userId = req.userId;
 
       if (!fk_id_tool) {
         throw new BadRequestError("Tool ID is required.");
       }
 
-      // Verify agent exists and belongs to user
-      const [agentRows] = await pool.promise().execute(
-        `SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1`,
-        [id_agent, userId],
-      );
+      const [agentRows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
 
       if (!agentRows[0]) {
         throw new NotFoundError("Agent not found.");
       }
 
-      // Verify tool exists
-      const [toolRows] = await pool.promise().execute(
-        `SELECT id_tool FROM tool WHERE id_tool = ? LIMIT 1`,
-        [fk_id_tool],
-      );
+      const [toolRows] = await pool
+        .promise()
+        .execute("SELECT id_tool FROM tool WHERE id_tool = ? LIMIT 1", [
+          fk_id_tool,
+        ]);
 
       if (!toolRows[0]) {
         throw new NotFoundError("Tool not found.");
       }
 
-      // Check if tool is already linked
       const [existingRows] = await pool.promise().execute(
-        `SELECT id_tool_agent FROM tool_agent WHERE fk_id_agent = ? AND fk_id_tool = ? LIMIT 1`,
+        `SELECT id_tool_agent
+         FROM tool_agent
+         WHERE fk_id_agent = ? AND fk_id_tool = ?
+         LIMIT 1`,
         [id_agent, fk_id_tool],
       );
 
@@ -354,11 +305,12 @@ class AgentController {
         throw new BadRequestError("Tool already linked to this agent.");
       }
 
-      // Link tool to agent
-      await pool.promise().execute(
-        `INSERT INTO tool_agent (fk_id_agent, fk_id_tool) VALUES (?, ?)`,
-        [id_agent, fk_id_tool],
-      );
+      await pool
+        .promise()
+        .execute(
+          "INSERT INTO tool_agent (fk_id_agent, fk_id_tool) VALUES (?, ?)",
+          [id_agent, fk_id_tool],
+        );
 
       return res.status(201).json({
         message: "Tool added to agent successfully.",
@@ -368,27 +320,23 @@ class AgentController {
     }
   }
 
-  /**
-   * Remove tool from agent
-   */
   static async removeTool(req, res, next) {
     try {
       const { id_agent, id_tool } = req.params;
-      const userId = req.userId;
 
-      // Verify agent exists and belongs to user
-      const [agentRows] = await pool.promise().execute(
-        `SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1`,
-        [id_agent, userId],
-      );
+      const [agentRows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
 
       if (!agentRows[0]) {
         throw new NotFoundError("Agent not found.");
       }
 
-      // Delete tool link
       const [result] = await pool.promise().execute(
-        `DELETE FROM tool_agent WHERE fk_id_agent = ? AND fk_id_tool = ?`,
+        `DELETE FROM tool_agent
+         WHERE fk_id_agent = ? AND fk_id_tool = ?`,
         [id_agent, id_tool],
       );
 
@@ -404,34 +352,135 @@ class AgentController {
     }
   }
 
-  /**
-   * Execute agent (basic implementation)
-   */
+  static async addFile(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+      const { fk_id_file } = req.body;
+
+      if (!fk_id_file) {
+        throw new BadRequestError("File ID is required.");
+      }
+
+      const [agentRows] = await pool.promise().execute(
+        `SELECT id_agent
+         FROM agent
+         WHERE id_agent = ?
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      if (!agentRows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const [fileRows] = await pool.promise().execute(
+        `SELECT id_file
+         FROM file
+         WHERE id_file = ?
+         LIMIT 1`,
+        [fk_id_file],
+      );
+
+      if (!fileRows[0]) {
+        throw new NotFoundError("File not found.");
+      }
+
+      const [existingRows] = await pool.promise().execute(
+        `SELECT id_agent_file
+         FROM file_agent
+         WHERE fk_id_agent = ?
+           AND fk_id_file = ?
+         LIMIT 1`,
+        [id_agent, fk_id_file],
+      );
+
+      if (existingRows[0]) {
+        throw new BadRequestError("File already linked to this agent.");
+      }
+
+      await pool.promise().execute(
+        `INSERT INTO file_agent (fk_id_agent, fk_id_file)
+         VALUES (?, ?)`,
+        [id_agent, fk_id_file],
+      );
+
+      return res.status(201).json({
+        message: "File added to agent successfully.",
+        association: {
+          fk_id_agent: Number(id_agent),
+          fk_id_file: Number(fk_id_file),
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async removeFile(req, res, next) {
+    try {
+      const { id_agent, id_file } = req.params;
+
+      const [agentRows] = await pool.promise().execute(
+        `SELECT id_agent
+         FROM agent
+         WHERE id_agent = ?
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      if (!agentRows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const [result] = await pool.promise().execute(
+        `DELETE FROM file_agent
+         WHERE fk_id_agent = ?
+           AND fk_id_file = ?`,
+        [id_agent, id_file],
+      );
+
+      if (result.affectedRows === 0) {
+        throw new NotFoundError("File is not linked to this agent.");
+      }
+
+      return res.status(200).json({
+        message: "File removed from agent successfully.",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async execute(req, res, next) {
+    let idExecution = null;
+    let idAgent = null;
+    let startTime = null;
+
     try {
       const { id_agent } = req.params;
       const { input } = req.body;
-      const userId = req.userId;
+
+      idAgent = id_agent;
 
       const inputError = validateExecutionInput(input);
+
       if (inputError) {
         throw new BadRequestError(inputError);
       }
 
-      // Verify agent exists and belongs to user
       const [agentRows] = await pool.promise().execute(
         `SELECT
-          a.id_agent,
-          a.name,
-          a.objective,
-          a.system_prompt,
-          a.fk_id_model,
-          m.name AS model_name
-         FROM agent a
-         LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-         WHERE a.id_agent = ? AND a.fk_id_user = ?
-         LIMIT 1`,
-        [id_agent, userId],
+        a.id_agent,
+        a.name,
+        a.objective,
+        a.system_prompt,
+        a.fk_id_model,
+        m.name AS model_name
+       FROM agent a
+       LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
+       WHERE a.id_agent = ?
+       LIMIT 1`,
+        [id_agent],
       );
 
       if (!agentRows[0]) {
@@ -440,38 +489,292 @@ class AgentController {
 
       const agent = agentRows[0];
 
-      // Update execution log to 'running'
-      await pool.promise().execute(
-        `UPDATE agent SET execution_log = ? WHERE id_agent = ?`,
-        ["running", id_agent],
+      // Busca os arquivos vinculados ao agente.
+      const [files] = await pool.promise().execute(
+        `SELECT
+        f.id_file,
+        f.name,
+        f.path,
+        f.extension,
+        f.size,
+        f.type
+       FROM file f
+       INNER JOIN file_agent fa ON f.id_file = fa.fk_id_file
+       WHERE fa.fk_id_agent = ?`,
+        [id_agent],
       );
 
-      // Execute agent through autonomous execution engine
+      startTime = Date.now();
+
+      const [insertResult] = await pool.promise().execute(
+        `INSERT INTO agent_execution_log
+        (fk_id_agent, status, input)
+       VALUES (?, 'running', ?)`,
+        [id_agent, input.trim()],
+      );
+
+      idExecution = insertResult.insertId;
+
+      await pool
+        .promise()
+        .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+          "running",
+          id_agent,
+        ]);
+
+      // Executa o agente com a entrada e os arquivos associados.
       const executionResult = await AgentExecutionService.run({
         agent,
         input: input.trim(),
+        files,
       });
 
-      // Update execution log back to 'idle'
+      const metrics = executionResult.metrics;
+
       await pool.promise().execute(
-        `UPDATE agent SET execution_log = ? WHERE id_agent = ?`,
-        ["idle", id_agent],
+        `UPDATE agent_execution_log
+       SET status = 'completed',
+           output = ?,
+           input_tokens = ?,
+           output_tokens = ?,
+           response_time_ms = ?
+       WHERE id_execution = ?`,
+        [
+          executionResult.output,
+          metrics.input_tokens,
+          metrics.output_tokens,
+          Date.now() - startTime,
+          idExecution,
+        ],
       );
 
-      const response = {
-        agent_id: agent.id_agent,
-        agent_name: agent.name,
-        input: input.trim(),
-        output: executionResult.output,
-        model_used: agent.model_name || "No model configured",
-        execution_time: new Date().toISOString(),
-        metrics: executionResult.metrics,
-      };
+      await pool
+        .promise()
+        .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+          "idle",
+          id_agent,
+        ]);
 
       return res.status(200).json({
         message: "Agent executed successfully.",
-        execution: response,
+        execution: {
+          agent_id: agent.id_agent,
+          agent_name: agent.name,
+          input: input.trim(),
+          output: executionResult.output,
+          model_used: agent.model_name || "No model configured",
+          execution_time: new Date().toISOString(),
+          metrics,
+          files_read: executionResult.files_read,
+          files_skipped: executionResult.files_skipped,
+        },
       });
+    } catch (error) {
+      if (idExecution !== null) {
+        try {
+          const status =
+            error.code === "AGENT_EXECUTION_CANCELLED" ? "cancelled" : "error";
+
+          await pool.promise().execute(
+            `UPDATE agent_execution_log
+           SET status = ?,
+               output = ?,
+               response_time_ms = ?
+           WHERE id_execution = ?`,
+            [
+              status,
+              error.message,
+              startTime ? Date.now() - startTime : 0,
+              idExecution,
+            ],
+          );
+
+          await pool
+            .promise()
+            .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+              status,
+              idAgent,
+            ]);
+        } catch (logError) {
+          console.error("Failed to update execution history:", logError);
+        }
+      }
+
+      return next(error);
+    }
+  }
+
+  static async pause(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+
+      const [rows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
+
+      if (!rows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const paused = AgentExecutionService.pause(id_agent);
+
+      if (!paused) {
+        throw new BadRequestError("Agent is not running or cannot be paused.");
+      }
+
+      await pool
+        .promise()
+        .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+          "paused",
+          id_agent,
+        ]);
+
+      await pool.promise().execute(
+        `UPDATE agent_execution_log
+         SET status = 'paused'
+         WHERE fk_id_agent = ?
+           AND status = 'running'
+         ORDER BY id_execution DESC
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      return res.status(200).json({
+        message: "Agent paused successfully.",
+        status: "paused",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async resume(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+
+      const [rows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
+
+      if (!rows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const resumed = AgentExecutionService.resume(id_agent);
+
+      if (!resumed) {
+        throw new BadRequestError("Agent is not paused.");
+      }
+
+      await pool
+        .promise()
+        .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+          "running",
+          id_agent,
+        ]);
+
+      await pool.promise().execute(
+        `UPDATE agent_execution_log
+         SET status = 'running'
+         WHERE fk_id_agent = ?
+           AND status = 'paused'
+         ORDER BY id_execution DESC
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      return res.status(200).json({
+        message: "Agent resumed successfully.",
+        status: "running",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async cancel(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+
+      const [rows] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
+
+      if (!rows[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const cancelled = AgentExecutionService.cancel(id_agent);
+
+      if (!cancelled) {
+        throw new BadRequestError("Agent has no active execution to cancel.");
+      }
+
+      await pool
+        .promise()
+        .execute("UPDATE agent SET execution_log = ? WHERE id_agent = ?", [
+          "cancelled",
+          id_agent,
+        ]);
+
+      await pool.promise().execute(
+        `UPDATE agent_execution_log
+         SET status = 'cancelled'
+         WHERE fk_id_agent = ?
+           AND status IN ('running', 'paused')
+         ORDER BY id_execution DESC
+         LIMIT 1`,
+        [id_agent],
+      );
+
+      return res.status(200).json({
+        message: "Agent execution cancelled successfully.",
+        status: "cancelled",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async getExecutionLog(req, res, next) {
+    try {
+      const { id_agent } = req.params;
+
+      const [agents] = await pool
+        .promise()
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+          id_agent,
+        ]);
+
+      if (!agents[0]) {
+        throw new NotFoundError("Agent not found.");
+      }
+
+      const [logs] = await pool.promise().execute(
+        `SELECT
+          id_execution,
+          fk_id_agent,
+          status,
+          input,
+          output,
+          input_tokens,
+          output_tokens,
+          response_time_ms,
+          created_at
+         FROM agent_execution_log
+         WHERE fk_id_agent = ?
+         ORDER BY created_at DESC, id_execution DESC
+         LIMIT 100`,
+        [id_agent],
+      );
+
+      return res.status(200).json({ logs });
     } catch (error) {
       return next(error);
     }

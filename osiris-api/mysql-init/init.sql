@@ -101,12 +101,7 @@ CREATE TABLE agent (
     objective TEXT NOT NULL,
     execution_log VARCHAR(50) NOT NULL,
     system_prompt TEXT NOT NULL,
-    fk_id_user INT,
     fk_id_model INT,
-    FOREIGN KEY (fk_id_user)
-        REFERENCES `user`(id_user)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
     FOREIGN KEY (fk_id_model)
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
@@ -380,4 +375,35 @@ CREATE TABLE revoked_token (
         REFERENCES `user`(id_user)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+);
+
+
+CREATE TABLE agent_execution_log (
+    id_execution INT AUTO_INCREMENT PRIMARY KEY,
+    fk_id_agent INT NOT NULL,
+    status ENUM('running', 'paused', 'cancelled', 'completed', 'error') NOT NULL DEFAULT 'running',
+    input TEXT,
+    output LONGTEXT,
+    input_tokens INT DEFAULT 0,
+    output_tokens INT DEFAULT 0,
+    response_time_ms INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fk_id_agent)
+        REFERENCES agent(id_agent)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+CREATE TABLE file_log (
+    id_file_log INT AUTO_INCREMENT PRIMARY KEY,
+    fk_id_file INT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fk_id_file)
+        REFERENCES file(id_file)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
