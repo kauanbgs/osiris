@@ -101,6 +101,12 @@ export default function SettingsScreen({ navigation, route }) {
         style: "destructive",
         onPress: async () => {
           try {
+            // Revoga o token na API (registra o logout em revoked_token)
+            await sheets.postLogout();
+          } catch (e) {
+            console.warn("Erro ao revogar token na API:", e?.message);
+          }
+          try {
             // Remove só os dados da sessão (o IP do servidor é mantido)
             await AsyncStorage.multiRemove([
               "token",
