@@ -238,46 +238,59 @@ function listLocalModels() {
 
 ipcMain.handle("llama:list-local-models", () => listLocalModels());
 
-ipcMain.handle("llama:load-model", (_, modelPath) => withLlamaLock(async () => {
-  try {
-    if (!fs.existsSync(modelPath)) {
-      throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
-    }
+function loadModelFromPath(modelPath) {
+  return withLlamaLock(async () => {
+    try {
+      if (!fs.existsSync(modelPath)) {
+        throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
+      }
 
-    if (currentSession && activeModelPath === modelPath) {
+      if (currentSession && activeModelPath === modelPath) {
+        return {
+          success: true,
+          activeModelPath,
+          activeModelName: path.basename(modelPath),
+        };
+      }
+
+      const llama = await getLlamaModule();
+      const { LlamaChatSession } = await import("node-llama-cpp");
+
+      await disposeCurrentModel();
+
+      const model = await llama.loadModel({
+        modelPath: modelPath,
+      });
+
+      const context = await model.createContext();
+      currentSession = new LlamaChatSession({
+        contextSequence: context.getSequence(),
+      });
+      currentModel = model;
+      activeModelPath = modelPath;
+
       return {
         success: true,
         activeModelPath,
         activeModelName: path.basename(modelPath),
       };
+    } catch (err) {
+      console.error("Erro ao carregar modelo:", err);
+      throw new Error(err.message || "Falha ao carregar o modelo GGUF");
     }
+  });
+}
 
-    const llama = await getLlamaModule();
-    const { LlamaChatSession } = await import("node-llama-cpp");
+// Avisa as janelas (ex.: tela Modelos da web) quando o modelo muda pela rede.
+async function loadModelAndNotify(modelPath) {
+  const result = await loadModelFromPath(modelPath);
+  broadcast("llama:model-changed", result);
+  return result;
+}
 
-    await disposeCurrentModel();
-
-    const model = await llama.loadModel({
-      modelPath: modelPath,
-    });
-
-    const context = await model.createContext();
-    currentSession = new LlamaChatSession({
-      contextSequence: context.getSequence(),
-    });
-    currentModel = model;
-    activeModelPath = modelPath;
-
-    return {
-      success: true,
-      activeModelPath,
-      activeModelName: path.basename(modelPath),
-    };
-  } catch (err) {
-    console.error("Erro ao carregar modelo:", err);
-    throw new Error(err.message || "Falha ao carregar o modelo GGUF");
-  }
-}));
+ipcMain.handle("llama:load-model", (_, modelPath) =>
+  loadModelFromPath(modelPath),
+);
 
 // Running or queued prompts by request id, so the renderer can stop them.
 const llamaPromptAborts = new Map();
