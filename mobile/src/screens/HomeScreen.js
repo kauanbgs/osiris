@@ -8,16 +8,24 @@ import {
   Platform,
   StyleSheet,
   TouchableOpacity,
+  Image,
+  Alert,
+  Keyboard,
 } from "react-native";
 import * as Speech from "expo-speech";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import BottomNav from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
+import PlusActionMenu from "../components/PlusActionMenu";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
+import { getActiveModel, sendCloudPrompt } from "../services/modelConfig";
 
 const colors = {
   background: "#0d0d0d",
@@ -81,7 +89,6 @@ async function addMemoryContext(prompt) {
       `Mensagem atual do usuário: ${prompt}`,
     ].join("\n");
   } catch (error) {
-    // Uma indisponibilidade temporária da API de memória não deve impedir o chat.
     console.warn("Não foi possível carregar memórias para o chat:", error?.message);
     return prompt;
   }
@@ -107,7 +114,7 @@ async function checkDesktopConnection() {
       modelLoaded: Boolean(data.modelLoaded),
       modelName: data.activeModelName || null,
     };
-  } catch (error) {
+  } catch {
     return {
       connected: false,
       modelLoaded: false,
@@ -116,14 +123,15 @@ async function checkDesktopConnection() {
   }
 }
 
-function StatusIndicator({ connected, modelLoaded, modelName, onPress }) {
+function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, onPress }) {
   let label = "Desktop offline";
 
-  if (connected && !modelLoaded) {
+  if (cloudModelName) {
+    connected = true;
+    label = `Nuvem • ${cloudModelName}`;
+  } else if (connected && !modelLoaded) {
     label = "Desktop conectado • sem modelo";
-  }
-
-  if (connected && modelLoaded) {
+  } else if (connected && modelLoaded) {
     label = modelName ? `Conectado • ${modelName}` : "Conectado ao desktop";
   }
 
@@ -132,13 +140,11 @@ function StatusIndicator({ connected, modelLoaded, modelName, onPress }) {
       <View
         style={[
           styles.statusDot,
-
           {
             backgroundColor: connected ? colors.green : colors.red,
           },
         ]}
       />
-
       <Text style={styles.statusText}>{label}</Text>
     </TouchableOpacity>
   );
@@ -155,11 +161,10 @@ function GreetingHeader({ userName = "Usuário" }) {
   );
 }
 
-function MessageBubble({ role, text }) {
+function MessageBubble({ role, text, attachment }) {
   const isUser = role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
   const btnScale = useRef(new Animated.Value(1)).current;
-
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -170,7 +175,6 @@ function MessageBubble({ role, text }) {
     }).start();
   }, [anim]);
 
-  // Para fala quando o componente desmontar
   useEffect(() => {
     return () => {
       if (isSpeaking) Speech.stop();
@@ -196,7 +200,6 @@ function MessageBubble({ role, text }) {
   };
 
   const handleTTS = () => {
-    // Animação de pulso no botão
     Animated.sequence([
       Animated.timing(btnScale, { toValue: 0.8, duration: 100, useNativeDriver: true }),
       Animated.timing(btnScale, { toValue: 1, duration: 100, useNativeDriver: true }),
@@ -230,17 +233,46 @@ function MessageBubble({ role, text }) {
         <View
           style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}
         >
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-            {text}
-          </Text>
+          {/* Anexo de Imagem */}
+          {attachment && attachment.type === "image" && (
+            <Image
+              source={{ uri: attachment.uri }}
+              style={styles.bubbleAttachedImage}
+              resizeMode="cover"
+            />
+          )}
+
+          {/* Anexo de Arquivo */}
+          {attachment && attachment.type === "file" && (
+            <View style={styles.bubbleAttachedFile}>
+              <Feather name="file-text" size={16} color="#fff" />
+              <Text style={styles.bubbleAttachedFileName} numberOfLines={1}>
+                {attachment.name}
+              </Text>
+            </View>
+          )}
+
+          {/* Texto da Mensagem */}
+          {!!text && (
+            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+              {text}
+            </Text>
+          )}
         </View>
-        {!isUser && (
+
+        {!isUser && !!text && (
           <TouchableOpacity
             onPress={handleTTS}
             style={styles.ttsButton}
             activeOpacity={0.7}
           >
-            <Animated.View style={[styles.ttsInner, { transform: [{ scale: btnScale }] }, isSpeaking && styles.ttsInnerActive]}>
+            <Animated.View
+              style={[
+                styles.ttsInner,
+                { transform: [{ scale: btnScale }] },
+                isSpeaking && styles.ttsInnerActive,
+              ]}
+            >
               <Text style={[styles.ttsIcon, isSpeaking && styles.ttsIconActive]}>
                 {isSpeaking ? "⏹" : "🔊"}
               </Text>
@@ -254,11 +286,8 @@ function MessageBubble({ role, text }) {
 
 function TypingIndicator() {
   const dot1 = useRef(new Animated.Value(0)).current;
-
   const dot2 = useRef(new Animated.Value(0)).current;
-
   const dot3 = useRef(new Animated.Value(0)).current;
-
   const dots = [dot1, dot2, dot3];
 
   useEffect(() => {
@@ -266,13 +295,11 @@ function TypingIndicator() {
       Animated.loop(
         Animated.sequence([
           Animated.delay(index * 150),
-
           Animated.timing(dot, {
             toValue: 1,
             duration: 350,
             useNativeDriver: true,
           }),
-
           Animated.timing(dot, {
             toValue: 0,
             duration: 350,
@@ -297,20 +324,13 @@ function TypingIndicator() {
             key={index}
             style={[
               styles.typingDot,
-
               {
-                opacity: dot.interpolate({
-                  inputRange: [0, 1],
-
-                  outputRange: [0.3, 1],
-                }),
-
+                opacity: dot,
                 transform: [
                   {
                     translateY: dot.interpolate({
                       inputRange: [0, 1],
-
-                      outputRange: [0, -4],
+                      outputRange: [0, -5],
                     }),
                   },
                 ],
@@ -324,27 +344,44 @@ function TypingIndicator() {
 }
 
 export default function HomeScreen({ navigation, route }) {
-  const [message, setMessage] = useState("");
-  const [userName, setUserName] = useState("");
   const [messages, setMessages] = useState([]);
-  const [isAgentTyping, setIsAgentTyping] = useState(false);
+  const [message, setMessage] = useState("");
+  const [userName, setUserName] = useState("Usuário");
   const [desktopConnected, setDesktopConnected] = useState(false);
   const [modelLoaded, setModelLoaded] = useState(false);
   const [modelName, setModelName] = useState(null);
+  const [isAgentTyping, setIsAgentTyping] = useState(false);
   const [activeChatId, setActiveChatId] = useState(null);
-  const listRef = useRef(null);
+  const [activeModel, setActiveModel] = useState(null);
 
-  // Carrega usuário
+  // Estados para Anexos (Câmera, Fotos, Arquivos) e Menu do +
+  const [plusMenuVisible, setPlusMenuVisible] = useState(false);
+  const [attachment, setAttachment] = useState(null);
+
+  const listRef = useRef(null);
+  const inputRef = useRef(null);
+  const pickingRef = useRef(false);
+
+  // Impede abrir dois seletores nativos ao mesmo tempo (ex.: toque duplo).
+  const withPickerLock = (picker) => async () => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    try {
+      await picker();
+    } finally {
+      pickingRef.current = false;
+    }
+  };
+
   useEffect(() => {
     async function loadUser() {
       try {
-        const stored = await AsyncStorage.getItem("user");
-        if (stored) {
-          const parsedUser = JSON.parse(stored);
-          const firstName = parsedUser?.name?.trim().split(" ")[0];
-          setUserName(firstName || "Usuário");
-        } else {
-          setUserName("Usuário");
+        const storedUser = await AsyncStorage.getItem("user");
+        if (storedUser) {
+          const userObj = JSON.parse(storedUser);
+          if (userObj.name) {
+            setUserName(userObj.name);
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
@@ -357,11 +394,9 @@ export default function HomeScreen({ navigation, route }) {
   // Carrega histórico quando a tela ganha foco ou recebe params
   useEffect(() => {
     async function loadChatHistory() {
-      // chatId vindo da ChatsScreen tem prioridade
       const paramChatId = route?.params?.chatId ?? null;
 
       if (paramChatId === null) {
-        // Novo chat: limpa o estado
         setMessages([]);
         setActiveChatId(null);
         return;
@@ -383,40 +418,129 @@ export default function HomeScreen({ navigation, route }) {
     }
 
     loadChatHistory();
-  }, [route?.params?.chatId]);
+  }, [route?.params?.chatId, route?.params?.newChat]);
+
+  // Recarrega o modelo escolhido ao voltar das Configurações.
+  useEffect(() => {
+    const refresh = () => getActiveModel().then(setActiveModel);
+    refresh();
+    return navigation.addListener("focus", refresh);
+  }, [navigation]);
+
+  const isCloudModel = activeModel?.type === "cloud";
 
   useEffect(() => {
+    // Com modelo em nuvem não há por que consultar o desktop a cada 5s.
+    if (!activeModel || isCloudModel) return undefined;
+
     let mounted = true;
 
     async function checkConnection() {
       const status = await checkDesktopConnection();
-
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setDesktopConnected(status.connected);
       setModelLoaded(status.modelLoaded);
       setModelName(status.modelName);
     }
 
-    // verifica imediatamente
     checkConnection();
-
-    // verifica novamente a cada 5 segundos
     const interval = setInterval(checkConnection, 5000);
 
     return () => {
       mounted = false;
-
       clearInterval(interval);
     };
-  }, []);
+  }, [activeModel, isCloudModel]);
 
-  const handleSend = async () => {
-    const text = message.trim();
+  // ─── AÇÕES DO MENU + (Câmera, Fotos, Arquivos) ─────────────────────────
+  const handleSelectCamera = withPickerLock(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão necessária",
+          "Precisamos de permissão para acessar a câmera do seu dispositivo."
+        );
+        return;
+      }
 
-    if (!text) {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "image",
+          uri: asset.uri,
+          name: "Foto da câmera",
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao abrir câmera:", err?.message);
+    }
+  });
+
+  const handleSelectPhotos = withPickerLock(async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão necessária",
+          "Precisamos de permissão para acessar a galeria de fotos."
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "image",
+          uri: asset.uri,
+          name: asset.fileName || "Foto da galeria",
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao abrir galeria de fotos:", err?.message);
+    }
+  });
+
+  const handleSelectFiles = withPickerLock(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setAttachment({
+          type: "file",
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size,
+        });
+      }
+    } catch (err) {
+      console.warn("Erro ao selecionar arquivo:", err?.message);
+    }
+  });
+
+
+  // ─── ENVIO DE MENSAGEM ───────────────────────────────────────────────
+  const handleSend = async (customText = null, customAttachment = null) => {
+    const text = (typeof customText === "string" ? customText : message).trim();
+    const currentAttachment =
+      customAttachment !== null ? customAttachment : attachment;
+
+    if (!text && !currentAttachment) {
       return;
     }
     if (isAgentTyping) {
@@ -427,17 +551,21 @@ export default function HomeScreen({ navigation, route }) {
       id: `${Date.now()}-user`,
       role: "user",
       text,
+      attachment: currentAttachment,
     };
 
     setMessages((previous) => [...previous, userMessage]);
     setMessage("");
+    setAttachment(null);
     setIsAgentTyping(true);
 
+    let model = activeModel;
+
     try {
-      // 1. Garante que existe um chat ativo no banco
       let chatId = activeChatId;
       if (!chatId) {
-        const title = text.length > 40 ? text.slice(0, 37) + "..." : text;
+        const titleText = text || (currentAttachment ? `[${currentAttachment.name}]` : "Nova conversa");
+        const title = titleText.length > 40 ? titleText.slice(0, 37) + "..." : titleText;
         const chatRes = await sheets.createChat(title);
         chatId = chatRes.data?.chat?.id_chat;
 
@@ -445,18 +573,29 @@ export default function HomeScreen({ navigation, route }) {
         await AsyncStorage.setItem("@osiris/active_chat_id", String(chatId));
       }
 
-      // 2. Salva a mensagem do usuário no banco
+      const contentToSave = currentAttachment
+        ? `[Anexo: ${currentAttachment.name}] ${text}`.trim()
+        : text;
+
       if (chatId) {
-        await sheets.createMessage(chatId, { type: "user", content: text }).catch(() => { });
+        await sheets
+          .createMessage(chatId, { type: "user", content: contentToSave })
+          .catch(() => {});
       }
 
-      // 3. Envia para a IA no desktop
-      const promptWithMemory = await addMemoryContext(text);
-      const aiResponse = await sendPromptToDesktop(promptWithMemory);
+      // Envia para o modelo escolhido em Configurações → Modelos de IA
+      const promptText = contentToSave;
+      const promptWithMemory = await addMemoryContext(promptText);
+      model = await getActiveModel();
+      const aiResponse =
+        model.type === "cloud"
+          ? await sendCloudPrompt(model, promptWithMemory)
+          : await sendPromptToDesktop(promptWithMemory);
 
-      // 4. Salva a resposta da IA no banco
       if (chatId) {
-        await sheets.createMessage(chatId, { type: "assistant", content: aiResponse }).catch(() => { });
+        await sheets
+          .createMessage(chatId, { type: "assistant", content: aiResponse })
+          .catch(() => {});
       }
 
       const agentMessage = {
@@ -466,15 +605,20 @@ export default function HomeScreen({ navigation, route }) {
       };
 
       setMessages((previous) => [...previous, agentMessage]);
-      setDesktopConnected(true);
+      if (model.type !== "cloud") setDesktopConnected(true);
     } catch (error) {
-      console.error("Erro ao falar com desktop:", error);
-      setDesktopConnected(false);
+      console.error("Erro ao falar com a IA:", error);
+      const failedOnCloud = model?.type === "cloud";
+      if (!failedOnCloud) setDesktopConnected(false);
 
       const errorMessage = {
         id: `${Date.now()}-error`,
         role: "agent",
-        text: `Não consegui falar com o desktop.\n\n${error.message}`,
+        text: `${
+          failedOnCloud
+            ? "Não consegui falar com a IA na nuvem."
+            : "Não consegui falar com o desktop."
+        }\n\n${error.message}`,
       };
 
       setMessages((previous) => [...previous, errorMessage]);
@@ -501,7 +645,8 @@ export default function HomeScreen({ navigation, route }) {
         connected={desktopConnected}
         modelLoaded={modelLoaded}
         modelName={modelName}
-        onPress={() => navigation.navigate("Configuracoes")}
+        cloudModelName={isCloudModel ? activeModel.name : null}
+        onPress={() => navigation.navigate("Configuracoes", undefined, { pop: true })}
       />
 
       <KeyboardAvoidingView
@@ -514,7 +659,11 @@ export default function HomeScreen({ navigation, route }) {
             data={messages}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <MessageBubble role={item.role} text={item.text} />
+              <MessageBubble
+                role={item.role}
+                text={item.text}
+                attachment={item.attachment}
+              />
             )}
             contentContainerStyle={styles.messagesList}
             ListFooterComponent={isAgentTyping ? <TypingIndicator /> : null}
@@ -530,25 +679,26 @@ export default function HomeScreen({ navigation, route }) {
         )}
 
         <ChatInput
+          inputRef={inputRef}
           value={message}
           onChangeText={setMessage}
           onSend={handleSend}
-          onMicPress={() => console.log("mic pressionado")}
-          onPlusPress={() => console.log("plus pressionado")}
+          onPlusPress={() => setPlusMenuVisible(true)}
           disabled={isAgentTyping}
+          attachment={attachment}
+          onRemoveAttachment={() => setAttachment(null)}
         />
 
-        <BottomNav
-          activeKey="home"
-          onPressItem={(key) => {
-            if (key === "home") navigation.navigate("HomeScreen", { chatId: null });
-            else if (key === "chats") navigation.navigate("Chats");
-            else if (key === "folder") navigation.navigate("ArquivoScreen");
-            else if (key === "terminal") navigation.navigate("Terminal");
-            else if (key === "settings") navigation.navigate("Configuracoes");
-            else console.log("nav:", key);
-          }}
+        {/* Menu Popover acionado pelo botão + */}
+        <PlusActionMenu
+          visible={plusMenuVisible}
+          onClose={() => setPlusMenuVisible(false)}
+          onSelectCamera={handleSelectCamera}
+          onSelectPhotos={handleSelectPhotos}
+          onSelectFiles={handleSelectFiles}
         />
+
+        <BottomNav activeKey="home" navigation={navigation} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -636,6 +786,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.bubbleAgentBorder,
     borderBottomLeftRadius: 4,
+  },
+  bubbleAttachedImage: {
+    width: 200,
+    height: 140,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  bubbleAttachedFile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  bubbleAttachedFileName: {
+    fontFamily,
+    fontSize: 12,
+    color: "#ffffff",
+    fontWeight: "500",
   },
   ttsButton: {
     marginTop: 5,

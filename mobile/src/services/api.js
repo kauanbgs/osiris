@@ -68,6 +68,11 @@ const sheets = {
   // ── Files ──────────────────────────────────────────────────────────
   getDesktopWorkspace: () => api.get("/file/workspace"),
 
+  // ── Workflows ───────────────────────────────────────────────────────
+  getWorkflows: () => api.get("/workflow"),
+  getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
+  saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
+
   // ── Terminal ───────────────────────────────────────────────────────
   terminalExecute: (data) =>
     api.post("/terminal/exec", data, {
@@ -87,4 +92,3 @@ const sheets = {
 
 export default sheets;
 export { api, sheets };
-
