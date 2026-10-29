@@ -198,6 +198,7 @@ router.get(
 
 // Browser navigation engine & interaction for agents
 router.post("/browser/session", verifyJWT, BrowserController.createSession);
+router.get("/browser/sessions", verifyJWT, BrowserController.listSessions);
 router.get(
   "/browser/session/:id_session",
   verifyJWT,

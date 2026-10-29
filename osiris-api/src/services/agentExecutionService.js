@@ -1,6 +1,6 @@
 const http = require("http");
 const https = require("https");
-const { readAgentFile, isSupported } = require("./AgentFileReader");
+const { readAgentFile, isSupported } = require("./agentFileReader");
 
 class AgentExecutionService {
   static executions = new Map();
