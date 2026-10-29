@@ -7,6 +7,52 @@ const { BadRequestError, NotFoundError } = require("../errors");
 const WORKSPACE_CONFIG_KEY = "desktop_workspace_root";
 const MAX_WORKSPACE_DEPTH = 12;
 const MAX_WORKSPACE_ITEMS = 2000;
+const MAX_EDITABLE_FILE_BYTES = 512 * 1024;
+
+async function getWorkspaceRoot(userId) {
+  const [rows] = await pool.promise().execute(
+    `SELECT value FROM configuration
+     WHERE fk_id_user = ? AND \`key\` = ?
+     ORDER BY id_configuration DESC LIMIT 1`,
+    [userId, WORKSPACE_CONFIG_KEY],
+  );
+  const root = rows[0]?.value;
+  if (!root) throw new NotFoundError("Nenhuma pasta de trabalho foi compartilhada.");
+  try {
+    return await fs.promises.realpath(root);
+  } catch {
+    throw new NotFoundError("A pasta de trabalho não está disponível.");
+  }
+}
+
+async function resolveWorkspaceFile(userId, requestedPath) {
+  if (typeof requestedPath !== "string" || !requestedPath.trim() || requestedPath.includes("\0")) {
+    throw new BadRequestError("Caminho de arquivo inválido.");
+  }
+  const root = await getWorkspaceRoot(userId);
+  const trimmedPath = requestedPath.trim();
+  const absoluteInput = path.isAbsolute(trimmedPath);
+  const target = absoluteInput
+    ? path.resolve(trimmedPath)
+    : path.resolve(root, trimmedPath);
+  const lexicalRelative = path.relative(root, target);
+  if (!absoluteInput && (!lexicalRelative || lexicalRelative === ".." || lexicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(lexicalRelative))) {
+    throw new BadRequestError("O caminho precisa apontar para um arquivo dentro da pasta compartilhada.");
+  }
+  let realTarget;
+  try {
+    realTarget = await fs.promises.realpath(target);
+  } catch {
+    throw new NotFoundError("Arquivo não encontrado.");
+  }
+  const relative = path.relative(root, realTarget);
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new BadRequestError("O caminho precisa apontar para um arquivo dentro da pasta compartilhada.");
+  }
+  const stats = await fs.promises.stat(realTarget);
+  if (!stats.isFile()) throw new BadRequestError("O caminho selecionado não é um arquivo.");
+  return { filePath: realTarget, stats };
+}
 
 async function listWorkspaceItems(rootPath) {
   const items = [];
@@ -127,6 +173,48 @@ class FileController {
           files: await listWorkspaceItems(folderPath),
         },
       });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async readWorkspaceFile(req, res, next) {
+    try {
+      const { filePath, stats } = await resolveWorkspaceFile(req.userId, req.query.path);
+      if (stats.size > MAX_EDITABLE_FILE_BYTES) {
+        throw new BadRequestError("O arquivo é muito grande para edição no celular.");
+      }
+      const buffer = await fs.promises.readFile(filePath);
+      const content = buffer.toString("utf8");
+      if (!Buffer.from(content, "utf8").equals(buffer)) {
+        throw new BadRequestError("Este arquivo não parece ser um arquivo de texto editável.");
+      }
+      return res.status(200).json({ fileContent: content, size: stats.size });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async writeWorkspaceFile(req, res, next) {
+    try {
+      const { path: requestedPath, content } = req.body || {};
+      if (typeof content !== "string") throw new BadRequestError("O conteúdo do arquivo é inválido.");
+      if (Buffer.byteLength(content, "utf8") > MAX_EDITABLE_FILE_BYTES) {
+        throw new BadRequestError("O arquivo é muito grande para edição no celular.");
+      }
+      const { filePath } = await resolveWorkspaceFile(req.userId, requestedPath);
+      await fs.promises.writeFile(filePath, content, "utf8");
+      return res.status(200).json({ message: "Arquivo salvo com sucesso." });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async deleteWorkspaceFile(req, res, next) {
+    try {
+      const { filePath } = await resolveWorkspaceFile(req.userId, req.query.path);
+      await fs.promises.unlink(filePath);
+      return res.status(200).json({ message: "Arquivo excluído com sucesso." });
     } catch (error) {
       return next(error);
     }

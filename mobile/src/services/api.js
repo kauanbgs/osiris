@@ -67,6 +67,9 @@ const sheets = {
 
   // ── Files ──────────────────────────────────────────────────────────
   getDesktopWorkspace: () => api.get("/file/workspace"),
+  getWorkspaceFile: (filePath) => api.get("/file/workspace/content", { params: { path: filePath } }),
+  saveWorkspaceFile: (filePath, content) => api.put("/file/workspace/content", { path: filePath, content }),
+  deleteWorkspaceFile: (filePath) => api.delete("/file/workspace/item", { params: { path: filePath } }),
 
   // ── Workflows ───────────────────────────────────────────────────────
   getWorkflows: () => api.get("/workflow"),

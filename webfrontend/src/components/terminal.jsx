@@ -12,6 +12,8 @@ function stripTerminalControlSequences(value) {
 
 export default function Terminal({ terminalId, mode, initialContent = "", onContentChange }) {
   const terminalRef = useRef(null);
+  const xtermRef = useRef(null);
+  const savedContentRef = useRef(initialContent);
   
 
   useEffect(() => {
@@ -35,7 +37,8 @@ export default function Terminal({ terminalId, mode, initialContent = "", onCont
 
     xterm.open(terminalRef.current);
     if (initialContent) xterm.write(initialContent);
-    let savedContent = initialContent;
+    xtermRef.current = xterm;
+    savedContentRef.current = initialContent;
 
     // Ensure layout dimensions are computed before initial fit
     const fitTimer = setTimeout(() => {
@@ -63,8 +66,8 @@ export default function Terminal({ terminalId, mode, initialContent = "", onCont
       ? window.electronAPI.onTerminalData((targetId, data) => {
           if (targetId === terminalId) {
             xterm.write(data);
-            savedContent = (savedContent + stripTerminalControlSequences(data)).slice(-4000);
-            onContentChange?.(savedContent);
+            savedContentRef.current = (savedContentRef.current + stripTerminalControlSequences(data)).slice(-4000);
+            onContentChange?.(savedContentRef.current);
           }
         })
       : null;
@@ -102,12 +105,22 @@ export default function Terminal({ terminalId, mode, initialContent = "", onCont
       inputDisposable.dispose();
       removeDataListener?.();
       removeExitListener?.();
+      xtermRef.current = null;
       if (window.electronAPI?.terminalClose) {
         window.electronAPI.terminalClose(terminalId);
       }
       xterm.dispose();
     };
   }, [terminalId, mode]);
+
+  useEffect(() => {
+    const xterm = xtermRef.current;
+    if (!xterm || initialContent === savedContentRef.current) return;
+
+    savedContentRef.current = initialContent;
+    xterm.reset();
+    if (initialContent) xterm.write(initialContent);
+  }, [initialContent]);
 
   return <div ref={terminalRef} className="h-full w-full overflow-hidden" />;
 }

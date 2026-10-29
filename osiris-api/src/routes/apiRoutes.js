@@ -166,6 +166,9 @@ router.delete(
 // File routes (standard & Notion CT18/RF10 aliases)
 router.post("/file/workspace", verifyJWT, FileController.saveWorkspace);
 router.get("/file/workspace", verifyJWT, FileController.getWorkspace);
+router.get("/file/workspace/content", verifyJWT, FileController.readWorkspaceFile);
+router.put("/file/workspace/content", verifyJWT, FileController.writeWorkspaceFile);
+router.delete("/file/workspace/item", verifyJWT, FileController.deleteWorkspaceFile);
 router.post(
   "/file",
   verifyJWT,

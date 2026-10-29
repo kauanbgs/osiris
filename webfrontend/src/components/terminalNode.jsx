@@ -36,6 +36,12 @@ export default function TerminalNode({ id, data }) {
           <span className="text-xs font-semibold font-mono text-zinc-200">
             {data?.label || "Terminal"}
           </span>
+          {data?.terminalStatus === "running" && (
+            <span className="text-[10px] font-mono text-amber-400">executando…</span>
+          )}
+          {data?.terminalStatus === "error" && (
+            <span className="text-[10px] font-mono text-red-400">erro</span>
+          )}
         </div>
         <span className="text-[10px] font-mono text-zinc-500">⠿ Drag</span>
       </div>

@@ -1,5 +1,6 @@
 import { Handle, Position, useReactFlow, useStore } from "@xyflow/react";
 import { Bot, GripVertical, Loader2, Play, Square, Workflow } from "lucide-react";
+import { useEffect } from "react";
 import WorkflowModelSelect from "@/components/WorkflowModelSelect";
 import { useWorkflowExecution } from "@/contexts/useWorkflowExecution";
 import { getAgentFileNodes } from "@/workflow/getConnectedFiles";
@@ -10,9 +11,12 @@ export default function AgentNode({ id, data }) {
   const { updateNodeData } = useReactFlow();
   const execution = useWorkflowExecution();
   const agentState = execution.agents[id];
-  const status = agentState?.status === "running" ? "running" : agentState?.status === "error" ? "error" : "idle";
-  const output = agentState?.output ?? data?.output ?? "";
-  const error = agentState?.error || "";
+  const contextStatus = agentState?.status === "running" || agentState?.status === "waiting"
+    ? "running"
+    : agentState?.status === "error" ? "error" : "idle";
+  const status = data?.runStatus === "running" || data?.runStatus === "error" ? data.runStatus : contextStatus;
+  const output = data?.output ?? agentState?.output ?? "";
+  const error = data?.runError || agentState?.error || "";
   const chainStatus = agentState ? ({ waiting: "Aguardando agentes anteriores", done: "Concluido", cancelled: "Interrompido", skipped: "Nao executado" }[agentState.status] || "") : "";
   const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-violet-500 hover:!bg-violet-400 transition-colors";
   const hasFileInput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).inputs.length > 0);
@@ -21,6 +25,18 @@ export default function AgentNode({ id, data }) {
   const hasAgentInput = useStore((state) => state.edges.some((edge) => edge.target === id && state.nodes.some((node) => node.id === edge.source && node.type === "agent")));
   const hasAgentOutput = useStore((state) => state.edges.some((edge) => edge.source === id && state.nodes.some((node) => node.id === edge.target && node.type === "agent")));
   const isChainRoot = hasAgentOutput;
+
+  useEffect(() => {
+    if (!agentState) return;
+    const runStatus = agentState.status === "running" || agentState.status === "waiting"
+      ? "running"
+      : agentState.status === "error" ? "error" : "idle";
+    updateNodeData(id, {
+      runStatus,
+      runError: agentState.error || "",
+      ...(typeof agentState.output === "string" ? { output: agentState.output } : {}),
+    });
+  }, [agentState?.status, agentState?.output, agentState?.error, id, updateNodeData]);
   const handlePromptChange = (event) => updateNodeData(id, { prompt: event.target.value });
   const handleModelChange = (modelConfig) => updateNodeData(id, { modelConfig, model: null });
   const handleRun = () => status === "running" ? execution.stop() : execution.run({ onlyAgentId: id });
