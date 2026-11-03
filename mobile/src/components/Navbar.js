@@ -1,13 +1,14 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BACKGROUND, SCREEN_PADDING } from '../theme';
 import { useKeyboardVisible } from './KeyboardAware';
 
 const colors = {
   textMuted: '#444444',
   active: '#7c5cff',
   border: '#1c1c1c',
-  backgroundPure: '#0a0a0a',
 };
 
 const NAV_ITEMS = [
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
 export default function Navbar({ navigation, activeKey, onPressItem }) {
   const route = useRoute();
   const keyboardVisible = useKeyboardVisible();
+  const insets = useSafeAreaInsets();
 
   function handlePress(item) {
     // Callback customizado tem prioridade
@@ -53,7 +55,18 @@ export default function Navbar({ navigation, activeKey, onPressItem }) {
   if (keyboardVisible) return null;
 
   return (
-    <View style={styles.bottomNav}>
+    <View
+      style={[
+        styles.bottomNav,
+        // Vai de borda a borda: desfaz o respiro lateral das telas e desce
+        // sobre a área segura de baixo (barra de gestos), em vez de deixar
+        // uma faixa vazia embaixo dela.
+        {
+          marginBottom: -insets.bottom,
+          paddingBottom: 12 + insets.bottom,
+        },
+      ]}
+    >
       {NAV_ITEMS.map((item) => {
         const isActive = item.key === activeKey;
         return (
@@ -65,7 +78,7 @@ export default function Navbar({ navigation, activeKey, onPressItem }) {
           >
             <Feather
               name={item.icon}
-              size={22}
+              size={26}
               color={isActive ? colors.active : colors.textMuted}
             />
           </TouchableOpacity>
@@ -80,10 +93,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 12,
+    marginHorizontal: -SCREEN_PADDING,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.backgroundPure,
+    backgroundColor: BACKGROUND,
   },
   navItem: {
     padding: 8,

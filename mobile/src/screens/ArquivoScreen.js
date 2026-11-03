@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28 },
   emptyText: { color: colors.muted, fontSize: 13, textAlign: "center", marginTop: 12 },
   emptyHint: { color: "#5f5a64", fontSize: 11, textAlign: "center", marginTop: 6 },
-  editorSafeArea: { flex: 1, backgroundColor: colors.background },
+  editorSafeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 12 },
   editorContainer: { flex: 1 },
   editorHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   editorIconButton: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },

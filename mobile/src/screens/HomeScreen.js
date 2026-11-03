@@ -14,6 +14,7 @@ import {
   Keyboard,
 } from "react-native";
 import * as Speech from "expo-speech";
+import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -22,15 +23,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import BottomNav from "../components/Navbar";
+import { CHAT_FONT } from "../theme";
 import ChatInput from "../components/ChatInput";
 import PlusActionMenu from "../components/PlusActionMenu";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
-import { getActiveModel, sendCloudPrompt } from "../services/modelConfig";
+import { prepareAttachment } from "../services/attachments";
+import { getActiveModel, modelSupportsImages, sendCloudPrompt } from "../services/modelConfig";
 import {
   clearChatSession,
   isChatSessionExpired,
-  loadChatSession,
   saveChatSession,
 } from "../services/chatSession";
 
@@ -131,16 +133,28 @@ async function checkDesktopConnection() {
   }
 }
 
+// Resume nomes longos de modelo: tira caminho, extensão e sufixos de quantização.
+// Ex.: "C:/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf" → "Qwen2.5-7B-Instruct"
+function shortModelName(name) {
+  if (!name) return name;
+  return String(name)
+    .split(/[\\/]/)
+    .pop()
+    .replace(/\.(gguf|bin|safetensors|onnx)$/i, "")
+    .replace(/[-_.](i?q\d[\w]*|f16|f32|bf16|fp16|gguf)$/i, "")
+    .trim();
+}
+
 function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, onPress }) {
   let label = "Desktop offline";
 
   if (cloudModelName) {
     connected = true;
-    label = `Nuvem • ${cloudModelName}`;
+    label = `Nuvem • ${shortModelName(cloudModelName)}`;
   } else if (connected && !modelLoaded) {
-    label = "Desktop conectado • sem modelo";
+    label = "Desktop • sem modelo";
   } else if (connected && modelLoaded) {
-    label = modelName ? `Conectado • ${modelName}` : "Conectado ao desktop";
+    label = modelName ? `Desktop • ${shortModelName(modelName)}` : "Conectado ao desktop";
   }
 
   return (
@@ -153,7 +167,9 @@ function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, on
           },
         ]}
       />
-      <Text style={styles.statusText}>{label}</Text>
+      <Text style={styles.statusText} numberOfLines={1} ellipsizeMode="tail">
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -172,6 +188,8 @@ function GreetingHeader({ userName = "Usuário" }) {
 function MessageBubble({ role, text, attachment }) {
   const isUser = role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef(null);
   const btnScale = useRef(new Animated.Value(1)).current;
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -188,6 +206,20 @@ function MessageBubble({ role, text, attachment }) {
       if (isSpeaking) Speech.stop();
     };
   }, [isSpeaking]);
+
+  useEffect(() => () => clearTimeout(copiedTimerRef.current), []);
+
+  // Copia o texto da mensagem e mostra um "check" por um instante.
+  const handleCopy = async () => {
+    try {
+      await Clipboard.setStringAsync(text);
+      setCopied(true);
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.warn("Não foi possível copiar a mensagem:", error?.message);
+    }
+  };
 
   const animatedStyle = {
     opacity: anim,
@@ -268,24 +300,43 @@ function MessageBubble({ role, text, attachment }) {
           )}
         </View>
 
-        {!isUser && !!text && (
-          <TouchableOpacity
-            onPress={handleTTS}
-            style={styles.ttsButton}
-            activeOpacity={0.7}
-          >
-            <Animated.View
-              style={[
-                styles.ttsInner,
-                { transform: [{ scale: btnScale }] },
-                isSpeaking && styles.ttsInnerActive,
-              ]}
+        {!!text && (
+          <View style={[styles.messageActions, isUser && styles.messageActionsUser]}>
+            <TouchableOpacity
+              onPress={handleCopy}
+              style={styles.actionButton}
+              activeOpacity={0.7}
+              accessibilityLabel={copied ? "Mensagem copiada" : "Copiar mensagem"}
             >
-              <Text style={[styles.ttsIcon, isSpeaking && styles.ttsIconActive]}>
-                {isSpeaking ? "⏹" : "🔊"}
-              </Text>
-            </Animated.View>
-          </TouchableOpacity>
+              <Feather
+                name={copied ? "check" : "copy"}
+                size={14}
+                color={copied ? colors.green : colors.textMuted}
+              />
+            </TouchableOpacity>
+
+            {!isUser && (
+              <TouchableOpacity
+                onPress={handleTTS}
+                activeOpacity={0.7}
+                accessibilityLabel={isSpeaking ? "Parar leitura" : "Ler mensagem em voz alta"}
+              >
+                <Animated.View
+                  style={[
+                    styles.actionButton,
+                    { transform: [{ scale: btnScale }] },
+                    isSpeaking && styles.actionButtonActive,
+                  ]}
+                >
+                  <Feather
+                    name={isSpeaking ? "square" : "volume-2"}
+                    size={14}
+                    color={isSpeaking ? colors.purple : colors.textMuted}
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     </Animated.View>
@@ -436,19 +487,16 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   // Os parâmetros da rota são pedidos vindos de outras telas: abrir uma
-  // conversa da lista (chatId) ou começar uma nova (newChat). Sem pedido,
-  // reabre a última conversa se ela ainda não expirou.
+  // conversa da lista (chatId) ou começar uma nova (newChat). Sem pedido
+  // (ao abrir o app), sempre começa uma conversa nova; as anteriores
+  // continuam disponíveis na tela de Chats.
   useEffect(() => {
     const paramChatId = route?.params?.chatId ?? null;
 
-    if (route?.params?.newChat) {
-      startNewChat();
-    } else if (paramChatId !== null) {
+    if (paramChatId !== null && !route?.params?.newChat) {
       openChat(Number(paramChatId));
     } else {
-      loadChatSession().then((savedChatId) => {
-        if (savedChatId && !activeChatIdRef.current) openChat(savedChatId);
-      });
+      startNewChat();
     }
   }, [route?.params?.chatId, route?.params?.newChat, route?.params?.openedAt]);
 
@@ -531,6 +579,7 @@ export default function HomeScreen({ navigation, route }) {
           type: "image",
           uri: asset.uri,
           name: "Foto da câmera",
+          mimeType: asset.mimeType,
         });
       }
     } catch (err) {
@@ -561,6 +610,7 @@ export default function HomeScreen({ navigation, route }) {
           type: "image",
           uri: asset.uri,
           name: asset.fileName || "Foto da galeria",
+          mimeType: asset.mimeType,
         });
       }
     } catch (err) {
@@ -581,6 +631,7 @@ export default function HomeScreen({ navigation, route }) {
           uri: asset.uri,
           name: asset.name,
           size: asset.size,
+          mimeType: asset.mimeType,
         });
       }
     } catch (err) {
@@ -638,13 +689,17 @@ export default function HomeScreen({ navigation, route }) {
           .catch(() => {});
       }
 
-      // Envia para o modelo escolhido em Configurações → Modelos de IA
-      const promptText = contentToSave;
-      const promptWithMemory = await addMemoryContext(promptText);
+      // Envia para o modelo escolhido em Configurações → Modelos de IA.
+      // O histórico salva só o nome do anexo; a IA recebe o conteúdo dele
+      // (texto do arquivo ou a própria imagem, quando o modelo aceita).
       model = await getActiveModel();
+      const { prompt: promptText, images } = await prepareAttachment(text, currentAttachment, {
+        supportsImages: modelSupportsImages(model),
+      });
+      const promptWithMemory = await addMemoryContext(promptText);
       const aiResponse =
         model.type === "cloud"
-          ? await sendCloudPrompt(model, promptWithMemory)
+          ? await sendCloudPrompt(model, promptWithMemory, images)
           : await sendPromptToDesktop(promptWithMemory);
 
       if (chatId) {
@@ -801,6 +856,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-end",
+    flexShrink: 1,
+    marginLeft: 8,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -811,6 +868,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   statusText: {
+    flexShrink: 1,
     fontFamily,
     fontSize: 11,
     color: colors.textSecondary,
@@ -888,37 +946,33 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   bubbleAttachedFileName: {
-    fontFamily,
+    fontFamily: CHAT_FONT.medium,
     fontSize: 12,
     color: "#ffffff",
-    fontWeight: "500",
   },
-  ttsButton: {
-    marginTop: 5,
-    alignSelf: "flex-start",
-  },
-  ttsInner: {
+  // Botões abaixo de cada mensagem (copiar e, no agente, ouvir).
+  messageActions: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: "#1e1e1e",
-    borderWidth: 1,
-    borderColor: "#2e2e2e",
+    gap: 4,
+    marginTop: 4,
+    alignSelf: "flex-start",
   },
-  ttsInnerActive: {
+  messageActionsUser: {
+    alignSelf: "flex-end",
+  },
+  actionButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionButtonActive: {
     backgroundColor: "#1a1030",
-    borderColor: colors.purple,
-  },
-  ttsIcon: {
-    fontSize: 13,
-  },
-  ttsIconActive: {
-    fontSize: 13,
   },
   bubbleText: {
-    fontFamily,
+    fontFamily: CHAT_FONT.regular,
     fontSize: 14,
     color: colors.textPrimary,
     lineHeight: 20,

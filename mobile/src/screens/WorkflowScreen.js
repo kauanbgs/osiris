@@ -15,7 +15,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Bot, CaseSensitive, MousePointer2, Paperclip, SquareTerminal } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import { readTextFile } from '../services/attachments';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import BottomNav from '../components/Navbar';
@@ -23,7 +23,7 @@ import sheets from '../services/api';
 import { aiUrl, loadIP } from '../services/serverConfig';
 
 const colors = {
-  background: '#141414',
+  background: '#0d0d0d',
   panel: '#242326',
   border: '#35323b',
   text: '#e8e8e8',
@@ -768,12 +768,8 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
       const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
       if (result.canceled) return;
       const selectedFiles = await Promise.all((result.assets || []).map(async (asset) => {
-        let fileContent = '';
-        try {
-          fileContent = await FileSystem.readAsStringAsync(asset.uri);
-        } catch {
-          fileContent = '[Arquivo não textual ou não foi possível ler o conteúdo.]';
-        }
+        const fileContent =
+          (await readTextFile(asset.uri)) ?? '[Arquivo não textual ou não foi possível ler o conteúdo.]';
         return {
           fileName: asset.name || 'sem-nome',
           fileContent,
@@ -1060,7 +1056,7 @@ const styles = StyleSheet.create({
   toolButtonActive: { backgroundColor: '#8b5cf622' },
   errorText: { color: '#fca5a5', fontSize: 11, paddingHorizontal: 14, paddingTop: 6 },
   connectHint: { color: colors.purple, fontSize: 11, textAlign: 'center', paddingVertical: 5 },
-  viewport: { flex: 1, marginTop: 8, overflow: 'hidden', backgroundColor: '#171619' },
+  viewport: { flex: 1, marginTop: 8, overflow: 'hidden', backgroundColor: colors.background },
   panLayer: { position: 'absolute', left: 0, top: 0, width: 6000, height: 6000 },
   canvas: { position: 'absolute', left: 0, top: 0, width: 6000, height: 6000, transformOrigin: 'top left' },
   canvasPanSurface: { ...StyleSheet.absoluteFillObject, width: 6000, height: 6000 },

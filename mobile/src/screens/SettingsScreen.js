@@ -13,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
 import BottomNav from "../components/Navbar";
+import { BACKGROUND } from "../theme";
 import ModelSettings from "../components/ModelSettings";
 import { KeyboardScrollView } from "../components/KeyboardAware";
 import { CHAT_SESSION_KEY } from "../services/chatSession";
@@ -225,7 +226,7 @@ export default function SettingsScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: BACKGROUND,
   },
   content: {
     flexGrow: 1,

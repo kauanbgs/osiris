@@ -9,6 +9,7 @@ import {
   Image,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { CHAT_FONT } from "../theme";
 
 const colors = {
   card: "#1a1a1a",
@@ -172,10 +173,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   attachmentName: {
-    fontFamily,
+    fontFamily: CHAT_FONT.medium,
     fontSize: 13,
     color: colors.textPrimary,
-    fontWeight: "500",
   },
   attachmentSize: {
     fontFamily,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: colors.textPrimary,
-    fontFamily,
+    fontFamily: CHAT_FONT.regular,
     fontSize: 15,
   },
   actionsRow: {
