@@ -1,6 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
+import { useKeyboardVisible } from './KeyboardAware';
 
 const colors = {
   textMuted: '#444444',
@@ -23,22 +24,16 @@ const NAV_ITEMS = [
  * Props:
  *   - navigation  (obrigatório) — objeto de navegação do React Navigation
  *   - activeKey   (obrigatório) — key do item atual ('home' | 'chats' | 'folder' | 'workflow' | 'terminal' | 'settings')
- *   - onPressItem (opcional)    — callback extra para casos especiais (ex: home com chatId: null)
+ *   - onPressItem (opcional)    — callback extra para casos especiais
  */
 export default function Navbar({ navigation, activeKey, onPressItem }) {
   const route = useRoute();
+  const keyboardVisible = useKeyboardVisible();
 
   function handlePress(item) {
     // Callback customizado tem prioridade
     if (onPressItem) {
       onPressItem(item.key);
-      return;
-    }
-
-    // Home sempre inicia um novo chat, mesmo estando nela (newChat muda a cada
-    // toque para a Home limpar a conversa atual).
-    if (item.key === 'home') {
-      navigation.navigate('HomeScreen', { chatId: null, newChat: Date.now() }, { pop: true });
       return;
     }
 
@@ -49,8 +44,13 @@ export default function Navbar({ navigation, activeKey, onPressItem }) {
     // pop: true volta para a tela se ela já estiver aberta na pilha, em vez de
     // empilhar uma cópia nova a cada toque (cada cópia mantinha seus timers
     // e requisições rodando em segundo plano).
-    navigation.navigate(item.route, undefined, { pop: true });
+    // merge: true mantém os parâmetros da tela; na Home isso preserva a
+    // conversa aberta (a nova conversa é pelo botão no topo da Home).
+    navigation.navigate(item.route, undefined, { pop: true, merge: true });
   }
+
+  // Some enquanto o teclado está aberto, deixando espaço para o que se digita.
+  if (keyboardVisible) return null;
 
   return (
     <View style={styles.bottomNav}>

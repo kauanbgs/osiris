@@ -76,7 +76,7 @@ export default function ChatsScreen({ navigation }) {
   }, [navigation, fetchChats]);
 
   function handleOpenChat(chat) {
-    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title }, { pop: true });
+    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title, openedAt: Date.now() }, { pop: true });
   }
 
   function handleNewChat() {

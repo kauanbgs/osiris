@@ -424,7 +424,7 @@ export default function TerminalScreen({ navigation }) {
       {/* Viewport do Terminal */}
       <KeyboardAvoidingView
         style={styles.flexContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
       >
         <FlatList
           ref={flatListRef}
