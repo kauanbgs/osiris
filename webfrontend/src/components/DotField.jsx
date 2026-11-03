@@ -1,4 +1,4 @@
-import { useEffect, useRef, memo } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 
 const TWO_PI = Math.PI * 2;
 

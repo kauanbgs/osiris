@@ -564,8 +564,7 @@ ipcMain.handle("terminal-create", (event, id, mode, cwd) => {
   });
 
   terminal.onExit(({ exitCode }) => {
-    // The same id can be reopened (React remounts, tab switches) before this
-    // exit arrives: only forget the entry if it still points at this process.
+    // Evita que uma sessão antiga remova uma sessão nova com o mesmo ID.
     if (terminals.get(id) !== terminal) return;
     terminals.delete(id);
     if (!win.isDestroyed()) {

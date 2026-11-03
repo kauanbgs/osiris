@@ -20,6 +20,18 @@ import {
   Copy,
   Laptop,
   AlertTriangle,
+  Camera,
+  Download,
+  FileJson,
+  Image,
+  Loader2,
+  AlertCircle,
+  Check,
+  Table as TableIcon,
+  AlignLeft,
+  Heading,
+  Info,
+  Maximize2,
 } from "lucide-react";
 import sheets from "@/services/api";
 import { isElectron } from "@/utils/isElectron";
@@ -45,10 +57,13 @@ function sanitizeUrl(rawUrl) {
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
 }
 
-export default function NavegadorPage() {
+export default function Navegador() {
   const isElectronApp = isElectron();
   const webviewRef = useRef(null);
 
+  // =========================================================
+  // ESTADOS DO NAVEGADOR (Abas, Histórico, DOM)
+  // =========================================================
   const [tabs, setTabs] = useState([
     {
       id: "tab-1",
@@ -68,6 +83,21 @@ export default function NavegadorPage() {
   const [actionFeedback, setActionFeedback] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // =========================================================
+  // ESTADOS DA CAPTURA & EXTRAÇÃO DE DADOS (Playwright)
+  // =========================================================
+  const [isCaptureOpen, setIsCaptureOpen] = useState(false);
+  const [captureUrl, setCaptureUrl] = useState("https://example.com");
+  const [captureLoading, setCaptureLoading] = useState(false);
+  const [captureError, setCaptureError] = useState(null);
+  const [captureSuccess, setCaptureSuccess] = useState(null);
+  const [captureResult, setCaptureResult] = useState(null);
+  const [captureSubTab, setCaptureSubTab] = useState("overview");
+  const [copiedLink, setCopiedLink] = useState(null);
+  const [copiedText, setCopiedText] = useState(false);
+  const [showFullImageModal, setShowFullImageModal] = useState(false);
+
+  // Aba ativa do navegador
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
   const updateActiveTab = (updater) => {
@@ -79,7 +109,7 @@ export default function NavegadorPage() {
     );
   };
 
-  // Inicializa a sessão da API para a primeira aba caso ainda não exista
+  // Inicializa sessão da API para a primeira aba caso ainda não exista
   useEffect(() => {
     if (activeTab && !activeTab.id_session) {
       sheets
@@ -93,7 +123,7 @@ export default function NavegadorPage() {
           }
         })
         .catch(() => {
-          // Fallback silencioso caso a API esteja em inicialização
+          // Fallback silencioso
         });
     }
   }, [activeTabId]);
@@ -157,6 +187,7 @@ export default function NavegadorPage() {
     };
   }, [activeTabId, activeTab.url, isElectronApp]);
 
+  // Gerenciamento de Abas
   const addTab = async () => {
     if (tabs.length >= 10) return;
     const newId = `tab-${Date.now()}`;
@@ -168,7 +199,7 @@ export default function NavegadorPage() {
       sessionId = res?.data?.session?.id_session || null;
       initialDom = res?.data?.session?.dom_tree || null;
     } catch {
-      // Cria aba mesmo se a API estiver indisponível
+      // Cria aba mesmo se a API estiver em inicialização
     }
 
     const newTab = {
@@ -244,7 +275,6 @@ export default function NavegadorPage() {
       };
     });
 
-    // Se estiver no Electron com webview já montado, instrui o webview
     if (isElectronApp && webviewRef.current) {
       try {
         webviewRef.current.loadURL(formatted);
@@ -253,7 +283,6 @@ export default function NavegadorPage() {
       }
     }
 
-    // Chamada à API Osíris para navegação e extração de árvore de nós DOM
     try {
       let currentSessionId = activeTab.id_session;
       if (!currentSessionId) {
@@ -271,7 +300,7 @@ export default function NavegadorPage() {
         return;
       }
     } catch {
-      // Fallback gracioso
+      // Fallback
     }
 
     setTimeout(() => {
@@ -407,6 +436,119 @@ export default function NavegadorPage() {
     navigateTo(activeTab.inputUrl);
   };
 
+  // =========================================================
+  // FUNÇÕES DE CAPTURA & EXTRAÇÃO (Playwright)
+  // =========================================================
+  async function handleCapturePage(e) {
+    if (e) e.preventDefault();
+
+    const targetUrl = captureUrl.trim();
+    if (!targetUrl) {
+      setCaptureError("Por favor, informe uma URL válida.");
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      setCaptureError("A URL deve iniciar com http:// ou https://");
+      return;
+    }
+
+    setCaptureLoading(true);
+    setCaptureError(null);
+    setCaptureSuccess(null);
+
+    try {
+      const response = await sheets.browserCapture(targetUrl);
+      const data = response.data;
+      setCaptureResult(data);
+      setCaptureSuccess(`Página capturada com sucesso! Status HTTP ${data.status_code}.`);
+    } catch (err) {
+      console.error("Erro na captura:", err);
+      const message =
+        err.response?.data?.error?.message ||
+        err.message ||
+        "Falha ao capturar a página. Verifique se a URL é pública e acessível.";
+      setCaptureError(message);
+    } finally {
+      setCaptureLoading(false);
+    }
+  }
+
+  function handleDownloadImage() {
+    if (!captureResult?.screenshot?.base64) return;
+
+    try {
+      const byteCharacters = atob(captureResult.screenshot.base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "image/jpeg" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const hostname = safeHostname(captureResult.url);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `screenshot_${hostname}_${timestamp}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error("Erro ao baixar screenshot:", e);
+    }
+  }
+
+  function handleDownloadJson() {
+    if (!captureResult) return;
+
+    try {
+      const exportData = {
+        url: captureResult.url,
+        status_code: captureResult.status_code,
+        captured_at: captureResult.captured_at,
+        data: captureResult.data,
+      };
+
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const hostname = safeHostname(captureResult.url);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `extracao_${hostname}_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error("Erro ao baixar JSON:", e);
+    }
+  }
+
+  function copyToClipboard(text, id) {
+    navigator.clipboard.writeText(text);
+    if (id) {
+      setCopiedLink(id);
+      setTimeout(() => setCopiedLink(null), 2000);
+    } else {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
+    }
+  }
+
+  function safeHostname(rawUrl) {
+    try {
+      return new URL(rawUrl).hostname.replace(/[^a-zA-Z0-9_-]/g, "_");
+    } catch {
+      return "pagina";
+    }
+  }
+
   const canGoBack = isElectronApp
     ? (webviewRef.current?.canGoBack?.() ?? activeTab.historyIndex > 0)
     : activeTab.historyIndex > 0;
@@ -426,10 +568,15 @@ export default function NavegadorPage() {
     );
   });
 
+  const headingsList = captureResult?.data?.headings || [];
+  const linksList = captureResult?.data?.links || [];
+  const tablesList = captureResult?.data?.tables || [];
+  const extractedText = captureResult?.data?.text || "";
+
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0 font-sans text-zinc-100">
       {/* 1. Barra de Abas (Tabs Bar) */}
-      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-surface-0 px-2 pt-1">
+      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-surface-0 px-2 pt-1 select-none">
         <div className="flex flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -475,7 +622,7 @@ export default function NavegadorPage() {
           </button>
         </div>
 
-        {/* Indicador de Status do Modo (Electron vs Web) */}
+        {/* Indicador de Status (Electron vs Web) */}
         <div className="hidden pb-1 sm:flex items-center gap-2 text-[11px] font-mono">
           {isElectronApp ? (
             <span className="flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-400">
@@ -551,7 +698,7 @@ export default function NavegadorPage() {
           </button>
         </div>
 
-        {/* Input de URL / Busca */}
+        {/* Campo de URL / Busca */}
         <form onSubmit={handleFormSubmit} className="flex flex-1 items-center">
           <div className="relative flex flex-1 items-center">
             <div className="absolute left-3 flex items-center pointer-events-none text-zinc-500">
@@ -595,14 +742,37 @@ export default function NavegadorPage() {
           </div>
         </form>
 
-        {/* Botão de Toggle do Painel de Inspeção do DOM */}
+        {/* BOTÃO CAPTURAR PÁGINA (PLAYWRIGHT) */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsCaptureOpen((prev) => !prev);
+            if (!isCaptureOpen && activeTab.url && activeTab.url.startsWith("http")) {
+              setCaptureUrl(activeTab.url);
+            }
+          }}
+          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
+            isCaptureOpen
+              ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
+              : "border-zinc-800 bg-surface-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+          }`}
+          title="Capturar screenshot real e extrair dados da página"
+        >
+          <Camera size={13} className={isCaptureOpen ? "text-violet-400" : ""} />
+          <span className="font-medium">Capturar Página</span>
+          {captureResult && (
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Captura pronta" />
+          )}
+        </button>
+
+        {/* BOTÃO INSPECIONAR DOM */}
         <button
           type="button"
           onClick={() => setIsInspectorOpen((prev) => !prev)}
           className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
             isInspectorOpen
               ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-              : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              : "border-zinc-800 bg-surface-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
           }`}
           title="Inspecionar elementos detectados na página"
         >
@@ -620,8 +790,8 @@ export default function NavegadorPage() {
           <button
             type="button"
             onClick={() => window.open(activeTab.url, "_blank")}
-            className="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
-            title="Abrir no navegador do sistema"
+            className="flex items-center gap-1 rounded-md border border-zinc-800 bg-surface-1 px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+            title="Abrir no navegador padrão do sistema"
           >
             <ExternalLink size={13} />
             <span className="hidden md:inline">Externo</span>
@@ -629,7 +799,7 @@ export default function NavegadorPage() {
         )}
       </div>
 
-      {/* Barra de Progresso Animada */}
+      {/* Barra de Progresso */}
       {activeTab.isLoading && (
         <div className="h-0.5 w-full bg-zinc-800 overflow-hidden">
           <div className="h-full bg-violet-500 animate-pulse w-3/4 transition-all duration-300" />
@@ -659,192 +829,154 @@ export default function NavegadorPage() {
         </div>
       )}
 
-      {/* 3. Área Principal: Viewport + Painel de Inspeção */}
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* Viewport Central */}
-        <div className="relative flex-1 overflow-hidden bg-surface-0">
+      {/* 3. ÁREA DE NAVEGAÇÃO & PAINÉIS LATERAIS */}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* VIEWPORT PRINCIPAL DO NAVEGADOR */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-0">
           {!activeTab.url ? (
-            /* Start Page do Osiris */
-            <div className="flex h-full w-full flex-col items-center justify-center p-6 overflow-y-auto">
-              <div className="w-full max-w-2xl text-center space-y-6">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 shadow-lg shadow-violet-500/5">
-                    <Compass size={34} className="text-violet-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-tight text-zinc-100">
-                      Navegador Osiris
-                    </h2>
-                    <p className="mt-1 text-xs text-zinc-400">
-                      Motor visual integrado para navegação autônoma de agentes e inspeção web
-                    </p>
-                  </div>
+            /* TELA INICIAL */
+            <div className="flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center">
+              <div className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-2xl border border-zinc-800/80 bg-surface-1 shadow-inner">
+                <Compass className="size-7 text-violet-400" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight text-zinc-100">
+                Navegador Osíris
+              </h2>
+              <p className="mt-1 max-w-md text-xs text-zinc-400">
+                Explore a internet, inspecione elementos do DOM com agentes de IA e capture dados estruturados.
+              </p>
+
+              {/* Busca central da main */}
+              <form onSubmit={handleFormSubmit} className="relative mt-6 w-full max-w-lg">
+                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  value={activeTab.inputUrl}
+                  onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
+                  placeholder="Pesquisar ou inserir endereço da web..."
+                  aria-label="Pesquisar ou inserir endereço da web"
+                  className="h-11 w-full rounded-xl border border-zinc-800 bg-surface-1 pl-10 pr-14 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md transition-all focus:border-violet-500/60 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-500"
+                >
+                  Ir
+                </button>
+              </form>
+
+              {/* Atalhos rápidos das duas versões */}
+              <div className="mt-7 w-full max-w-2xl">
+                <div className="mb-3 flex items-center justify-center gap-2 text-xs font-medium text-zinc-400">
+                  <Sparkles size={13} className="text-violet-400" />
+                  <span>Acesso rápido</span>
                 </div>
-
-                {/* Caixa de busca central */}
-                <form onSubmit={handleFormSubmit} className="relative mx-auto max-w-lg">
-                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={activeTab.inputUrl}
-                    onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
-                    placeholder="Pesquisar ou inserir endereço da web..."
-                    className="h-11 w-full rounded-xl border border-zinc-800 bg-surface-0 pl-10 pr-12 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md focus:border-violet-500/60 focus:outline-none transition-all"
-                  />
-                  <button
-                    type="submit"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500"
-                  >
-                    Navegar
-                  </button>
-                </form>
-
-                {/* Atalhos Rápidos */}
-                <div className="pt-4">
-                  <div className="mb-3 flex items-center justify-center gap-2 text-xs font-medium text-zinc-400">
-                    <Sparkles size={13} className="text-violet-400" />
-                    <span>Acesso Rápido</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {QUICK_BOOKMARKS.map((bm) => (
-                      <button
-                        key={bm.name}
-                        type="button"
-                        onClick={() => navigateTo(bm.url)}
-                        className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-surface-0/80 p-3 text-left transition hover:border-zinc-700 hover:bg-surface-1"
-                      >
-                        <div className="flex w-full items-center justify-between">
-                          <span className="text-xs font-medium text-zinc-200 group-hover:text-violet-300">
-                            {bm.name}
-                          </span>
-                          <Globe size={13} className="text-zinc-500 group-hover:text-zinc-300" />
-                        </div>
-                        <span className="mt-1 text-[11px] text-zinc-500 line-clamp-1">
-                          {bm.desc}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                  {QUICK_BOOKMARKS.map((bookmark) => (
+                    <button
+                      key={bookmark.name}
+                      type="button"
+                      onClick={() => navigateTo(bookmark.url)}
+                      className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-surface-1 p-3 text-left transition hover:border-violet-500/40 hover:bg-zinc-800/40"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-xs font-medium text-zinc-200 group-hover:text-violet-300">
+                          {bookmark.name}
                         </span>
-                      </button>
-                    ))}
-                  </div>
+                        <ExternalLink size={12} className="text-zinc-500 group-hover:text-violet-400" />
+                      </div>
+                      <span className="mt-1 line-clamp-1 text-[11px] text-zinc-500">
+                        {bookmark.desc}
+                      </span>
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* Destaque de Recursos */}
-                <div className="pt-6 border-t border-zinc-900 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
-                  <div className="rounded-lg border border-zinc-800/40 bg-zinc-900/30 p-3">
-                    <div className="flex items-center gap-2 text-violet-400 text-xs font-medium mb-1">
-                      <Bot size={14} />
-                      <span>Automação por IA</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Sessões ativas na API prontas para execução de cliques por agentes.
-                    </p>
+              {/* Recursos apresentados na main */}
+              <div className="mt-7 grid w-full max-w-2xl grid-cols-1 gap-3 border-t border-zinc-800/60 pt-5 text-left sm:grid-cols-3">
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-violet-400">
+                    <Bot size={14} />
+                    <span>Automação por IA</span>
                   </div>
-
-                  <div className="rounded-lg border border-zinc-800/40 bg-zinc-900/30 p-3">
-                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium mb-1">
-                      <ShieldCheck size={14} />
-                      <span>Motor Webview Real</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Chromium nativo sem restrições de CORS e X-Frame-Options no Desktop.
-                    </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Sessões da API disponíveis para interação com elementos da página.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-400">
+                    <ShieldCheck size={14} />
+                    <span>Webview no Electron</span>
                   </div>
-
-                  <div className="rounded-lg border border-zinc-800/40 bg-zinc-900/30 p-3">
-                    <div className="flex items-center gap-2 text-sky-400 text-xs font-medium mb-1">
-                      <Layers size={14} />
-                      <span>Árvore de Nós DOM</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Extração estruturada de elementos interativos e seletores CSS.
-                    </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Navegação desktop pelo Chromium nativo, sem as limitações de iframe.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-sky-400">
+                    <Layers size={14} />
+                    <span>Inspeção DOM</span>
                   </div>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Extração de seletores e elementos interativos da página.
+                  </p>
                 </div>
               </div>
             </div>
+          ) : isElectronApp ? (
+            /* MODO ELECTRON: WEBVIEW NATIVO */
+            <webview
+              ref={webviewRef}
+              src={activeTab.url}
+              className="h-full w-full bg-white"
+              allowpopups="true"
+            />
           ) : (
-            /* Visualizador de Página Ativa: Webview (Electron) vs Iframe (Web) */
-            <div className="flex h-full w-full flex-col">
-              {/* Barra de Metadados e Ações da Página */}
-              <div className="flex items-center justify-between border-b border-zinc-800/60 bg-surface-0 px-4 py-2 text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="flex items-center gap-1 text-emerald-400 font-mono text-[11px]">
-                    <ShieldCheck size={13} />
-                    {isElectronApp ? "Webview Nativo:" : "Sessão API:"}
+            /* MODO WEB: IFRAME COM FALLBACK */
+            <div className="relative h-full w-full flex flex-col">
+              <div className="flex shrink-0 items-center justify-between bg-surface-1 border-b border-zinc-800 px-3 py-1.5 text-[11px] text-zinc-400">
+                <div className="flex items-center gap-1.5 truncate">
+                  <AlertTriangle size={13} className="text-amber-400 shrink-0" />
+                  <span className="truncate">
+                    Alguns sites bloqueiam exibição em iframe (X-Frame-Options).
                   </span>
-                  <span className="font-mono text-zinc-400 text-[11px] truncate max-w-[200px]">
-                    {activeTab.id_session || "Local"}
-                  </span>
-                  <span className="text-zinc-600">|</span>
-                  <span className="font-mono text-zinc-300 truncate max-w-sm">
-                    {activeTab.url}
+                  <span className="hidden font-mono text-zinc-500 md:inline">
+                    Sessão: {activeTab.id_session || "Local"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsInspectorOpen(true)}
-                    className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[11px] text-violet-300 hover:bg-zinc-700"
+                    onClick={() => {
+                      setIsCaptureOpen(true);
+                      setCaptureUrl(activeTab.url);
+                    }}
+                    className="text-violet-400 hover:text-violet-300 font-medium"
                   >
-                    <Layers size={11} />
-                    Ver {domElements.length} nós DOM
+                    Capturar via Playwright
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => window.open(activeTab.url, "_blank")}
-                    className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-[11px] text-zinc-300 transition hover:bg-zinc-700"
+                  <a
+                    href={activeTab.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-zinc-300 hover:text-white underline"
                   >
-                    <ExternalLink size={12} />
-                    Abrir externamente
-                  </button>
+                    Abrir em nova aba
+                  </a>
                 </div>
               </div>
-
-              {/* Renderização Condicional: Webview no Electron vs Iframe no Web */}
-              {isElectronApp ? (
-                <div className="relative flex-1 w-full h-full bg-white">
-                  <webview
-                    ref={webviewRef}
-                    src={activeTab.url}
-                    className="h-full w-full"
-                    style={{ width: "100%", height: "100%", border: "none" }}
-                    allowpopups="true"
-                  />
-                </div>
-              ) : (
-                <div className="relative flex-1 w-full h-full flex flex-col">
-                  {/* Banner Educativo para Navegador Web Comum */}
-                  <div className="bg-amber-950/40 border-b border-amber-800/40 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle size={15} className="text-amber-400 shrink-0" />
-                      <span>
-                        <strong>Aviso de Compatibilidade Web:</strong> Sites como Google e GitHub bloqueiam exibição em <code>&lt;iframe&gt;</code> por segurança. Para navegar em <strong>qualquer site sem restrições</strong>, utilize o <strong>Osiris Desktop (Electron)</strong> ou abra externamente.
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => window.open(activeTab.url, "_blank")}
-                      className="ml-3 shrink-0 rounded bg-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/30 transition flex items-center gap-1"
-                    >
-                      <ExternalLink size={12} />
-                      Nova aba
-                    </button>
-                  </div>
-
-                  <div className="relative flex-1 w-full bg-white">
-                    <iframe
-                      title={activeTab.title}
-                      src={activeTab.url}
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                      className="h-full w-full border-none"
-                    />
-                  </div>
-                </div>
-              )}
+              <iframe
+                src={activeTab.url}
+                title={activeTab.title}
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                className="h-full w-full flex-1 border-0 bg-white"
+              />
             </div>
           )}
         </div>
 
-        {/* 4. Painel Lateral de Inspeção do DOM (Inspector Panel) */}
+        {/* PAINEL LATERAL 1: INSPEÇÃO DO DOM (Existente da main) */}
         {isInspectorOpen && (
           <aside className="w-80 md:w-96 border-l border-zinc-800/80 bg-surface-0 flex flex-col shrink-0">
             {/* Header do Inspector */}
@@ -858,28 +990,15 @@ export default function NavegadorPage() {
               <button
                 type="button"
                 onClick={() => setIsInspectorOpen(false)}
-                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
+                className="text-zinc-400 hover:text-white p-1 rounded"
               >
                 <X size={14} />
               </button>
             </div>
 
-            {/* Metadados da Sessão */}
-            <div className="p-3 border-b border-zinc-800/40 bg-zinc-950/40 space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-mono">
-                <span className="text-zinc-500">ID da Sessão:</span>
-                <span className="text-zinc-300 truncate max-w-[160px]">
-                  {activeTab.id_session || "Nenhuma sessão ativa"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[11px] font-mono">
-                <span className="text-zinc-500">Nós Extraídos:</span>
-                <span className="text-emerald-400 font-semibold">{domElements.length} elementos</span>
-              </div>
-
-              {/* Filtro de Busca */}
-              <div className="relative pt-1">
-                <Search size={13} className="absolute left-2.5 top-3.5 text-zinc-500" />
+            <div className="p-2 border-b border-zinc-800/60">
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-2 text-zinc-500" />
                 <input
                   type="text"
                   value={inspectorSearch}
@@ -890,7 +1009,6 @@ export default function NavegadorPage() {
               </div>
             </div>
 
-            {/* Lista de Elementos Detectados */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {filteredElements.length === 0 ? (
                 <div className="py-8 text-center text-xs text-zinc-500">
@@ -929,7 +1047,6 @@ export default function NavegadorPage() {
                         )}
                       </div>
 
-                      {/* Botão de Simulação de Clique */}
                       {el.clickable && (
                         <button
                           type="button"
@@ -957,14 +1074,12 @@ export default function NavegadorPage() {
                       </button>
                     </div>
 
-                    {/* Texto do Elemento */}
                     {el.text && (
                       <p className="mt-1.5 text-[11px] text-zinc-400 line-clamp-2">
                         "{el.text}"
                       </p>
                     )}
 
-                    {/* Link de Destino */}
                     {el.href && (
                       <p className="mt-1 text-[10px] font-mono text-zinc-500 truncate">
                         Destino: {el.href}
@@ -975,14 +1090,459 @@ export default function NavegadorPage() {
               )}
             </div>
 
-            {/* Rodapé Informativo */}
             <div className="border-t border-zinc-800/60 p-2.5 bg-zinc-950/60 text-[10px] text-zinc-500 flex items-center justify-between">
               <span>Sessão: {activeTab.title}</span>
               <span className="font-mono">API: v1.0</span>
             </div>
           </aside>
         )}
+
+        {/* PAINEL LATERAL 2: CAPTURA DE TELA & EXTRAÇÃO DE DADOS (Playwright) */}
+        {isCaptureOpen && (
+          <aside className="w-full sm:w-[500px] lg:w-[580px] shrink-0 border-l border-zinc-800/80 bg-surface-0 flex flex-col z-30 shadow-2xl overflow-hidden">
+            {/* Header do Painel de Captura */}
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-surface-1 px-4">
+              <div className="flex items-center gap-2">
+                <Camera size={15} className="text-violet-400" />
+                <h3 className="font-mono text-xs font-semibold text-zinc-100">
+                  Captura & Extração Estruturada
+                </h3>
+              </div>
+              <div className="flex items-center gap-1">
+                {captureResult && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleDownloadImage}
+                      title="Baixar imagem JPEG"
+                      className="flex h-7 items-center gap-1 rounded bg-zinc-800 px-2 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                    >
+                      <Image size={11} className="text-violet-400" />
+                      <span>JPEG</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadJson}
+                      title="Baixar JSON estruturado"
+                      className="flex h-7 items-center gap-1 rounded bg-violet-600/20 px-2 text-[11px] font-mono text-violet-300 hover:bg-violet-600/30"
+                    >
+                      <FileJson size={11} />
+                      <span>JSON</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsCaptureOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                  title="Fechar painel"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Input e Disparo de Captura */}
+            <div className="p-3 border-b border-zinc-800/60 bg-surface-1">
+              <form onSubmit={handleCapturePage} className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-zinc-500">
+                    <Globe size={13} />
+                  </span>
+                  <input
+                    type="text"
+                    value={captureUrl}
+                    onChange={(e) => setCaptureUrl(e.target.value)}
+                    placeholder="URL para captura (ex: https://example.com)"
+                    disabled={captureLoading}
+                    className="h-8 w-full rounded border border-zinc-800 bg-surface-0 pl-8 pr-2 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={captureLoading}
+                  className="inline-flex h-8 items-center gap-1.5 rounded bg-violet-600 px-3 text-xs font-semibold text-white shadow-sm hover:bg-violet-500 disabled:opacity-50 shrink-0"
+                >
+                  {captureLoading ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      <span>Capturando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={12} />
+                      <span>Capturar</span>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Feedbacks de Erro / Sucesso */}
+              {captureError && (
+                <div className="mt-2 flex items-center gap-1.5 rounded border border-red-500/30 bg-red-500/10 p-2 text-[11px] text-red-300">
+                  <AlertCircle size={13} className="shrink-0 text-red-400" />
+                  <span className="flex-1">{captureError}</span>
+                </div>
+              )}
+              {captureSuccess && !captureError && (
+                <div className="mt-2 flex items-center gap-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-[11px] text-emerald-300">
+                  <CheckCircle2 size={13} className="shrink-0 text-emerald-400" />
+                  <span className="flex-1 font-mono">{captureSuccess}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Conteúdo da Captura */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {captureLoading ? (
+                <div className="flex h-64 flex-col items-center justify-center text-center">
+                  <Loader2 size={24} className="animate-spin text-violet-400 mb-2" />
+                  <p className="text-xs font-medium text-zinc-300">Iniciando Chromium em modo headless...</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">Renderizando DOM e gerando screenshot JPEG.</p>
+                </div>
+              ) : !captureResult ? (
+                <div className="flex h-64 flex-col items-center justify-center text-center p-4">
+                  <Camera size={32} className="text-zinc-600 mb-2" />
+                  <p className="text-xs font-medium text-zinc-400">Nenhuma captura realizada nesta sessão</p>
+                  <p className="text-[11px] text-zinc-600 mt-1">
+                    Insira a URL acima ou navegue até uma página e clique em Capturar.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Preview da Screenshot */}
+                  <div className="rounded-lg border border-zinc-800 bg-surface-0 overflow-hidden">
+                    <div className="flex h-8 items-center justify-between border-b border-zinc-800 bg-surface-1 px-3 text-[11px] font-mono text-zinc-400">
+                      <div className="flex items-center gap-1.5">
+                        <Image size={12} className="text-violet-400" />
+                        <span>Screenshot JPEG</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowFullImageModal(true)}
+                          className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:text-white"
+                          title="Ampliar captura"
+                        >
+                          <Maximize2 size={11} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadImage}
+                          className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:text-white"
+                          title="Baixar imagem"
+                        >
+                          <Download size={11} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-auto p-2 bg-black/40">
+                      <img
+                        src={`data:${captureResult.screenshot.mime_type};base64,${captureResult.screenshot.base64}`}
+                        alt="Screenshot capturada"
+                        className="w-full rounded border border-zinc-800/80 object-contain cursor-pointer"
+                        onClick={() => setShowFullImageModal(true)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Abas de Dados Estruturados */}
+                  <div className="rounded-lg border border-zinc-800 bg-surface-0 overflow-hidden">
+                    {/* Tab Navigation */}
+                    <div className="flex h-8 items-center gap-1 border-b border-zinc-800 bg-surface-1 px-2 overflow-x-auto">
+                      <TabButton
+                        active={captureSubTab === "overview"}
+                        onClick={() => setCaptureSubTab("overview")}
+                        icon={Info}
+                        label="Geral"
+                      />
+                      <TabButton
+                        active={captureSubTab === "headings"}
+                        onClick={() => setCaptureSubTab("headings")}
+                        icon={Heading}
+                        label="Títulos"
+                        badge={headingsList.length}
+                      />
+                      <TabButton
+                        active={captureSubTab === "links"}
+                        onClick={() => setCaptureSubTab("links")}
+                        icon={ExternalLink}
+                        label="Links"
+                        badge={linksList.length}
+                      />
+                      <TabButton
+                        active={captureSubTab === "tables"}
+                        onClick={() => setCaptureSubTab("tables")}
+                        icon={TableIcon}
+                        label="Tabelas"
+                        badge={tablesList.length}
+                      />
+                      <TabButton
+                        active={captureSubTab === "text"}
+                        onClick={() => setCaptureSubTab("text")}
+                        icon={AlignLeft}
+                        label="Texto"
+                      />
+                      <TabButton
+                        active={captureSubTab === "json"}
+                        onClick={() => setCaptureSubTab("json")}
+                        icon={FileJson}
+                        label="JSON"
+                      />
+                    </div>
+
+                    {/* Conteúdo da Aba */}
+                    <div className="p-3 text-xs max-h-72 overflow-y-auto">
+                      {captureSubTab === "overview" && (
+                        <div className="space-y-3">
+                          <div>
+                            <span className="text-[10px] font-mono uppercase text-zinc-500">Título</span>
+                            <p className="mt-0.5 rounded bg-surface-1 p-2 text-zinc-200 font-medium">
+                              {captureResult.data?.title || "(Sem título)"}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono uppercase text-zinc-500">Descrição</span>
+                            <p className="mt-0.5 rounded bg-surface-1 p-2 text-zinc-400 italic">
+                              {captureResult.data?.description || "(Sem meta description)"}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <MetricCard label="Status HTTP" value={captureResult.status_code} color="text-emerald-400" />
+                            <MetricCard label="Headings" value={headingsList.length} color="text-violet-400" />
+                            <MetricCard label="Links" value={linksList.length} color="text-cyan-400" />
+                          </div>
+                        </div>
+                      )}
+
+                      {captureSubTab === "headings" && (
+                        <div className="space-y-1.5">
+                          {headingsList.length === 0 ? (
+                            <EmptyState message="Nenhum título encontrado." />
+                          ) : (
+                            headingsList.map((h, idx) => (
+                              <div key={idx} className="flex items-start gap-2 rounded bg-surface-1 p-2">
+                                <span
+                                  className={`rounded px-1 py-0.2 font-mono text-[9px] font-bold uppercase ${
+                                    h.level === "h1"
+                                      ? "bg-violet-600/30 text-violet-300"
+                                      : h.level === "h2"
+                                      ? "bg-cyan-600/30 text-cyan-300"
+                                      : "bg-zinc-800 text-zinc-400"
+                                  }`}
+                                >
+                                  {h.level}
+                                </span>
+                                <span className="flex-1 text-zinc-200">{h.text}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {captureSubTab === "links" && (
+                        <div className="space-y-1.5">
+                          {linksList.length === 0 ? (
+                            <EmptyState message="Nenhum link público encontrado." />
+                          ) : (
+                            linksList.map((link, idx) => (
+                              <div key={idx} className="flex items-center justify-between gap-2 rounded bg-surface-1 p-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-zinc-200">{link.text || "(Link)"}</p>
+                                  <p className="truncate font-mono text-[10px] text-zinc-500">{link.url}</p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(link.url, idx)}
+                                    className="p-1 text-zinc-500 hover:text-zinc-200"
+                                    title="Copiar link"
+                                  >
+                                    {copiedLink === idx ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                  </button>
+                                  <a
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-1 text-zinc-500 hover:text-violet-400"
+                                    title="Abrir"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {captureSubTab === "tables" && (
+                        <div className="space-y-2">
+                          {tablesList.length === 0 ? (
+                            <EmptyState message="Nenhuma tabela HTML encontrada." />
+                          ) : (
+                            tablesList.map((tbl, tIdx) => (
+                              <div key={tIdx} className="rounded border border-zinc-800 overflow-x-auto p-1 bg-surface-1">
+                                <table className="w-full text-left font-mono text-[11px]">
+                                  <tbody>
+                                    {tbl.map((row, rIdx) => (
+                                      <tr key={rIdx} className="border-b border-zinc-800/40 last:border-0">
+                                        {row.map((c, cIdx) => (
+                                          <td key={cIdx} className="px-2 py-1 text-zinc-300">
+                                            {c || "-"}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {captureSubTab === "text" && (
+                        <div>
+                          <div className="mb-1 flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                            <span>{extractedText.length} caracteres</span>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(extractedText)}
+                              className="text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                            >
+                              {copiedText ? <Check size={11} /> : <Copy size={11} />}
+                              <span>{copiedText ? "Copiado!" : "Copiar"}</span>
+                            </button>
+                          </div>
+                          <pre className="whitespace-pre-wrap rounded bg-surface-1 p-2 font-mono text-[11px] leading-4 text-zinc-300 max-h-56 overflow-auto">
+                            {extractedText || "(Sem texto visível)"}
+                          </pre>
+                        </div>
+                      )}
+
+                      {captureSubTab === "json" && (
+                        <div>
+                          <div className="mb-1 flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                            <span>JSON Estruturado</span>
+                            <button
+                              type="button"
+                              onClick={handleDownloadJson}
+                              className="text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                            >
+                              <Download size={11} />
+                              <span>Baixar</span>
+                            </button>
+                          </div>
+                          <pre className="rounded bg-surface-1 p-2 font-mono text-[10px] leading-4 text-zinc-300 max-h-56 overflow-auto">
+                            {JSON.stringify(
+                              {
+                                url: captureResult.url,
+                                status_code: captureResult.status_code,
+                                captured_at: captureResult.captured_at,
+                                data: captureResult.data,
+                              },
+                              null,
+                              2
+                            )}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </aside>
+        )}
       </div>
+
+      {/* MODAL FULLSCREEN PARA SCREENSHOT */}
+      {showFullImageModal && captureResult?.screenshot?.base64 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6 backdrop-blur-sm select-none"
+          onClick={() => setShowFullImageModal(false)}
+        >
+          <div
+            className="relative flex max-h-full max-w-5xl flex-col rounded-xl border border-zinc-700 bg-zinc-950 p-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex h-10 items-center justify-between px-3 text-xs font-mono text-zinc-300">
+              <span className="truncate">{captureResult.url}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadImage}
+                  className="rounded bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-500"
+                >
+                  Download JPEG
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFullImageModal(false)}
+                  className="rounded bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-white"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <div className="max-h-[80vh] overflow-auto p-1">
+              <img
+                src={`data:${captureResult.screenshot.mime_type};base64,${captureResult.screenshot.base64}`}
+                alt="Captura ampliada"
+                className="w-full rounded"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// COMPONENTES AUXILIARES
+// =========================================================
+
+function TabButton({ active, onClick, icon: Icon, label, badge }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-6 items-center gap-1 rounded px-2 text-[11px] font-mono transition ${
+        active
+          ? "bg-zinc-800 text-zinc-100 font-medium"
+          : "text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-300"
+      }`}
+    >
+      <Icon size={12} className={active ? "text-violet-400" : "text-zinc-500"} />
+      <span>{label}</span>
+      {badge !== undefined && (
+        <span
+          className={`ml-0.5 rounded px-1 text-[9px] ${
+            active ? "bg-violet-600/30 text-violet-300" : "bg-zinc-800 text-zinc-500"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function MetricCard({ label, value, color }) {
+  return (
+    <div className="rounded border border-zinc-800 bg-surface-1 p-2 text-center">
+      <p className="text-[9px] font-mono uppercase text-zinc-500">{label}</p>
+      <p className={`mt-0.5 font-mono text-base font-bold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function EmptyState({ message }) {
+  return (
+    <div className="flex h-24 items-center justify-center text-center text-xs text-zinc-500">
+      {message}
     </div>
   );
 }

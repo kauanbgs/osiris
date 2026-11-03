@@ -28,6 +28,7 @@ export default function App() {
             <Route element={<DefaultLayout />}>
               <Route path="/home" element={<Home />} />
               <Route path="/home/:id" element={<Home />} />
+              <Route path="/navegador" element={<Navegador />} />
               <Route path="/modelos" element={<Modelos />} />
               <Route path="/arquivos" element={<Arquivos />} />
               <Route path="/workflow" element={<Workflow />} />

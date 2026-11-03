@@ -1,5 +1,10 @@
 const crypto = require("crypto");
-const bcrypt = require("bcryptjs");
+let bcrypt;
+try {
+  bcrypt = require("bcryptjs");
+} catch {
+  bcrypt = require("bcrypt");
+}
 const jwt = require("jsonwebtoken");
 const pool = require("../db/connect");
 const emailAlreadyExists = require("../validators/validateEmail");
