@@ -1,6 +1,7 @@
 
 const BrowserService = require("../services/browserService");
 const BrowserCaptureService = require("../services/browserCaptureService");
+const { BadRequestError } = require("../errors");
 
 class BrowserController {
 
@@ -10,12 +11,7 @@ class BrowserController {
       const { url } = req.body || {};
 
       if (typeof url !== "string" || !url.trim()) {
-        return res.status(400).json({
-          error: {
-            message: "Informe uma URL válida.",
-            statusCode: 400,
-          },
-        });
+        throw new BadRequestError("Informe uma URL válida.");
       }
 
       const result = await BrowserCaptureService.capturePage(url);

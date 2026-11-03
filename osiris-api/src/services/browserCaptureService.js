@@ -1,4 +1,3 @@
-
 const dns = require("node:dns").promises;
 const net = require("node:net");
 const { chromium } = require("playwright");
@@ -144,35 +143,75 @@ async function capturePage(rawUrl) {
 
     const page = await context.newPage();
 
-    page.setDefaultTimeout(12000);s
+    page.setDefaultTimeout(12000);
 
     // Bloqueia destinos que não passam na validação.
     await page.route("**/*", async (route) => {
-      try {
-        await assertPublicDestination(
-          route.request().url()
-        );
+      const requestUrl = route.request().url();
 
+      // Permite recursos locais embutidos em memória (imagens inline, fontes, svg)
+      if (
+        requestUrl.startsWith("data:") ||
+        requestUrl.startsWith("blob:") ||
+        requestUrl.startsWith("about:")
+      ) {
+        return route.continue();
+      }
+
+      try {
+        await assertPublicDestination(requestUrl);
         await route.continue();
       } catch {
         await route.abort("blockedbyclient");
       }
     });
 
-    // Abre a página.
-    const response = await page.goto(parsed.href, {
-      waitUntil: "domcontentloaded",
-      timeout: 20000,
-    });
-
-    if (!response) {
-      throw new Error(
-        "A página não retornou uma resposta HTTP."
+    // Abre a página com tratamento operacional de timeout e erros de rede.
+    let response;
+    try {
+      response = await page.goto(parsed.href, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+    } catch (navError) {
+      if (
+        navError.name === "TimeoutError" ||
+        navError.message?.includes("Timeout")
+      ) {
+        throw new BadRequestError(
+          "Tempo limite esgotado ao tentar carregar a página."
+        );
+      }
+      throw new BadRequestError(
+        `Falha ao conectar à página: ${navError.message || "Erro de conexão"}`
       );
     }
 
+    if (!response) {
+      throw new BadRequestError(
+        "A página não retornou uma resposta HTTP válida."
+      );
+    }
+
+    // Proteção contra DNS rebinding: confere o IP efetivamente conectado pelo Chromium.
+    try {
+      const serverAddr = await response.serverAddr();
+      if (serverAddr?.ipAddress) {
+        const connectedIp = serverAddr.ipAddress.replace(/^\[|\]$/g, "");
+        if (isPrivateIp(connectedIp)) {
+          throw new BadRequestError(
+            "O endereço de destino resolveu para uma rede privada ou reservada."
+          );
+        }
+      }
+    } catch (ipErr) {
+      if (ipErr instanceof BadRequestError) {
+        throw ipErr;
+      }
+    }
+
     if (response.status() >= 400) {
-      throw new Error(
+      throw new BadRequestError(
         `A página retornou HTTP ${response.status()}.`
       );
     }
@@ -266,7 +305,7 @@ async function capturePage(rawUrl) {
     });
 
     if (screenshot.length > MAX_BYTES) {
-      throw new Error(
+      throw new BadRequestError(
         "A imagem gerada é grande demais."
       );
     }
@@ -295,4 +334,5 @@ module.exports = {
   capturePage,
   validatePublicUrl,
   isPrivateIp,
+  assertPublicDestination,
 };
