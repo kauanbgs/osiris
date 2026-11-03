@@ -162,6 +162,7 @@ async function runMainAgent(
   let onChunk = null;
   let onStatus = null;
   let memory = [];
+  let signal;
 
   // ========================================
   // 1. NORMALIZA PAYLOAD
@@ -188,6 +189,8 @@ async function runMainAgent(
     if (payload.memory) {
       memory = payload.memory;
     }
+
+    signal = payload.signal;
   } else {
     promptText = String(payload || "");
   }
@@ -245,6 +248,7 @@ async function runMainAgent(
         onChunk,
         memory,
         includeRole: false,
+        signal,
       },
     );
 
@@ -268,6 +272,8 @@ async function runMainAgent(
 
     return response;
   } catch (error) {
+    if (error.name === "AbortError") throw error;
+
     console.error(
       "[ORCHESTRATOR] Erro ao executar Osiris:",
       error,

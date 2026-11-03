@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 5000;
 async function startServer() {
   try {
     await testConnect();
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`API iniciada na porta ${PORT}.`);
     });
   } catch (error) {

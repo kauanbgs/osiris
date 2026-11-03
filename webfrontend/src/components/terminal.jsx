@@ -4,8 +4,16 @@ import { FitAddon } from "@xterm/addon-fit";
 
 import "@xterm/xterm/css/xterm.css";
 
-export default function Terminal({ terminalId, mode }) {
+function stripTerminalControlSequences(value) {
+  return String(value)
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, "");
+}
+
+export default function Terminal({ terminalId, mode, initialContent = "", onContentChange }) {
   const terminalRef = useRef(null);
+  const xtermRef = useRef(null);
+  const savedContentRef = useRef(initialContent);
   
 
   useEffect(() => {
@@ -28,6 +36,9 @@ export default function Terminal({ terminalId, mode }) {
     xterm.loadAddon(fitAddon);
 
     xterm.open(terminalRef.current);
+    if (initialContent) xterm.write(initialContent);
+    xtermRef.current = xterm;
+    savedContentRef.current = initialContent;
 
     // Ensure layout dimensions are computed before initial fit
     const fitTimer = setTimeout(() => {
@@ -55,6 +66,16 @@ export default function Terminal({ terminalId, mode }) {
       ? window.electronAPI.onTerminalData((targetId, data) => {
           if (targetId === terminalId) {
             xterm.write(data);
+            savedContentRef.current = (savedContentRef.current + stripTerminalControlSequences(data)).slice(-4000);
+            onContentChange?.(savedContentRef.current);
+          }
+        })
+      : null;
+
+    const removeExitListener = window.electronAPI?.onTerminalExit
+      ? window.electronAPI.onTerminalExit((targetId, exitCode) => {
+          if (targetId === terminalId) {
+            xterm.write(String.fromCharCode(13, 10, 27) + "[90m[processo encerrado" + (exitCode ? " com codigo " + exitCode : "") + "]" + String.fromCharCode(27) + "[0m" + String.fromCharCode(13, 10));
           }
         })
       : null;
@@ -83,12 +104,23 @@ export default function Terminal({ terminalId, mode }) {
       resizeObserver.disconnect();
       inputDisposable.dispose();
       removeDataListener?.();
+      removeExitListener?.();
+      xtermRef.current = null;
       if (window.electronAPI?.terminalClose) {
         window.electronAPI.terminalClose(terminalId);
       }
       xterm.dispose();
     };
   }, [terminalId, mode]);
+
+  useEffect(() => {
+    const xterm = xtermRef.current;
+    if (!xterm || initialContent === savedContentRef.current) return;
+
+    savedContentRef.current = initialContent;
+    xterm.reset();
+    if (initialContent) xterm.write(initialContent);
+  }, [initialContent]);
 
   return <div ref={terminalRef} className="h-full w-full overflow-hidden" />;
 }

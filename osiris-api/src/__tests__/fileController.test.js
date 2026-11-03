@@ -2,6 +2,7 @@ jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const {
   app,
   auth,
@@ -61,6 +62,97 @@ describe("FileController", () => {
     expect(res.status).toBe(200);
     expect(res.body.files).toHaveLength(1);
     expect(res.body.files[0].name).toBe("test.txt");
+  });
+
+  it("stores the selected desktop workspace for the signed-in user", async () => {
+    mockQueries([[]], [{ insertId: 12 }]);
+
+    const res = await request(app)
+      .post("/api/osiris/file/workspace")
+      .set(auth())
+      .send({ folderPath: path.resolve(__dirname) });
+
+    expect(res.status).toBe(200);
+    expect(res.body.folderName).toBe(path.basename(__dirname));
+  });
+
+  it("returns current names from the saved desktop workspace", async () => {
+    const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "osiris-workspace-"));
+    fs.mkdirSync(path.join(workspacePath, "docs"));
+    fs.writeFileSync(path.join(workspacePath, "docs", "readme.txt"), "sample");
+    mockQueries([[{ value: workspacePath }]]);
+
+    try {
+      const res = await request(app)
+        .get("/api/osiris/file/workspace")
+        .set(auth());
+
+      expect(res.status).toBe(200);
+      expect(res.body.workspace.folderName).toBe(path.basename(workspacePath));
+      expect(res.body.workspace.files).toContainEqual({
+        name: "readme.txt",
+        relativePath: "docs/readme.txt",
+        type: "file",
+      });
+    } finally {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
+  });
+
+  it("reads and saves text files inside the shared workspace", async () => {
+    const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "osiris-workspace-edit-"));
+    const filePath = path.join(workspacePath, "notes.txt");
+    fs.writeFileSync(filePath, "before", "utf8");
+    try {
+      mockQueries([[{ value: workspacePath }]]);
+      const read = await request(app)
+        .get("/api/osiris/file/workspace/content")
+        .query({ path: "notes.txt" })
+        .set(auth());
+      expect(read.status).toBe(200);
+      expect(read.body.fileContent).toBe("before");
+
+      mockQueries([[{ value: workspacePath }]]);
+      const saved = await request(app)
+        .put("/api/osiris/file/workspace/content")
+        .set(auth())
+        .send({ path: filePath, content: "after" });
+      expect(saved.status).toBe(200);
+      expect(fs.readFileSync(filePath, "utf8")).toBe("after");
+    } finally {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
+  });
+
+  it("does not allow workspace paths to escape the selected folder", async () => {
+    const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "osiris-workspace-safe-"));
+    try {
+      mockQueries([[{ value: workspacePath }]]);
+      const res = await request(app)
+        .get("/api/osiris/file/workspace/content")
+        .query({ path: "../outside.txt" })
+        .set(auth());
+      expect(res.status).toBe(400);
+    } finally {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
+  });
+
+  it("deletes a file from the selected workspace", async () => {
+    const workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "osiris-workspace-delete-"));
+    const filePath = path.join(workspacePath, "remove.txt");
+    fs.writeFileSync(filePath, "remove me", "utf8");
+    try {
+      mockQueries([[{ value: workspacePath }]]);
+      const res = await request(app)
+        .delete("/api/osiris/file/workspace/item")
+        .query({ path: "remove.txt" })
+        .set(auth());
+      expect(res.status).toBe(200);
+      expect(fs.existsSync(filePath)).toBe(false);
+    } finally {
+      fs.rmSync(workspacePath, { recursive: true, force: true });
+    }
   });
 
   it("gets a file by id", async () => {

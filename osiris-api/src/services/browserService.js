@@ -36,9 +36,9 @@ class BrowserService {
       dom_tree: {
         title: initialUrl === "about:blank" ? "Blank Page" : "Web Page",
         elements: [
-          { selector: "body", text: "Page Content", clickable: false },
-          { selector: "button#submit", text: "Submit", clickable: true },
-          { selector: "a.link", text: "Documentation", clickable: true, href: "https://example.com/docs" },
+          { id: "el-1", selector: "body", text: "Page Content", tag: "body", clickable: false, type: "container" },
+          { id: "el-2", selector: "button#submit", text: "Submit", tag: "button", clickable: true, type: "button", x: 100, y: 50 },
+          { id: "el-3", selector: "a.link", text: "Documentation", tag: "a", clickable: true, type: "link", href: "https://example.com/docs", x: 200, y: 50 },
         ],
       },
       created_at: new Date().toISOString(),
@@ -47,6 +47,26 @@ class BrowserService {
 
     this.sessions.set(sessionId, session);
     return session;
+  }
+
+  static listUserSessions(userId) {
+    this.cleanupExpiredSessions();
+    const userSessions = [];
+    for (const session of this.sessions.values()) {
+      if (session.fk_id_user === userId && session.status === "active") {
+        userSessions.push({
+          id_session: session.id_session,
+          current_url: session.current_url,
+          title: session.title,
+          status: session.status,
+          history_length: session.history ? session.history.length : 1,
+          elements_count: session.dom_tree?.elements?.length || 0,
+          created_at: session.created_at,
+          updated_at: session.updated_at,
+        });
+      }
+    }
+    return userSessions;
   }
 
   static getSession(sessionId, userId) {
@@ -94,10 +114,12 @@ class BrowserService {
     session.dom_tree = {
       title,
       elements: [
-        { selector: "h1", text: `Welcome to ${parsed.hostname}`, clickable: false },
-        { selector: "button#login-btn", text: "Login", clickable: true },
-        { selector: "a#nav-docs", text: "Docs", clickable: true, href: `${targetUrl}/docs` },
-        { selector: "input#search", text: "", clickable: true },
+        { id: "el-1", selector: "h1", text: `Welcome to ${parsed.hostname}`, tag: "h1", clickable: false, type: "heading" },
+        { id: "el-2", selector: "button#login-btn", text: "Login", tag: "button", clickable: true, type: "button", x: 120, y: 40 },
+        { id: "el-3", selector: "a#nav-docs", text: "Docs", tag: "a", clickable: true, type: "link", href: `${targetUrl}/docs`, x: 220, y: 40 },
+        { id: "el-4", selector: "input#search", text: "", tag: "input", clickable: true, type: "input", placeholder: "Search...", x: 320, y: 40 },
+        { id: "el-5", selector: "button#submit-btn", text: "Search", tag: "button", clickable: true, type: "button", x: 440, y: 40 },
+        { id: "el-6", selector: "a#nav-home", text: "Home", tag: "a", clickable: true, type: "link", href: `${targetUrl}`, x: 50, y: 40 },
       ],
     };
 
@@ -107,6 +129,8 @@ class BrowserService {
       current_url: targetUrl,
       title,
       history_length: session.history.length,
+      elements_count: session.dom_tree.elements.length,
+      dom_tree: session.dom_tree,
     };
   }
 

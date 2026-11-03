@@ -20,6 +20,7 @@ class MemoryController {
         `INSERT INTO user_memory
           (content, importance, fk_id_user)
          VALUES (?, ?, ?)`,
+
         [content.trim(), normalizedImportance, userId],
       );
 

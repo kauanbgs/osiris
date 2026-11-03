@@ -1,0 +1,87 @@
+[
+  {
+    "name": "Gemma 3 1B",
+    "filename": "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+    "size": "~0.8 GB",
+    "ram": "4 GB de RAM",
+    "tags": [
+      "Mínimo",
+      "Chat"
+    ],
+    "description": "O menor da lista. Serve para testar o app em máquina fraca e responder coisas curtas."
+  },
+  {
+    "name": "Qwen2.5 Coder 1.5B",
+    "filename": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+    "size": "~1.1 GB",
+    "ram": "4 GB de RAM",
+    "tags": [
+      "Mínimo",
+      "Código"
+    ],
+    "description": "Código em máquina modesta: completa e explica trechos, mas não conduz um agente sozinho."
+  },
+  {
+    "name": "Qwen3 1.7B",
+    "filename": "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+    "size": "~1.1 GB",
+    "ram": "4 GB de RAM",
+    "tags": [
+      "Rápido",
+      "Chat"
+    ],
+    "description": "Rápido em qualquer máquina, inclusive sem placa de vídeo. É o começo recomendado."
+  },
+  {
+    "name": "Llama 3.2 3B",
+    "filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    "size": "~2 GB",
+    "ram": "8 GB de RAM",
+    "tags": [
+      "Equilibrado",
+      "Chat"
+    ],
+    "description": "O compacto da Meta. Bom de conversa geral, leve para o disco."
+  },
+  {
+    "name": "Phi-4 Mini",
+    "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+    "size": "~2.5 GB",
+    "ram": "8 GB de RAM",
+    "tags": [
+      "Equilibrado",
+      "Raciocínio"
+    ],
+    "description": "O pequeno da Microsoft, forte em raciocínio para o tamanho que tem."
+  },
+  {
+    "name": "Gemma 3 4B",
+    "filename": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+    "size": "~2.5 GB",
+    "ram": "8 GB de RAM",
+    "tags": [
+      "Equilibrado",
+      "Chat"
+    ],
+    "description": "O Gemma 3 do Google, com boa escrita em português."
+  },
+  {
+    "name": "Qwen3 4B",
+    "filename": "Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+    "size": "~2.5 GB",
+    "ram": "8 GB de RAM",
+    "tags": [
+      "Equilibrado",
+      "Chat",
+      "Ferramentas"
+    ],
+    "description": "Modelo intermediário equilibrado com suporte avançado a chamadas de funções."
+  }
+]

@@ -7,6 +7,7 @@ const {
   request,
   resetDatabaseMock,
 } = require("./helpers/apiTest");
+const AgentExecutionService = require("../services/agentExecutionService");
 
 beforeEach(resetDatabaseMock);
 
@@ -80,12 +81,27 @@ describe("AgentController", () => {
   });
 
   it("executes an owned agent", async () => {
-    mockQueries([[agent]], [{ affectedRows: 1 }], [{ affectedRows: 1 }]);
+    process.env.LLM_ENDPOINT = "http://llm.test/v1/chat/completions";
+    const llmSpy = jest
+      .spyOn(AgentExecutionService, "callLlmEndpoint")
+      .mockResolvedValue(`Summary from ${agent.name}`);
+
+    mockQueries(
+      [[agent]],
+      [[]],
+      [{ insertId: 1 }],
+      [{ affectedRows: 1 }],
+      [{ affectedRows: 1 }],
+      [{ affectedRows: 1 }],
+    );
 
     const response = await request(app).post("/api/osiris/agent/5/execute").set(auth()).send({ input: "Summarize this" });
 
     expect(response.status).toBe(200);
     expect(response.body.execution.output).toContain(agent.name);
     expect(response.body.execution.metrics.input_tokens).toBeGreaterThan(0);
+
+    llmSpy.mockRestore();
+    delete process.env.LLM_ENDPOINT;
   });
 });

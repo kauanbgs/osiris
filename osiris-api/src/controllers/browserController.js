@@ -1,4 +1,3 @@
-
 const BrowserService = require("../services/browserService");
 const BrowserCaptureService = require("../services/browserCaptureService");
 const { BadRequestError } = require("../errors");
@@ -40,6 +39,17 @@ class BrowserController {
         message: "Browser session created successfully.",
         session,
       });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // Listar sessões do usuário
+  static async listSessions(req, res, next) {
+    try {
+      const userId = Number(req.userId);
+      const sessions = BrowserService.listUserSessions(userId);
+      return res.status(200).json({ sessions });
     } catch (error) {
       return next(error);
     }

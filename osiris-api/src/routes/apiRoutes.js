@@ -61,6 +61,13 @@ router.get("/agent/:id_agent", verifyJWT, AgentController.getById);
 router.put("/agent/:id_agent", verifyJWT, AgentController.update);
 router.delete("/agent/:id_agent", verifyJWT, AgentController.delete);
 
+// Execution log
+router.get(
+  "/agent/:id_agent/execution-log",
+  verifyJWT,
+  AgentController.getExecutionLog,
+);
+
 // Agent tools management
 router.post("/agent/:id_agent/tool", verifyJWT, AgentController.addTool);
 router.delete(
@@ -71,6 +78,17 @@ router.delete(
 
 // Agent execution
 router.post("/agent/:id_agent/execute", verifyJWT, AgentController.execute);
+router.post("/agent/:id_agent/pause", verifyJWT, AgentController.pause);
+router.post("/agent/:id_agent/resume", verifyJWT, AgentController.resume);
+router.post("/agent/:id_agent/cancel", verifyJWT, AgentController.cancel);
+
+//agent file management
+router.post("/agent/:id_agent/file", verifyJWT, AgentController.addFile);
+router.delete(
+  "/agent/:id_agent/file/:id_file",
+  verifyJWT,
+  AgentController.removeFile,
+);
 
 // Agent memory management
 router.post("/agent/:id_agent/memory", verifyJWT, MemoryIAController.create);
@@ -111,6 +129,8 @@ router.put("/memory/:id_memory", verifyJWT, MemoryController.update);
 router.delete("/memory/:id_memory", verifyJWT, MemoryController.delete);
 
 // Workflow routes
+router.get("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.getCanvas);
+router.put("/workflow/:id_workflow/canvas", verifyJWT, WorkflowController.saveCanvas);
 router.post("/workflow", verifyJWT, WorkflowController.create);
 router.get("/workflow", verifyJWT, WorkflowController.list);
 router.get("/workflow/:id_workflow", verifyJWT, WorkflowController.getById);
@@ -144,12 +164,18 @@ router.delete(
 );
 
 // File routes (standard & Notion CT18/RF10 aliases)
+router.post("/file/workspace", verifyJWT, FileController.saveWorkspace);
+router.get("/file/workspace", verifyJWT, FileController.getWorkspace);
+router.get("/file/workspace/content", verifyJWT, FileController.readWorkspaceFile);
+router.put("/file/workspace/content", verifyJWT, FileController.writeWorkspaceFile);
+router.delete("/file/workspace/item", verifyJWT, FileController.deleteWorkspaceFile);
 router.post(
   "/file",
   verifyJWT,
   upload.single("file"),
   FileController.upload,
 );
+router.post("/file", verifyJWT, upload.single("file"), FileController.upload);
 router.post(
   "/arquivos",
   verifyJWT,
@@ -157,6 +183,8 @@ router.post(
   FileController.upload,
 );
 router.get("/file", verifyJWT, FileController.list);
+router.post("/file/logs", verifyJWT, FileController.createLog);
+router.get("/file/logs", verifyJWT, FileController.listLogs);
 router.get("/file/:id_file", verifyJWT, FileController.getById);
 router.get("/file/:id_file/download", verifyJWT, FileController.download);
 router.delete("/file/:id_file", verifyJWT, FileController.delete);
@@ -165,12 +193,25 @@ router.delete("/file/:id_file", verifyJWT, FileController.delete);
 router.get("/system/info", verifyJWT, SystemController.getInfo);
 router.post("/system/metrics", verifyJWT, SystemController.recordMetric);
 router.get("/system/metrics", verifyJWT, SystemController.listMetrics);
-router.get("/system/metrics/dashboard", verifyJWT, SystemController.getDashboard);
+router.get(
+  "/system/metrics/dashboard",
+  verifyJWT,
+  SystemController.getDashboard,
+);
 
 // Browser navigation engine & interaction for agents
 router.post("/browser/session", verifyJWT, BrowserController.createSession);
-router.get("/browser/session/:id_session", verifyJWT, BrowserController.getSession);
-router.delete("/browser/session/:id_session", verifyJWT, BrowserController.closeSession);
+router.get("/browser/sessions", verifyJWT, BrowserController.listSessions);
+router.get(
+  "/browser/session/:id_session",
+  verifyJWT,
+  BrowserController.getSession,
+);
+router.delete(
+  "/browser/session/:id_session",
+  verifyJWT,
+  BrowserController.closeSession,
+);
 router.post("/browser/navigate", verifyJWT, BrowserController.navigate);
 router.post("/browser/click", verifyJWT, BrowserController.click);
 

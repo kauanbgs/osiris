@@ -76,11 +76,11 @@ export default function ChatsScreen({ navigation }) {
   }, [navigation, fetchChats]);
 
   function handleOpenChat(chat) {
-    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title });
+    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title }, { pop: true });
   }
 
   function handleNewChat() {
-    navigation.navigate('HomeScreen', { chatId: null, chatTitle: null });
+    navigation.navigate('HomeScreen', { chatId: null, chatTitle: null, newChat: Date.now() }, { pop: true });
   }
 
   function handleDeleteChat(chat) {
@@ -104,7 +104,6 @@ export default function ChatsScreen({ navigation }) {
       ],
     );
   }
-
 
   return (
     <SafeAreaView style={styles.safeArea}>

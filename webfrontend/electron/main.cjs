@@ -4,6 +4,13 @@ const os = require("os");
 const fs = require("fs");
 const pty = require("node-pty");
 const express = require("express");
+const { createWorkflowStore } = require("./workflowStore.cjs");
+const workspaceFs = require("./workspaceFs.cjs");
+
+const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
+ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
+ipcMain.handle("workflow:save", (_event, owner, chatId, workflow) => workflowStore().save(owner, chatId, workflow));
+ipcMain.handle("workflow:delete", (_event, owner, chatId) => workflowStore().remove(owner, chatId));
 
 
 // Habilita Web Speech API e acesso ao microfone no Chromium do Electron
@@ -19,7 +26,30 @@ let currentSession = null;
 let activeModelPath = null;
 const activeDownloads = new Map();
 
-async function runLlamaPrompt(payload, onTextChunk) {
+// Serializes load/prompt/delete: a single session can't run prompts
+// concurrently, and swapping the model mid-prompt disposes it underneath.
+let llamaQueue = Promise.resolve();
+function withLlamaLock(fn) {
+  const run = llamaQueue.then(fn, fn);
+  llamaQueue = run.catch(() => {});
+  return run;
+}
+
+async function disposeCurrentModel() {
+  const model = currentModel;
+  currentModel = null;
+  currentSession = null;
+  activeModelPath = null;
+  if (model) {
+    try {
+      await model.dispose();
+    } catch (err) {
+      console.error("Erro ao descartar modelo antigo:", err);
+    }
+  }
+}
+
+async function runLlamaPrompt(payload, onTextChunk, signal) {
   if (!currentSession) {
     throw new Error("Nenhum modelo carregado");
   }
@@ -36,10 +66,10 @@ async function runLlamaPrompt(payload, onTextChunk) {
     throw new Error("Prompt inválido");
   }
 
-  if (
-    history.length > 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
+  const systemPrompt =
+    typeof payload?.systemPrompt === "string" ? payload.systemPrompt.trim() : "";
+
+  if (typeof currentSession.setChatHistory === "function") {
     const chatHistory = history.map((msg) => {
       if (msg.role === "assistant") {
         return {
@@ -53,15 +83,31 @@ async function runLlamaPrompt(payload, onTextChunk) {
         text: msg.content || "",
       };
     });
-    currentSession.setChatHistory(chatHistory);
-  } else if (
-    history.length === 0 &&
-    typeof currentSession.setChatHistory === "function"
-  ) {
-    currentSession.setChatHistory([]);
+    currentSession.setChatHistory(
+      systemPrompt ? [{ type: "system", text: systemPrompt }, ...chatHistory] : chatHistory,
+    );
+  }
+
+  // Old history may be shifted out, but the current prompt must fit whole:
+  // its beginning carries the upstream agents' handoff.
+  if (currentModel) {
+    const contextSize = currentSession.context.contextSize;
+    const inputTokens = currentModel.tokenize(
+      [systemPrompt, promptText].join("\n"),
+    ).length;
+    if (inputTokens > contextSize - 512) {
+      throw new Error(
+        `O prompt tem cerca de ${inputTokens} tokens e o contexto do modelo local comporta ${contextSize}. ` +
+          "Conecte menos arquivos ou divida a etapa em mais agentes.",
+      );
+    }
   }
 
   return currentSession.prompt(promptText, {
+    // Stop returns the partial text instead of throwing, so the session
+    // stays usable for the next prompt.
+    signal,
+    stopOnAbortSignal: true,
     onTextChunk(chunk) {
       const text =
         typeof chunk === "string"
@@ -96,6 +142,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
@@ -118,6 +165,16 @@ function createWindow() {
 
   win.webContents.session.setPermissionCheckHandler((_wc, permission) => {
     return allowedPerms.includes(permission);
+  });
+
+  // Permite que links em novas abas no webview naveguem no próprio webview
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() === "webview") {
+      contents.setWindowOpenHandler(({ url }) => {
+        contents.loadURL(url);
+        return { action: "deny" };
+      });
+    }
   });
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== "production";
@@ -156,7 +213,7 @@ ipcMain.handle("llama:get-status", () => {
   };
 });
 
-ipcMain.handle("llama:list-local-models", () => {
+function listLocalModels() {
   const modelsDir = getModelsDir();
   const files = fs.readdirSync(modelsDir);
   const models = [];
@@ -177,63 +234,95 @@ ipcMain.handle("llama:list-local-models", () => {
   }
 
   return models;
-});
+}
 
-ipcMain.handle("llama:load-model", async (_, modelPath) => {
-  try {
-    if (!fs.existsSync(modelPath)) {
-      throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
-    }
+ipcMain.handle("llama:list-local-models", () => listLocalModels());
 
-    const llama = await getLlamaModule();
-    const { LlamaChatSession } = await import("node-llama-cpp");
-
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (err) {
-        console.error("Erro ao descartar modelo antigo:", err);
+function loadModelFromPath(modelPath) {
+  return withLlamaLock(async () => {
+    try {
+      if (!fs.existsSync(modelPath)) {
+        throw new Error(`Arquivo de modelo não encontrado: ${modelPath}`);
       }
+
+      if (currentSession && activeModelPath === modelPath) {
+        return {
+          success: true,
+          activeModelPath,
+          activeModelName: path.basename(modelPath),
+        };
+      }
+
+      const llama = await getLlamaModule();
+      const { LlamaChatSession } = await import("node-llama-cpp");
+
+      await disposeCurrentModel();
+
+      const model = await llama.loadModel({
+        modelPath: modelPath,
+      });
+
+      const context = await model.createContext();
+      currentSession = new LlamaChatSession({
+        contextSequence: context.getSequence(),
+      });
+      currentModel = model;
+      activeModelPath = modelPath;
+
+      return {
+        success: true,
+        activeModelPath,
+        activeModelName: path.basename(modelPath),
+      };
+    } catch (err) {
+      console.error("Erro ao carregar modelo:", err);
+      throw new Error(err.message || "Falha ao carregar o modelo GGUF");
     }
+  });
+}
 
-    currentModel = await llama.loadModel({
-      modelPath: modelPath,
-    });
+// Avisa as janelas (ex.: tela Modelos da web) quando o modelo muda pela rede.
+async function loadModelAndNotify(modelPath) {
+  const result = await loadModelFromPath(modelPath);
+  broadcast("llama:model-changed", result);
+  return result;
+}
 
-    const context = await currentModel.createContext();
-    currentSession = new LlamaChatSession({
-      contextSequence: context.getSequence(),
-    });
+ipcMain.handle("llama:load-model", (_, modelPath) =>
+  loadModelFromPath(modelPath),
+);
 
-    activeModelPath = modelPath;
+// Running or queued prompts by request id, so the renderer can stop them.
+const llamaPromptAborts = new Map();
 
-    return {
-      success: true,
-      activeModelPath,
-      activeModelName: path.basename(modelPath),
-    };
-  } catch (err) {
-    console.error("Erro ao carregar modelo:", err);
-    throw new Error(err.message || "Falha ao carregar o modelo GGUF");
-  }
+ipcMain.handle("llama:abort", (_, requestId) => {
+  llamaPromptAborts.get(requestId)?.abort();
 });
 
 ipcMain.handle("llama:prompt", async (event, payload) => {
   const sender = event.sender;
+  const requestId = payload?.requestId;
+  const abort = new AbortController();
+  if (requestId) llamaPromptAborts.set(requestId, abort);
 
   try {
-    const response = await runLlamaPrompt(payload, (chunk) => {
-      if (!sender.isDestroyed()) {
-        sender.send("llama:stream", {
-          type: "chunk",
-          text: chunk,
-        });
-      }
+    const response = await withLlamaLock(() => {
+      if (abort.signal.aborted) return "";
+      return runLlamaPrompt(payload, (chunk) => {
+        if (!sender.isDestroyed()) {
+          sender.send("llama:stream", {
+            type: "chunk",
+            text: chunk,
+            requestId,
+          });
+        }
+      }, abort.signal);
     });
 
     if (!sender.isDestroyed()) {
       sender.send("llama:stream", {
         type: "done",
+        requestId,
       });
     }
 
@@ -243,21 +332,37 @@ ipcMain.handle("llama:prompt", async (event, payload) => {
       sender.send("llama:stream", {
         type: "error",
         error: error.message,
+        requestId,
       });
     }
 
     throw error;
+  } finally {
+    if (requestId) llamaPromptAborts.delete(requestId);
   }
 });
 
-ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+// Envia um evento para todas as janelas, assim a tela de Modelos acompanha
+// também os downloads iniciados pelo app mobile.
+function broadcast(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
+  }
+}
+
+async function downloadModelFile(url, filename) {
   const modelsDir = getModelsDir();
   const destinationPath = path.join(modelsDir, filename);
   const tempPath = destinationPath + ".tmp";
 
   if (fs.existsSync(destinationPath)) {
     return { success: true, modelPath: destinationPath, alreadyExists: true };
+  }
+
+  if (activeDownloads.has(url)) {
+    throw new Error("Este modelo já está sendo baixado.");
   }
 
   try {
@@ -275,7 +380,15 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
     const fileStream = fs.createWriteStream(tempPath);
     const reader = response.body.getReader();
 
-    activeDownloads.set(url, { tempPath, reader });
+    const download = {
+      tempPath,
+      reader,
+      filename,
+      downloadedBytes: 0,
+      totalBytes,
+      progress: 0,
+    };
+    activeDownloads.set(url, download);
 
     while (true) {
       const { done, value } = await reader.read();
@@ -288,28 +401,36 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
         ? Math.round((downloadedBytes / totalBytes) * 100)
         : 0;
 
-      if (win && !win.isDestroyed()) {
-        win.webContents.send("llama:download-progress", {
-          url,
-          filename,
-          downloadedBytes,
-          totalBytes,
-          progress,
-        });
-      }
+      download.downloadedBytes = downloadedBytes;
+      download.progress = progress;
+
+      broadcast("llama:download-progress", {
+        url,
+        filename,
+        downloadedBytes,
+        totalBytes,
+        progress,
+      });
     }
 
-    fileStream.end();
+    await new Promise((resolve, reject) => {
+      fileStream.on("error", reject);
+      fileStream.end(resolve);
+    });
+
+    // cancelDownload() remove o item do mapa e interrompe o reader.
+    if (!activeDownloads.has(url)) {
+      throw new Error("Download cancelado.");
+    }
+
     fs.renameSync(tempPath, destinationPath);
     activeDownloads.delete(url);
 
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("llama:download-complete", {
-        url,
-        filename,
-        modelPath: destinationPath,
-      });
-    }
+    broadcast("llama:download-complete", {
+      url,
+      filename,
+      modelPath: destinationPath,
+    });
 
     return { success: true, modelPath: destinationPath };
   } catch (err) {
@@ -322,11 +443,16 @@ ipcMain.handle("llama:download-model", async (event, { url, filename }) => {
     console.error("Erro no download do modelo:", err);
     throw new Error(err.message || "Falha no download do modelo");
   }
-});
+}
 
-ipcMain.handle("llama:cancel-download", (_, url) => {
+ipcMain.handle("llama:download-model", (_, { url, filename }) =>
+  downloadModelFile(url, filename),
+);
+
+function cancelDownload(url) {
   const item = activeDownloads.get(url);
   if (item) {
+    activeDownloads.delete(url);
     try {
       item.reader?.cancel();
     } catch (e) {}
@@ -335,11 +461,12 @@ ipcMain.handle("llama:cancel-download", (_, url) => {
         fs.unlinkSync(item.tempPath);
       } catch (e) {}
     }
-    activeDownloads.delete(url);
     return true;
   }
   return false;
-});
+}
+
+ipcMain.handle("llama:cancel-download", (_, url) => cancelDownload(url));
 
 ipcMain.handle("llama:import-file", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -369,16 +496,11 @@ ipcMain.handle("llama:import-file", async (event) => {
 });
 
 ipcMain.handle("llama:delete-model", async (_, modelPath) => {
-  if (activeModelPath === modelPath) {
-    if (currentModel) {
-      try {
-        await currentModel.dispose();
-      } catch (e) {}
-      currentModel = null;
-      currentSession = null;
-      activeModelPath = null;
+  await withLlamaLock(async () => {
+    if (activeModelPath === modelPath) {
+      await disposeCurrentModel();
     }
-  }
+  });
 
   if (fs.existsSync(modelPath)) {
     fs.unlinkSync(modelPath);
@@ -390,27 +512,48 @@ ipcMain.handle("llama:delete-model", async (_, modelPath) => {
 // TERMINAL IPC HANDLERS
 // ===============================
 
-ipcMain.handle("terminal-create", (event, id, mode) => {
-  if (!id || terminals.has(id)) return;
+ipcMain.handle("terminal-create", (event, id, mode, cwd) => {
+  if (!id || terminals.has(id)) return { ok: true, existing: true };
 
   const win = BrowserWindow.fromWebContents(event.sender);
-  if (!win) return;
+  if (!win) return { ok: false, error: "Janela nao encontrada." };
 
   const shell =
     process.platform === "win32"
       ? "powershell.exe"
       : process.env.SHELL || "/bin/bash";
 
-  const terminal = pty.spawn(shell, [], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: os.homedir(),
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-    },
-  });
+  const startDir =
+    typeof cwd === "string" && cwd && fs.existsSync(cwd) && fs.statSync(cwd).isDirectory()
+      ? cwd
+      : os.homedir();
+
+  let terminal;
+  try {
+    terminal = pty.spawn(shell, [], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: startDir,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+      },
+    });
+  } catch (err) {
+    console.error("Erro ao abrir terminal:", err);
+    if (!win.isDestroyed()) {
+      const CRLF = String.fromCharCode(13, 10);
+      const RED = String.fromCharCode(27) + "[31m";
+      const RESET = String.fromCharCode(27) + "[0m";
+      win.webContents.send(
+        "terminal-data",
+        id,
+        CRLF + RED + "Nao foi possivel abrir o terminal: " + err.message + RESET + CRLF,
+      );
+    }
+    return { ok: false, error: err.message };
+  }
 
   terminals.set(id, terminal);
 
@@ -420,31 +563,22 @@ ipcMain.handle("terminal-create", (event, id, mode) => {
     }
   });
 
- 
-terminal.onExit(({ exitCode }) => {
-  // Evita que uma sessão antiga remova
-  // uma sessão nova com o mesmo ID.
-  if (terminals.get(id) !== terminal) {
-    return;
-  }
-
-  terminals.delete(id);
-
-  // Informa ao React que o terminal foi encerrado.
-  if (!win.isDestroyed()) {
-    win.webContents.send(
-      "terminal-exit",
-      id,
-      exitCode
-    );
-  }
-});
+  terminal.onExit(({ exitCode }) => {
+    // Evita que uma sessão antiga remova uma sessão nova com o mesmo ID.
+    if (terminals.get(id) !== terminal) return;
+    terminals.delete(id);
+    if (!win.isDestroyed()) {
+      win.webContents.send("terminal-exit", id, exitCode);
+    }
+  });
 
   if (mode === "claude") {
     setTimeout(() => {
-      terminal.write("claude\r");
+      if (terminals.get(id) === terminal) terminal.write("claude" + String.fromCharCode(13));
     }, 400);
   }
+
+  return { ok: true };
 });
 
 ipcMain.on("terminal-write", (event, id, data) => {
@@ -495,6 +629,7 @@ ipcMain.handle("fs:write-file", async (_, { filePath, content }) => {
   }
 
   try {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, content, "utf-8");
     return { success: true, filePath };
   } catch (err) {
@@ -615,6 +750,55 @@ ipcMain.handle("fs:select-folder", async () => {
 });
 
 // ======================================================
+// PASTA DE PROJETO (workspace) - toda escrita fica dentro da pasta escolhida
+// ======================================================
+
+ipcMain.handle("fs:select-workspace", async () => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (result.canceled || !result.filePaths.length) return null;
+  return workspaceFs.scanWorkspace(result.filePaths[0]);
+});
+
+ipcMain.handle("fs:workspace-write", async (_, { rootPath, relPath, content }) => {
+  const filePath = await workspaceFs.writeIn(rootPath, relPath, content);
+  return { success: true, filePath };
+});
+
+ipcMain.handle("fs:workspace-mkdir", async (_, { rootPath, relPath }) => {
+  const folderPath = await workspaceFs.mkdirIn(rootPath, relPath);
+  return { success: true, folderPath };
+});
+
+ipcMain.handle("fs:workspace-delete", async (_, { rootPath, relPath }) => {
+  return { success: await workspaceFs.deleteIn(rootPath, relPath) };
+});
+
+// Observa arquivos/pastas no disco e avisa a janela quando mudam (ex.: salvos no VS Code).
+const fileWatchers = new Map();
+
+ipcMain.handle("fs:watch", (event, { watchId, rootPath, filePaths }) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+  const sender = event.sender;
+  try {
+    const close = workspaceFs.createWatcher({ rootPath, filePaths }, (payload) => {
+      if (!sender.isDestroyed()) sender.send("fs:changed", { watchId, ...payload });
+    });
+    fileWatchers.set(watchId, close);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle("fs:unwatch", (_, watchId) => {
+  fileWatchers.get(watchId)?.();
+  fileWatchers.delete(watchId);
+});
+
+ipcMain.handle("fs:scan-workspace", (_, rootPath) => workspaceFs.scanWorkspace(rootPath));
+
+// ======================================================
 // LER ARQUIVO
 // ======================================================
 
@@ -718,6 +902,112 @@ aiServer.post("/api/prompt", async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+// ===============================
+// MODELOS VIA REDE (app mobile)
+// ===============================
+
+// Só modelos do catálogo podem ser baixados pela rede: o celular escolhe pelo
+// nome do arquivo e nunca envia uma URL.
+const modelCatalog = require("./modelCatalog.json");
+
+function findCatalogModel(filename) {
+  return modelCatalog.find((model) => model.filename === filename);
+}
+
+// Aceita apenas nomes de arquivo .gguf que existam na pasta de modelos.
+function resolveLocalModelPath(filename) {
+  if (
+    typeof filename !== "string" ||
+    !filename.endsWith(".gguf") ||
+    path.basename(filename) !== filename
+  ) {
+    return null;
+  }
+  const fullPath = path.join(getModelsDir(), filename);
+  return fs.existsSync(fullPath) ? fullPath : null;
+}
+
+aiServer.get("/api/models", (req, res) => {
+  try {
+    const installed = listLocalModels().map(({ fullPath, ...model }) => model);
+    const installedNames = new Set(installed.map((model) => model.filename));
+    const downloads = {};
+
+    for (const download of activeDownloads.values()) {
+      downloads[download.filename] = {
+        progress: download.progress,
+        downloadedBytes: download.downloadedBytes,
+        totalBytes: download.totalBytes,
+      };
+    }
+
+    res.json({
+      activeModelName: activeModelPath ? path.basename(activeModelPath) : null,
+      modelLoaded: Boolean(currentSession),
+      installed,
+      catalog: modelCatalog.map(({ url, ...model }) => ({
+        ...model,
+        installed: installedNames.has(model.filename),
+      })),
+      downloads,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+aiServer.post("/api/models/download", (req, res) => {
+  const model = findCatalogModel(req.body?.filename);
+
+  if (!model) {
+    return res.status(400).json({ error: "Modelo fora do catálogo." });
+  }
+
+  if (resolveLocalModelPath(model.filename)) {
+    return res.json({ status: "installed" });
+  }
+
+  if (activeDownloads.has(model.url)) {
+    return res.status(202).json({ status: "downloading" });
+  }
+
+  // O download pode levar minutos: responde na hora e o celular acompanha
+  // o progresso por GET /api/models.
+  downloadModelFile(model.url, model.filename).catch((error) => {
+    console.error("Download pela rede falhou:", error.message);
+  });
+
+  res.status(202).json({ status: "downloading" });
+});
+
+aiServer.post("/api/models/cancel", (req, res) => {
+  const model = findCatalogModel(req.body?.filename);
+
+  if (!model) {
+    return res.status(400).json({ error: "Modelo fora do catálogo." });
+  }
+
+  res.json({ cancelled: cancelDownload(model.url) });
+});
+
+aiServer.post("/api/models/load", async (req, res) => {
+  const modelPath = resolveLocalModelPath(req.body?.filename);
+
+  if (!modelPath) {
+    return res.status(404).json({ error: "Modelo não encontrado no desktop." });
+  }
+
+  try {
+    const result = await loadModelAndNotify(modelPath);
+    res.json({
+      activeModelName: result.activeModelName,
+      modelLoaded: true,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
