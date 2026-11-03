@@ -63,7 +63,7 @@ const CUSTOM_COMPONENTS = {
     </a>
   ),
   table: ({ children, ...props }) => (
-    <div className="my-3 w-full overflow-x-auto rounded-lg border border-zinc-800 bg-[#121118]">
+    <div className="my-3 w-full overflow-x-auto rounded-lg border border-zinc-800 bg-surface-0">
       <table className="w-full text-left text-sm text-zinc-200 border-collapse" {...props}>
         {children}
       </table>

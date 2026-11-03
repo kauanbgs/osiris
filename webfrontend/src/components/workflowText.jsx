@@ -18,7 +18,7 @@ const ALIGNS = [
 const PLACEHOLDER = "Digite...";
 
 const toolButton = "flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 hover:bg-zinc-800 disabled:opacity-40";
-const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100";
+const handleClass = "!h-2.5 !w-2.5 !border-2 !border-surface-1 !bg-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100";
 
 export default function WorkflowText({ id, data, selected }) {
   const { updateNodeData, updateNode } = useReactFlow();

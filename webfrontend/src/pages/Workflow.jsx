@@ -320,7 +320,7 @@ export default function Workflow() {
   return (
     <ReactFlowProvider>
     <WorkflowExecutionProvider>
-    <div className="relative h-full w-full overflow-hidden bg-[#141414]">
+    <div className="relative h-full w-full overflow-hidden bg-surface-0">
       <WorkflowExecutionPanel />
       {/* NAVBAR */}
       <section className="absolute top-6 left-1/2 z-50 -translate-x-1/2">

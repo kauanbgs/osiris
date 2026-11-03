@@ -34,7 +34,7 @@ const workspaceItems = [
 const environmentItems = [
   { label: "Modelos", icon: FileText, link: "/modelos" },
   { label: "Memória", icon: Brain, link: "/memoria" },
-  { label: "Configurações", icon: Settings },
+  { label: "Configurações", icon: Settings, link: "/configuracoes" },
 ];
 
 function NavGroup({ title, items }) {
@@ -44,7 +44,7 @@ function NavGroup({ title, items }) {
 
   return (
     <section className="mb-5">
-      <h2 className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500">
+      <h2 className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
         {title}
       </h2>
 
@@ -62,8 +62,8 @@ function NavGroup({ title, items }) {
               onClick={() => target && navigate(target)}
               className={`group flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors ${
                 isActive
-                  ? "bg-zinc-800/90 text-zinc-100 font-medium"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               }`}
             >
               <Icon
@@ -71,8 +71,8 @@ function NavGroup({ title, items }) {
                 strokeWidth={1.8}
                 className={`transition-colors ${
                   isActive
-                    ? "text-violet-400"
-                    : "text-zinc-400 group-hover:text-zinc-200"
+                    ? "text-sidebar-primary"
+                    : "text-sidebar-foreground group-hover:text-sidebar-accent-foreground"
                 }`}
               />
               <span>{item.label}</span>
@@ -131,7 +131,7 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
 
   if (mode === "rename") {
     return (
-      <div className="flex h-8 w-full items-center gap-1 rounded-md bg-zinc-800/80 px-2">
+      <div className="flex h-8 w-full items-center gap-1 rounded-md bg-sidebar-accent px-2">
         <input
           ref={inputRef}
           value={renameValue}
@@ -141,19 +141,19 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
             if (e.key === "Escape") setMode("idle");
           }}
           onBlur={handleRename}
-          className="min-w-0 flex-1 bg-transparent text-[12px] text-zinc-100 outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-sidebar-accent-foreground outline-none"
         />
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); handleRename(); }}
-          className="text-violet-400 hover:text-violet-300"
+          className="text-sidebar-primary hover:opacity-80"
         >
           <Check size={13} />
         </button>
         <button
           type="button"
           onMouseDown={(e) => { e.preventDefault(); setMode("idle"); }}
-          className="text-zinc-500 hover:text-zinc-300"
+          className="text-muted-foreground hover:text-sidebar-accent-foreground"
         >
           <X size={13} />
         </button>
@@ -166,8 +166,8 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
       <div
         className={`group flex h-8 w-full items-center gap-2 rounded-md px-2 transition-colors ${
           isActive
-            ? "bg-zinc-800/80 text-zinc-100 font-medium"
-            : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`}
       >
         <button
@@ -177,13 +177,13 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
         >
           <CircleDot
             size={8}
-            className={`shrink-0 ${isActive ? "text-violet-400" : "text-zinc-600"}`}
+            className={`shrink-0 ${isActive ? "text-sidebar-primary" : "text-muted-foreground"}`}
           />
           <span className="truncate text-[12px]">{chat.title ?? "Chat sem título"}</span>
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          {window.electronAPI?.loadWorkflow && <button type="button" title="Abrir workflow do projeto" aria-label="Abrir workflow do projeto" onClick={() => navigate('/workflow/' + chatId)} className="flex h-5 w-5 items-center justify-center rounded text-violet-400 hover:bg-zinc-700"><Bot size={12} /></button>}
+          {window.electronAPI?.loadWorkflow && <button type="button" title="Abrir workflow do projeto" aria-label="Abrir workflow do projeto" onClick={() => navigate('/workflow/' + chatId)} className="flex h-5 w-5 items-center justify-center rounded text-sidebar-primary hover:bg-sidebar-accent"><Bot size={12} /></button>}
           <button
             type="button"
             title="Renomear"
@@ -192,7 +192,7 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
               setRenameValue(chat.title ?? "");
               setMode("rename");
             }}
-            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <Pencil size={11} />
           </button>
@@ -203,7 +203,7 @@ function ChatItem({ chat, isActive, onDeleted, onRenamed }) {
               e.stopPropagation();
               setMode("confirmDelete");
             }}
-            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-700 hover:text-red-400"
+            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-red-400"
           >
             <Trash2 size={11} />
           </button>
@@ -285,9 +285,9 @@ export default function Sidebar() {
   const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : null;
 
   return (
-    <aside className="flex h-full w-56 flex-col border-r border-zinc-900 bg-[#121212] px-2.5 pb-3 pt-2 font-sans text-zinc-200 z-10 select-none">
+    <aside id="osiris-sidebar" className="flex h-full w-56 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-3 pt-2 font-sans text-sidebar-accent-foreground z-10 select-none">
       <div className="mb-6 flex h-8 shrink-0 items-center gap-2 px-1">
-        <span className="font-mono text-xl font-bold tracking-tight text-zinc-100">
+        <span className="font-mono text-xl font-bold tracking-tight text-sidebar-accent-foreground">
           OSIRIS
         </span>
       </div>
@@ -298,7 +298,7 @@ export default function Sidebar() {
 
         <section>
           <div className="mb-2 flex items-center justify-between px-2">
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
               Projetos
             </h2>
             <button
@@ -306,7 +306,7 @@ export default function Sidebar() {
               aria-label="Novo chat"
               onClick={handleCreateChat}
               title="Novo chat"
-              className="text-zinc-500 transition-colors hover:text-white"
+              className="text-muted-foreground transition-colors hover:text-sidebar-accent-foreground"
             >
               <Plus size={14} strokeWidth={2.5} />
             </button>
@@ -330,16 +330,16 @@ export default function Sidebar() {
         </section>
       </div>
 
-      <div className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-zinc-900/80 pt-3">
+      <div className="mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-sidebar-border pt-3">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600/20 font-mono text-xs font-bold text-violet-300 ring-1 ring-violet-500/30">
-            {userInitial ? userInitial : <User size={15} className="text-zinc-400" />}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/20 font-mono text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/30">
+            {userInitial ? userInitial : <User size={15} className="text-sidebar-foreground" />}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-medium text-zinc-200" title={user?.name || "Usuário"}>
+            <p className="truncate text-[12px] font-medium text-sidebar-accent-foreground" title={user?.name || "Usuário"}>
               {user?.name || "Usuário"}
             </p>
-            <p className="truncate text-[10px] text-zinc-500" title={user?.email || "Local"}>
+            <p className="truncate text-[10px] text-muted-foreground" title={user?.email || "Local"}>
               {user?.email || "Local"}
             </p>
           </div>
@@ -350,7 +350,7 @@ export default function Sidebar() {
           onClick={handleLogout}
           aria-label="Sair da conta"
           title="Sair"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-red-400"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-red-400"
         >
           <LogOut size={15} />
         </button>

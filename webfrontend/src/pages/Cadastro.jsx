@@ -66,9 +66,6 @@ export default function Cadastro() {
           cursorRadius={500}
           cursorForce={0.1}
           bulgeOnly
-          gradientFrom="#A855F7"
-          gradientTo="#B497CF"
-          glowColor="#120F17"
         />
       </div>
 

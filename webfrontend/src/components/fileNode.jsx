@@ -17,7 +17,7 @@ export default function FileNode({ id, data }) {
     useState(false);
 
   const handleClass =
-    "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-violet-500 hover:!bg-violet-400 transition-colors";
+    "!h-2.5 !w-2.5 !border-2 !border-surface-1 !bg-violet-500 hover:!bg-violet-400 transition-colors";
 
   /*
    * Fonte de verdade dos arquivos.
@@ -259,7 +259,7 @@ export default function FileNode({ id, data }) {
   }
 
   return (
-    <div className="group relative w-[360px] overflow-hidden rounded-2xl border border-zinc-800 bg-[#151515] shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
+    <div className="group relative w-[360px] overflow-hidden rounded-2xl border border-zinc-800 bg-surface-1 shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
 
       {/* OUTPUT */}
       <Handle

@@ -38,9 +38,9 @@ export default function TerminalPage() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#0c0c0e]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0">
       {/* Header */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-[#121214] px-4">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800/60 bg-surface-0 px-4">
         <div className="flex items-center gap-2.5">
           <TerminalSquare size={18} className="text-violet-400" />
           <h1 className="font-mono text-sm font-semibold text-zinc-100">
@@ -74,7 +74,7 @@ export default function TerminalPage() {
       </header>
 
       {/* Tabs Bar */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800/40 bg-[#0f0f12] px-3">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-zinc-800/40 bg-surface-0 px-3">
         <div className="flex items-center gap-1 overflow-x-auto">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;

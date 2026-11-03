@@ -150,11 +150,11 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-[#0c0c0e] font-mono select-text"
+      className="flex h-full w-full flex-col bg-surface-0 font-mono select-text"
       onClick={() => inputRef.current?.focus()}
     >
       {/* Quick commands bar */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/40 bg-[#101012] px-3 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-800/40 bg-surface-0 px-3 py-1.5 text-xs">
         <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mr-1">
           Atalhos:
         </span>
@@ -240,8 +240,8 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
       </div>
 
       {/* Input row */}
-      <div className="border-t border-zinc-800/60 bg-[#101012] p-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-[#0c0c0e] px-3 py-1.5 focus-within:border-violet-500/60">
+      <div className="border-t border-zinc-800/60 bg-surface-0 p-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-surface-0 px-3 py-1.5 focus-within:border-violet-500/60">
           <Terminal size={16} className="text-violet-400 shrink-0" />
           <input
             ref={inputRef}

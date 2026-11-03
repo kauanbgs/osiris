@@ -427,9 +427,9 @@ export default function NavegadorPage() {
   });
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#0c0c0e]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0">
       {/* 1. Barra de Abas (Tabs Bar) */}
-      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-[#121214] px-2 pt-1">
+      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-surface-0 px-2 pt-1">
         <div className="flex flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -439,7 +439,7 @@ export default function NavegadorPage() {
                 onClick={() => setActiveTabId(tab.id)}
                 className={`group flex h-8 max-w-[200px] min-w-[120px] cursor-pointer items-center justify-between gap-2 rounded-t-md px-3 text-xs transition-colors ${
                   isActive
-                    ? "bg-[#18181b] text-zinc-100 font-medium border-t-2 border-violet-500 shadow-sm"
+                    ? "bg-surface-1 text-zinc-100 font-medium border-t-2 border-violet-500 shadow-sm"
                     : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
                 }`}
               >
@@ -499,7 +499,7 @@ export default function NavegadorPage() {
       </div>
 
       {/* 2. Barra de Navegação (Navigation Bar) */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-[#161619] px-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-surface-1 px-3">
         {/* Controles de Histórico e Ações */}
         <div className="flex items-center gap-1">
           <button
@@ -571,7 +571,7 @@ export default function NavegadorPage() {
               value={activeTab.inputUrl}
               onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
               placeholder="Digite uma URL ou termo de pesquisa..."
-              className="h-8 w-full rounded-md border border-zinc-700/60 bg-[#0e0e11] pl-8 pr-20 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/80 focus:bg-[#0a0a0d] focus:outline-none transition-colors"
+              className="h-8 w-full rounded-md border border-zinc-700/60 bg-surface-0 pl-8 pr-20 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/80 focus:bg-surface-0 focus:outline-none transition-colors"
             />
 
             <div className="absolute right-1.5 flex items-center gap-1">
@@ -662,7 +662,7 @@ export default function NavegadorPage() {
       {/* 3. Área Principal: Viewport + Painel de Inspeção */}
       <div className="relative flex flex-1 overflow-hidden">
         {/* Viewport Central */}
-        <div className="relative flex-1 overflow-hidden bg-[#0a0a0c]">
+        <div className="relative flex-1 overflow-hidden bg-surface-0">
           {!activeTab.url ? (
             /* Start Page do Osiris */
             <div className="flex h-full w-full flex-col items-center justify-center p-6 overflow-y-auto">
@@ -689,7 +689,7 @@ export default function NavegadorPage() {
                     value={activeTab.inputUrl}
                     onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
                     placeholder="Pesquisar ou inserir endereço da web..."
-                    className="h-11 w-full rounded-xl border border-zinc-800 bg-[#121215] pl-10 pr-12 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md focus:border-violet-500/60 focus:outline-none transition-all"
+                    className="h-11 w-full rounded-xl border border-zinc-800 bg-surface-0 pl-10 pr-12 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md focus:border-violet-500/60 focus:outline-none transition-all"
                   />
                   <button
                     type="submit"
@@ -711,7 +711,7 @@ export default function NavegadorPage() {
                         key={bm.name}
                         type="button"
                         onClick={() => navigateTo(bm.url)}
-                        className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-[#121215]/80 p-3 text-left transition hover:border-zinc-700 hover:bg-[#16161a]"
+                        className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-surface-0/80 p-3 text-left transition hover:border-zinc-700 hover:bg-surface-1"
                       >
                         <div className="flex w-full items-center justify-between">
                           <span className="text-xs font-medium text-zinc-200 group-hover:text-violet-300">
@@ -765,7 +765,7 @@ export default function NavegadorPage() {
             /* Visualizador de Página Ativa: Webview (Electron) vs Iframe (Web) */
             <div className="flex h-full w-full flex-col">
               {/* Barra de Metadados e Ações da Página */}
-              <div className="flex items-center justify-between border-b border-zinc-800/60 bg-[#121215] px-4 py-2 text-xs">
+              <div className="flex items-center justify-between border-b border-zinc-800/60 bg-surface-0 px-4 py-2 text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="flex items-center gap-1 text-emerald-400 font-mono text-[11px]">
                     <ShieldCheck size={13} />
@@ -846,7 +846,7 @@ export default function NavegadorPage() {
 
         {/* 4. Painel Lateral de Inspeção do DOM (Inspector Panel) */}
         {isInspectorOpen && (
-          <aside className="w-80 md:w-96 border-l border-zinc-800/80 bg-[#111114] flex flex-col shrink-0">
+          <aside className="w-80 md:w-96 border-l border-zinc-800/80 bg-surface-0 flex flex-col shrink-0">
             {/* Header do Inspector */}
             <div className="flex h-11 items-center justify-between border-b border-zinc-800/60 px-3">
               <div className="flex items-center gap-2">
@@ -885,7 +885,7 @@ export default function NavegadorPage() {
                   value={inspectorSearch}
                   onChange={(e) => setInspectorSearch(e.target.value)}
                   placeholder="Filtrar por seletor, tag ou texto..."
-                  className="h-7 w-full rounded border border-zinc-800 bg-[#16161a] pl-7 pr-2 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/60 focus:outline-none"
+                  className="h-7 w-full rounded border border-zinc-800 bg-surface-1 pl-7 pr-2 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/60 focus:outline-none"
                 />
               </div>
             </div>
@@ -904,7 +904,7 @@ export default function NavegadorPage() {
                 filteredElements.map((el, idx) => (
                   <div
                     key={el.id || idx}
-                    className="group rounded-md border border-zinc-800/80 bg-[#151518] p-2.5 transition hover:border-zinc-700 hover:bg-[#18181d]"
+                    className="group rounded-md border border-zinc-800/80 bg-surface-1 p-2.5 transition hover:border-zinc-700 hover:bg-surface-1"
                   >
                     <div className="flex items-start justify-between gap-1 mb-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -945,7 +945,7 @@ export default function NavegadorPage() {
                     </div>
 
                     {/* Seletor CSS */}
-                    <div className="flex items-center justify-between rounded bg-[#0e0e11] px-2 py-1 font-mono text-[11px] text-zinc-300">
+                    <div className="flex items-center justify-between rounded bg-surface-0 px-2 py-1 font-mono text-[11px] text-zinc-300">
                       <span className="truncate">{el.selector}</span>
                       <button
                         type="button"

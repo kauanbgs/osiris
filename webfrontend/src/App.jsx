@@ -12,10 +12,11 @@ import Memoria from "./pages/Memoria";
 import Workflows from "./pages/Workflows";
 import Terminal from "./pages/Terminal";
 import Navegador from "./pages/Navegador";
+import Configuracoes from "./pages/Configuracoes";
 
 export default function App() {
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#141414] select-none">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background select-none">
       <TitleBar />
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <Routes>
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/memoria" element={<Memoria />} />
               <Route path="/terminal" element={<Terminal />} />
               <Route path="/navegador" element={<Navegador />} />
+              <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
           </Route>
 
