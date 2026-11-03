@@ -34,7 +34,10 @@ const sheets = {
   executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
   terminalHistory: (params) => api.get("/terminal/history", { params }),
   terminalClearHistory: () => api.delete("/terminal/history"),
-}
+  // Navegador & Captura Web
+  browserCapture: (url) => api.post("/browser/capture", { url }),
+};
+
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),
   register: (name, email, password) => api.post("/auth/register", { name, email, password }),

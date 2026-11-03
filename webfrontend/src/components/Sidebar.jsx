@@ -5,6 +5,7 @@ import {
   CircleDot,
   FileText,
   Folder,
+  Globe,
   House,
   LogOut,
   Pencil,
@@ -23,6 +24,7 @@ import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 
 const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
+  { label: "Navegador", icon: Globe, link: "/navegador" },
   { label: "Workflow", icon: Bot, link: "/workflow" },
   { label: "Terminal", icon: TerminalSquare, link: "/terminal" },
   { label: "Arquivos", icon: Folder, link: "/arquivos" },
