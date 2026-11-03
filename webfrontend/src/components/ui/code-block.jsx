@@ -24,7 +24,7 @@ function CodeBlock({
   return (
     <div
       className={cn(
-        "not-prose my-3 flex w-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-[#121118] text-zinc-100 shadow-md",
+        "not-prose my-3 flex w-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-surface-0 text-zinc-100 shadow-md",
         className
       )}
       {...props}>

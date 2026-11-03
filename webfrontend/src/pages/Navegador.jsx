@@ -574,9 +574,9 @@ export default function Navegador() {
   const extractedText = captureResult?.data?.text || "";
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#0c0c0e] font-sans text-zinc-100">
-      {/* 1. BARRA DE ABAS DO NAVEGADOR */}
-      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-[#121214] px-2 pt-1 select-none">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-surface-0 font-sans text-zinc-100">
+      {/* 1. Barra de Abas (Tabs Bar) */}
+      <div className="flex h-9 shrink-0 items-end gap-1 border-b border-zinc-800/80 bg-surface-0 px-2 pt-1 select-none">
         <div className="flex flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -586,7 +586,7 @@ export default function Navegador() {
                 onClick={() => setActiveTabId(tab.id)}
                 className={`group flex h-8 max-w-[200px] min-w-[120px] cursor-pointer items-center justify-between gap-2 rounded-t-md px-3 text-xs transition-colors ${
                   isActive
-                    ? "bg-[#18181b] text-zinc-100 font-medium border-t-2 border-violet-500 shadow-sm"
+                    ? "bg-surface-1 text-zinc-100 font-medium border-t-2 border-violet-500 shadow-sm"
                     : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
                 }`}
               >
@@ -645,9 +645,9 @@ export default function Navegador() {
         </div>
       </div>
 
-      {/* 2. BARRA DE NAVEGAÇÃO & CONTROLES */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-[#161619] px-3">
-        {/* Controles de Histórico */}
+      {/* 2. Barra de Navegação (Navigation Bar) */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800/60 bg-surface-1 px-3">
+        {/* Controles de Histórico e Ações */}
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -718,7 +718,7 @@ export default function Navegador() {
               value={activeTab.inputUrl}
               onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
               placeholder="Digite uma URL ou termo de pesquisa..."
-              className="h-8 w-full rounded-md border border-zinc-700/60 bg-[#0e0e11] pl-8 pr-20 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/80 focus:bg-[#0a0a0d] focus:outline-none transition-colors"
+              className="h-8 w-full rounded-md border border-zinc-700/60 bg-surface-0 pl-8 pr-20 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/80 focus:bg-surface-0 focus:outline-none transition-colors"
             />
 
             <div className="absolute right-1.5 flex items-center gap-1">
@@ -754,7 +754,7 @@ export default function Navegador() {
           className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
             isCaptureOpen
               ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-              : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              : "border-zinc-800 bg-surface-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
           }`}
           title="Capturar screenshot real e extrair dados da página"
         >
@@ -772,7 +772,7 @@ export default function Navegador() {
           className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${
             isInspectorOpen
               ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-              : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              : "border-zinc-800 bg-surface-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
           }`}
           title="Inspecionar elementos detectados na página"
         >
@@ -790,7 +790,7 @@ export default function Navegador() {
           <button
             type="button"
             onClick={() => window.open(activeTab.url, "_blank")}
-            className="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+            className="flex items-center gap-1 rounded-md border border-zinc-800 bg-surface-1 px-2.5 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
             title="Abrir no navegador padrão do sistema"
           >
             <ExternalLink size={13} />
@@ -830,42 +830,98 @@ export default function Navegador() {
       )}
 
       {/* 3. ÁREA DE NAVEGAÇÃO & PAINÉIS LATERAIS */}
-      <div className="relative flex flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* VIEWPORT PRINCIPAL DO NAVEGADOR */}
-        <div className="flex flex-1 flex-col overflow-hidden bg-[#0a0a0c]">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-0">
           {!activeTab.url ? (
-            /* TELA INICIAL (QUICK BOOKMARKS) */
-            <div className="flex flex-1 flex-col items-center justify-center p-6 text-center overflow-y-auto">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800/80 shadow-inner">
+            /* TELA INICIAL */
+            <div className="flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center">
+              <div className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-2xl border border-zinc-800/80 bg-surface-1 shadow-inner">
                 <Compass className="size-7 text-violet-400" />
               </div>
               <h2 className="text-lg font-semibold tracking-tight text-zinc-100">
                 Navegador Osíris
               </h2>
               <p className="mt-1 max-w-md text-xs text-zinc-400">
-                Explore a internet, inspecione a árvore de elementos do DOM com agentes de IA e capture dados estruturados.
+                Explore a internet, inspecione elementos do DOM com agentes de IA e capture dados estruturados.
               </p>
 
-              {/* Atalhos rápidos */}
-              <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3">
-                {QUICK_BOOKMARKS.map((bookmark) => (
-                  <button
-                    key={bookmark.name}
-                    type="button"
-                    onClick={() => navigateTo(bookmark.url)}
-                    className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-[#121215] p-3 text-left transition hover:border-violet-500/40 hover:bg-[#16161a]"
-                  >
-                    <div className="flex w-full items-center justify-between">
-                      <span className="font-medium text-xs text-zinc-200 group-hover:text-violet-300 transition">
-                        {bookmark.name}
+              {/* Busca central da main */}
+              <form onSubmit={handleFormSubmit} className="relative mt-6 w-full max-w-lg">
+                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="text"
+                  value={activeTab.inputUrl}
+                  onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
+                  placeholder="Pesquisar ou inserir endereço da web..."
+                  aria-label="Pesquisar ou inserir endereço da web"
+                  className="h-11 w-full rounded-xl border border-zinc-800 bg-surface-1 pl-10 pr-14 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md transition-all focus:border-violet-500/60 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-500"
+                >
+                  Ir
+                </button>
+              </form>
+
+              {/* Atalhos rápidos das duas versões */}
+              <div className="mt-7 w-full max-w-2xl">
+                <div className="mb-3 flex items-center justify-center gap-2 text-xs font-medium text-zinc-400">
+                  <Sparkles size={13} className="text-violet-400" />
+                  <span>Acesso rápido</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                  {QUICK_BOOKMARKS.map((bookmark) => (
+                    <button
+                      key={bookmark.name}
+                      type="button"
+                      onClick={() => navigateTo(bookmark.url)}
+                      className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-surface-1 p-3 text-left transition hover:border-violet-500/40 hover:bg-zinc-800/40"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-xs font-medium text-zinc-200 group-hover:text-violet-300">
+                          {bookmark.name}
+                        </span>
+                        <ExternalLink size={12} className="text-zinc-500 group-hover:text-violet-400" />
+                      </div>
+                      <span className="mt-1 line-clamp-1 text-[11px] text-zinc-500">
+                        {bookmark.desc}
                       </span>
-                      <ExternalLink size={12} className="text-zinc-600 opacity-0 transition group-hover:opacity-100 group-hover:text-violet-400" />
-                    </div>
-                    <span className="mt-1 text-[11px] text-zinc-500 line-clamp-1">
-                      {bookmark.desc}
-                    </span>
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recursos apresentados na main */}
+              <div className="mt-7 grid w-full max-w-2xl grid-cols-1 gap-3 border-t border-zinc-800/60 pt-5 text-left sm:grid-cols-3">
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-violet-400">
+                    <Bot size={14} />
+                    <span>Automação por IA</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Sessões da API disponíveis para interação com elementos da página.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-400">
+                    <ShieldCheck size={14} />
+                    <span>Webview no Electron</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Navegação desktop pelo Chromium nativo, sem as limitações de iframe.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                  <div className="mb-1 flex items-center gap-2 text-xs font-medium text-sky-400">
+                    <Layers size={14} />
+                    <span>Inspeção DOM</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Extração de seletores e elementos interativos da página.
+                  </p>
+                </div>
               </div>
             </div>
           ) : isElectronApp ? (
@@ -879,11 +935,14 @@ export default function Navegador() {
           ) : (
             /* MODO WEB: IFRAME COM FALLBACK */
             <div className="relative h-full w-full flex flex-col">
-              <div className="flex shrink-0 items-center justify-between bg-zinc-900/90 border-b border-zinc-800 px-3 py-1.5 text-[11px] text-zinc-400">
+              <div className="flex shrink-0 items-center justify-between bg-surface-1 border-b border-zinc-800 px-3 py-1.5 text-[11px] text-zinc-400">
                 <div className="flex items-center gap-1.5 truncate">
                   <AlertTriangle size={13} className="text-amber-400 shrink-0" />
                   <span className="truncate">
                     Alguns sites bloqueiam exibição em iframe (X-Frame-Options).
+                  </span>
+                  <span className="hidden font-mono text-zinc-500 md:inline">
+                    Sessão: {activeTab.id_session || "Local"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -919,11 +978,14 @@ export default function Navegador() {
 
         {/* PAINEL LATERAL 1: INSPEÇÃO DO DOM (Existente da main) */}
         {isInspectorOpen && (
-          <aside className="w-80 sm:w-96 shrink-0 border-l border-zinc-800/80 bg-[#121215] flex flex-col z-20 shadow-xl select-none">
-            <div className="flex h-10 items-center justify-between border-b border-zinc-800/60 px-3 bg-zinc-900/40">
-              <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-zinc-200">
-                <Bot size={14} className="text-violet-400" />
-                <span>Inspetor de Elementos DOM</span>
+          <aside className="w-80 md:w-96 border-l border-zinc-800/80 bg-surface-0 flex flex-col shrink-0">
+            {/* Header do Inspector */}
+            <div className="flex h-11 items-center justify-between border-b border-zinc-800/60 px-3">
+              <div className="flex items-center gap-2">
+                <Layers size={14} className="text-violet-400" />
+                <h3 className="text-xs font-semibold text-zinc-100">
+                  Inspeção DOM & Agente
+                </h3>
               </div>
               <button
                 type="button"
@@ -942,7 +1004,7 @@ export default function Navegador() {
                   value={inspectorSearch}
                   onChange={(e) => setInspectorSearch(e.target.value)}
                   placeholder="Filtrar por seletor, tag ou texto..."
-                  className="h-7 w-full rounded border border-zinc-800 bg-[#16161a] pl-7 pr-2 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/60 focus:outline-none"
+                  className="h-7 w-full rounded border border-zinc-800 bg-surface-1 pl-7 pr-2 text-[11px] font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500/60 focus:outline-none"
                 />
               </div>
             </div>
@@ -960,7 +1022,7 @@ export default function Navegador() {
                 filteredElements.map((el, idx) => (
                   <div
                     key={el.id || idx}
-                    className="group rounded-md border border-zinc-800/80 bg-[#151518] p-2.5 transition hover:border-zinc-700 hover:bg-[#18181d]"
+                    className="group rounded-md border border-zinc-800/80 bg-surface-1 p-2.5 transition hover:border-zinc-700 hover:bg-surface-1"
                   >
                     <div className="flex items-start justify-between gap-1 mb-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -999,7 +1061,8 @@ export default function Navegador() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between rounded bg-[#0e0e11] px-2 py-1 font-mono text-[11px] text-zinc-300">
+                    {/* Seletor CSS */}
+                    <div className="flex items-center justify-between rounded bg-surface-0 px-2 py-1 font-mono text-[11px] text-zinc-300">
                       <span className="truncate">{el.selector}</span>
                       <button
                         type="button"
@@ -1036,9 +1099,9 @@ export default function Navegador() {
 
         {/* PAINEL LATERAL 2: CAPTURA DE TELA & EXTRAÇÃO DE DADOS (Playwright) */}
         {isCaptureOpen && (
-          <aside className="w-full sm:w-[500px] lg:w-[580px] shrink-0 border-l border-zinc-800/80 bg-[#121215] flex flex-col z-30 shadow-2xl overflow-hidden">
+          <aside className="w-full sm:w-[500px] lg:w-[580px] shrink-0 border-l border-zinc-800/80 bg-surface-0 flex flex-col z-30 shadow-2xl overflow-hidden">
             {/* Header do Painel de Captura */}
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-4">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-surface-1 px-4">
               <div className="flex items-center gap-2">
                 <Camera size={15} className="text-violet-400" />
                 <h3 className="font-mono text-xs font-semibold text-zinc-100">
@@ -1080,7 +1143,7 @@ export default function Navegador() {
             </div>
 
             {/* Input e Disparo de Captura */}
-            <div className="p-3 border-b border-zinc-800/60 bg-[#141417]">
+            <div className="p-3 border-b border-zinc-800/60 bg-surface-1">
               <form onSubmit={handleCapturePage} className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-zinc-500">
@@ -1092,7 +1155,7 @@ export default function Navegador() {
                     onChange={(e) => setCaptureUrl(e.target.value)}
                     placeholder="URL para captura (ex: https://example.com)"
                     disabled={captureLoading}
-                    className="h-8 w-full rounded border border-zinc-800 bg-[#0e0e11] pl-8 pr-2 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
+                    className="h-8 w-full rounded border border-zinc-800 bg-surface-0 pl-8 pr-2 text-xs font-mono text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
                   />
                 </div>
                 <button
@@ -1148,8 +1211,8 @@ export default function Navegador() {
               ) : (
                 <>
                   {/* Preview da Screenshot */}
-                  <div className="rounded-lg border border-zinc-800 bg-[#0e0e11] overflow-hidden">
-                    <div className="flex h-8 items-center justify-between border-b border-zinc-800 bg-zinc-900/60 px-3 text-[11px] font-mono text-zinc-400">
+                  <div className="rounded-lg border border-zinc-800 bg-surface-0 overflow-hidden">
+                    <div className="flex h-8 items-center justify-between border-b border-zinc-800 bg-surface-1 px-3 text-[11px] font-mono text-zinc-400">
                       <div className="flex items-center gap-1.5">
                         <Image size={12} className="text-violet-400" />
                         <span>Screenshot JPEG</span>
@@ -1184,9 +1247,9 @@ export default function Navegador() {
                   </div>
 
                   {/* Abas de Dados Estruturados */}
-                  <div className="rounded-lg border border-zinc-800 bg-[#0e0e11] overflow-hidden">
+                  <div className="rounded-lg border border-zinc-800 bg-surface-0 overflow-hidden">
                     {/* Tab Navigation */}
-                    <div className="flex h-8 items-center gap-1 border-b border-zinc-800 bg-zinc-900/60 px-2 overflow-x-auto">
+                    <div className="flex h-8 items-center gap-1 border-b border-zinc-800 bg-surface-1 px-2 overflow-x-auto">
                       <TabButton
                         active={captureSubTab === "overview"}
                         onClick={() => setCaptureSubTab("overview")}
@@ -1234,13 +1297,13 @@ export default function Navegador() {
                         <div className="space-y-3">
                           <div>
                             <span className="text-[10px] font-mono uppercase text-zinc-500">Título</span>
-                            <p className="mt-0.5 rounded bg-[#16161a] p-2 text-zinc-200 font-medium">
+                            <p className="mt-0.5 rounded bg-surface-1 p-2 text-zinc-200 font-medium">
                               {captureResult.data?.title || "(Sem título)"}
                             </p>
                           </div>
                           <div>
                             <span className="text-[10px] font-mono uppercase text-zinc-500">Descrição</span>
-                            <p className="mt-0.5 rounded bg-[#16161a] p-2 text-zinc-400 italic">
+                            <p className="mt-0.5 rounded bg-surface-1 p-2 text-zinc-400 italic">
                               {captureResult.data?.description || "(Sem meta description)"}
                             </p>
                           </div>
@@ -1258,7 +1321,7 @@ export default function Navegador() {
                             <EmptyState message="Nenhum título encontrado." />
                           ) : (
                             headingsList.map((h, idx) => (
-                              <div key={idx} className="flex items-start gap-2 rounded bg-[#16161a] p-2">
+                              <div key={idx} className="flex items-start gap-2 rounded bg-surface-1 p-2">
                                 <span
                                   className={`rounded px-1 py-0.2 font-mono text-[9px] font-bold uppercase ${
                                     h.level === "h1"
@@ -1283,7 +1346,7 @@ export default function Navegador() {
                             <EmptyState message="Nenhum link público encontrado." />
                           ) : (
                             linksList.map((link, idx) => (
-                              <div key={idx} className="flex items-center justify-between gap-2 rounded bg-[#16161a] p-2">
+                              <div key={idx} className="flex items-center justify-between gap-2 rounded bg-surface-1 p-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="truncate text-zinc-200">{link.text || "(Link)"}</p>
                                   <p className="truncate font-mono text-[10px] text-zinc-500">{link.url}</p>
@@ -1319,7 +1382,7 @@ export default function Navegador() {
                             <EmptyState message="Nenhuma tabela HTML encontrada." />
                           ) : (
                             tablesList.map((tbl, tIdx) => (
-                              <div key={tIdx} className="rounded border border-zinc-800 overflow-x-auto p-1 bg-[#16161a]">
+                              <div key={tIdx} className="rounded border border-zinc-800 overflow-x-auto p-1 bg-surface-1">
                                 <table className="w-full text-left font-mono text-[11px]">
                                   <tbody>
                                     {tbl.map((row, rIdx) => (
@@ -1352,7 +1415,7 @@ export default function Navegador() {
                               <span>{copiedText ? "Copiado!" : "Copiar"}</span>
                             </button>
                           </div>
-                          <pre className="whitespace-pre-wrap rounded bg-[#16161a] p-2 font-mono text-[11px] leading-4 text-zinc-300 max-h-56 overflow-auto">
+                          <pre className="whitespace-pre-wrap rounded bg-surface-1 p-2 font-mono text-[11px] leading-4 text-zinc-300 max-h-56 overflow-auto">
                             {extractedText || "(Sem texto visível)"}
                           </pre>
                         </div>
@@ -1371,7 +1434,7 @@ export default function Navegador() {
                               <span>Baixar</span>
                             </button>
                           </div>
-                          <pre className="rounded bg-[#16161a] p-2 font-mono text-[10px] leading-4 text-zinc-300 max-h-56 overflow-auto">
+                          <pre className="rounded bg-surface-1 p-2 font-mono text-[10px] leading-4 text-zinc-300 max-h-56 overflow-auto">
                             {JSON.stringify(
                               {
                                 url: captureResult.url,
@@ -1469,7 +1532,7 @@ function TabButton({ active, onClick, icon: Icon, label, badge }) {
 
 function MetricCard({ label, value, color }) {
   return (
-    <div className="rounded border border-zinc-800 bg-[#16161a] p-2 text-center">
+    <div className="rounded border border-zinc-800 bg-surface-1 p-2 text-center">
       <p className="text-[9px] font-mono uppercase text-zinc-500">{label}</p>
       <p className={`mt-0.5 font-mono text-base font-bold ${color}`}>{value}</p>
     </div>

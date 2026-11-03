@@ -149,7 +149,7 @@ function ProviderCard({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-700/80 bg-[#181818] p-3.5 transition-colors">
+    <section className="rounded-lg border border-zinc-700/80 bg-surface-1 p-3.5 transition-colors">
       <div className="mb-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-[13px] font-semibold text-zinc-100">{provider.name}</h3>
@@ -174,7 +174,7 @@ function ProviderCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-zinc-700 bg-[#101010] px-2.5">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-zinc-700 bg-surface-0 px-2.5">
           <input
             type={visible ? 'text' : 'password'}
             value={value}
@@ -209,7 +209,7 @@ function ProviderCard({
               type="button"
               onClick={handleTest}
               disabled={testing}
-              className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-700 bg-[#111111] px-3 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
+              className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-700 bg-surface-0 px-3 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
             >
               {testing && <Loader2 size={12} className="animate-spin" />}
               {testing ? 'Testando...' : 'Testar'}
@@ -262,7 +262,7 @@ function ProviderCard({
           </div>
 
           {provider.id === 'openrouter' && (
-            <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-[#121212] p-1.5">
+            <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-surface-0 p-1.5">
               <input
                 type="text"
                 value={newModelId}
@@ -298,7 +298,7 @@ function ProviderCard({
                   className={`flex items-center justify-between rounded-md border p-2 transition-colors ${
                     isActive
                       ? 'border-violet-500/80 bg-violet-950/20'
-                      : 'border-zinc-800 bg-[#121212] hover:border-zinc-700'
+                      : 'border-zinc-800 bg-surface-0 hover:border-zinc-700'
                   }`}
                 >
                   <div className="min-w-0 flex-1 pr-2">
@@ -366,7 +366,7 @@ function ProviderCard({
 
       {showCatalogModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-zinc-700 bg-[#161616] p-5 shadow-2xl">
+          <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-zinc-700 bg-surface-1 p-5 shadow-2xl">
             <div className="mb-3 flex items-center justify-between border-b border-zinc-800 pb-3">
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
@@ -386,7 +386,7 @@ function ProviderCard({
               </button>
             </div>
 
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-700 bg-[#101010] px-3 py-1.5">
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-700 bg-surface-0 px-3 py-1.5">
               <Search size={14} className="text-zinc-500" />
               <input
                 type="text"
@@ -433,7 +433,7 @@ function ProviderCard({
                     return (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between rounded-lg border border-zinc-800 bg-[#111111] p-2.5 hover:border-zinc-700"
+                        className="flex items-center justify-between rounded-lg border border-zinc-800 bg-surface-0 p-2.5 hover:border-zinc-700"
                       >
                         <div className="min-w-0 flex-1 pr-3">
                           <div className="flex items-center gap-2">
@@ -526,10 +526,10 @@ function CustomServerCard({ activeModelConfig, onActivateModel }) {
     }
   }
 
-  const inputClass = 'h-8 min-w-0 rounded-md border border-zinc-700 bg-[#101010] px-2.5 font-mono text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none';
+  const inputClass = 'h-8 min-w-0 rounded-md border border-zinc-700 bg-surface-0 px-2.5 font-mono text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none';
 
   return (
-    <section className="rounded-lg border border-zinc-700/80 bg-[#181818] p-3.5">
+    <section className="rounded-lg border border-zinc-700/80 bg-surface-1 p-3.5">
       <div className="mb-1 flex items-center gap-2">
         <Server size={13} className="text-violet-400" />
         <h3 className="text-[13px] font-semibold text-zinc-100">Servidor proprio (VPS)</h3>
@@ -564,7 +564,7 @@ function CustomServerCard({ activeModelConfig, onActivateModel }) {
             const isActive = activeModelConfig?.provider === CUSTOM_PROVIDER_ID && activeModelConfig?.model === model;
             return (
               <div key={model} className={`flex items-center justify-between rounded-md border p-2 ${isActive
-                ? 'border-violet-500/80 bg-violet-950/20' : 'border-zinc-800 bg-[#121212]'}`}>
+                ? 'border-violet-500/80 bg-violet-950/20' : 'border-zinc-800 bg-surface-0'}`}>
                 <p className="min-w-0 truncate font-mono text-[11px] text-zinc-200">{model}</p>
                 <button type="button" disabled={isActive}
                   onClick={() => onActivateModel({ type: 'cloud', provider: CUSTOM_PROVIDER_ID, model, name: `Servidor proprio - ${model}` })}
@@ -739,7 +739,7 @@ export default function Modelos() {
   }, [localModels]);
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-[#141414] text-zinc-100 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800">
+    <div className="h-full w-full overflow-y-auto bg-surface-0 text-zinc-100 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800">
       <div className="w-full max-w-[760px] px-6 pb-14 pt-12 lg:ml-20">
         {/* Active Model Banner */}
         <section className="mb-6 rounded-lg border border-violet-500/30 bg-violet-950/20 p-4 shadow-sm">
@@ -758,7 +758,7 @@ export default function Modelos() {
           </div>
         </section>
 
-        <div className="mb-4 inline-flex rounded-md bg-[#181818] p-1 border border-zinc-800">
+        <div className="mb-4 inline-flex rounded-md bg-surface-1 p-1 border border-zinc-800">
           <button
             type="button"
             onClick={() => setActiveTab('cloud')}
@@ -820,7 +820,7 @@ export default function Modelos() {
         ) : (
           <div className="space-y-3">
             {/* Local Engine Card */}
-            <section className="rounded-lg border border-zinc-700/80 bg-[#181818] p-4">
+            <section className="rounded-lg border border-zinc-700/80 bg-surface-1 p-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -848,7 +848,7 @@ export default function Modelos() {
                 return (
                   <section
                     key={model.name}
-                    className={`rounded-lg border bg-[#181818] p-3 transition-colors ${
+                    className={`rounded-lg border bg-surface-1 p-3 transition-colors ${
                       isActive ? 'border-violet-500/80' : 'border-zinc-800 hover:border-zinc-700'
                     }`}
                   >
@@ -936,7 +936,7 @@ export default function Modelos() {
                 return (
                   <section
                     key={model.fullPath}
-                    className={`rounded-lg border bg-[#181818] p-3 transition-colors ${
+                    className={`rounded-lg border bg-surface-1 p-3 transition-colors ${
                       isActive ? 'border-violet-500/80' : 'border-zinc-800 hover:border-zinc-700'
                     }`}
                   >

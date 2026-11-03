@@ -36,7 +36,7 @@ export default function TitleBar() {
 
   return (
     <header
-      className="flex h-9 w-full shrink-0 select-none items-center justify-between border-b border-zinc-800/80 bg-[#121212] px-3 font-sans text-zinc-300 z-50"
+      className="flex h-9 w-full shrink-0 select-none items-center justify-between border-b border-zinc-800/80 bg-surface-0 px-3 font-sans text-zinc-300 z-50"
       style={{ WebkitAppRegion: 'drag' }}
     >
 

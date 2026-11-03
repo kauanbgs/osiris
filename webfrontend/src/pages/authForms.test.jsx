@@ -6,6 +6,11 @@ import Login from './Login';
 import Cadastro from './Cadastro';
 import { AuthContext } from '@/contexts/AuthContext';
 
+// Ignora a animação Canvas durante os testes de autenticação
+vi.mock('@/components/DotField', () => ({
+  default: () => null,
+}));
+
 function renderWithAuth(ui, authValue) {
   return render(
     <AuthContext.Provider value={authValue}>

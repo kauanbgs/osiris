@@ -423,7 +423,7 @@ export default function Arquivos() {
                 className="
                   absolute inset-0
                   h-full w-full resize-none
-                  border-0 bg-[#09090b]
+                  border-0 bg-surface-0
                   p-5
                   font-mono text-[13px]
                   leading-6 text-zinc-300

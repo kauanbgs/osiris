@@ -19,7 +19,7 @@ export default function ConfirmDeleteModal({ title, onConfirm, onCancel }) {
     >
       {/* Card */}
       <div
-        className="relative w-full max-w-sm rounded-xl border border-zinc-800 bg-[#1a1a1a] p-6 shadow-2xl"
+        className="relative w-full max-w-sm rounded-xl border border-zinc-800 bg-surface-1 p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "modalIn 0.18s ease-out both" }}
       >

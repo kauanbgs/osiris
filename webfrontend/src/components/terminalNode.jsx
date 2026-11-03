@@ -47,7 +47,7 @@ export default function TerminalNode({ id, data }) {
       </div>
 
       {/* Terminal Container */}
-      <div className="nodrag nowheel pointer-events-auto h-[320px] bg-[#0c0c0e] p-2">
+      <div className="nodrag nowheel pointer-events-auto h-[320px] bg-surface-0 p-2">
         <Terminal
           terminalId={id}
           mode={data?.mode}

@@ -18,7 +18,7 @@ export default function AgentNode({ id, data }) {
   const output = data?.output ?? agentState?.output ?? "";
   const error = data?.runError || agentState?.error || "";
   const chainStatus = agentState ? ({ waiting: "Aguardando agentes anteriores", done: "Concluido", cancelled: "Interrompido", skipped: "Nao executado" }[agentState.status] || "") : "";
-  const handleClass = "!h-2.5 !w-2.5 !border-2 !border-[#151515] !bg-violet-500 hover:!bg-violet-400 transition-colors";
+  const handleClass = "!h-2.5 !w-2.5 !border-2 !border-surface-1 !bg-violet-500 hover:!bg-violet-400 transition-colors";
   const hasFileInput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).inputs.length > 0);
   const hasFileOutput = useStore((state) => getAgentFileNodes(id, state.nodes, state.edges).outputs.length > 0);
   const hasTerminal = useStore((state) => getAgentTerminals(id, state.nodes, state.edges).length > 0);
@@ -43,7 +43,7 @@ export default function AgentNode({ id, data }) {
   const handleRunChain = () => execution.run({ startAgentId: id });
 
   return (
-    <div className="group relative w-[520px] overflow-hidden rounded-2xl border border-zinc-800 bg-[#151515] shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
+    <div className="group relative w-[520px] overflow-hidden rounded-2xl border border-zinc-800 bg-surface-1 shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
       {/* FileNode → Agent (esquerda) */}
       <Handle
         id="files"

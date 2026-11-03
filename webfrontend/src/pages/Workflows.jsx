@@ -47,7 +47,7 @@ export default function Workflows() {
   }
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white">
+    <div className="min-h-screen bg-surface-0 text-white">
 
       {/* HEADER */}
       <header className="border-b border-zinc-800/70">
@@ -78,12 +78,12 @@ export default function Workflows() {
               flex h-9
               items-center gap-2
               rounded-lg
-              bg-white
+              bg-action
               px-4
               text-sm font-medium
-              text-black
+              text-action-foreground
               transition
-              hover:bg-zinc-200
+              hover:opacity-85
             "
           >
             <Plus size={16} />
@@ -385,7 +385,7 @@ function CreateWorkflowModal({
           overflow-hidden
           rounded-xl
           border border-zinc-800
-          bg-[#181818]
+          bg-surface-1
           shadow-2xl
         "
       >
@@ -570,13 +570,13 @@ function CreateWorkflowModal({
                 flex h-9
                 items-center gap-2
                 rounded-lg
-                bg-white
+                bg-action
                 px-4
                 text-sm font-medium
-                text-black
+                text-action-foreground
                 transition
 
-                hover:bg-zinc-200
+                hover:opacity-85
 
                 disabled:cursor-not-allowed
                 disabled:opacity-40
@@ -652,12 +652,12 @@ function EmptyState({
           mt-5
           flex items-center gap-2
           rounded-lg
-          bg-white
+          bg-action
           px-4 py-2
           text-xs font-medium
-          text-black
+          text-action-foreground
           transition
-          hover:bg-zinc-200
+          hover:opacity-85
         "
       >
         <Plus size={14} />

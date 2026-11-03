@@ -2,6 +2,12 @@ import React, { useEffect, useRef, memo } from 'react';
 
 const TWO_PI = Math.PI * 2;
 
+// Cores vem do tema (--dot-from, --dot-to, --dot-glow) a menos que sejam passadas por prop.
+function readCssVar(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
 const DotField = memo(({
   dotRadius = 1.5,
   dotSpacing = 14,
@@ -12,9 +18,9 @@ const DotField = memo(({
   glowRadius = 160,
   sparkle = false,
   waveAmplitude = 0,
-  gradientFrom = 'rgba(168, 85, 247, 0.35)',
-  gradientTo = 'rgba(180, 151, 207, 0.25)',
-  glowColor = '#120F17',
+  gradientFrom,
+  gradientTo,
+  glowColor,
   ...rest
 }) => {
   const canvasRef = useRef(null);
@@ -28,6 +34,19 @@ const DotField = memo(({
   const engagement = useRef(0);
   const propsRef = useRef({});
   propsRef.current = { dotRadius, dotSpacing, cursorRadius, cursorForce, bulgeOnly, bulgeStrength, sparkle, waveAmplitude, gradientFrom, gradientTo };
+  const themeColors = useRef({ from: '#A855F7', to: '#B497CF' });
+
+  useEffect(() => {
+    const refresh = () => {
+      themeColors.current = {
+        from: readCssVar('--dot-from', '#A855F7'),
+        to: readCssVar('--dot-to', '#B497CF'),
+      };
+    };
+    refresh();
+    window.addEventListener('osiris-theme-change', refresh);
+    return () => window.removeEventListener('osiris-theme-change', refresh);
+  }, []);
   const rebuildRef = useRef(null);
   const glowIdRef = useRef(`dot-field-glow-${Math.random().toString(36).slice(2, 9)}`);
 
@@ -131,8 +150,8 @@ const DotField = memo(({
       ctx.clearRect(0, 0, w, h);
 
       const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, p.gradientFrom);
-      grad.addColorStop(1, p.gradientTo);
+      grad.addColorStop(0, p.gradientFrom ?? themeColors.current.from);
+      grad.addColorStop(1, p.gradientTo ?? themeColors.current.to);
       ctx.fillStyle = grad;
 
       const cr = p.cursorRadius;
@@ -248,8 +267,9 @@ const DotField = memo(({
         }}>
         <defs>
           <radialGradient id={glowIdRef.current}>
-            <stop offset="0%" stopColor={glowColor} />
-            <stop offset="100%" stopColor="transparent" />
+            <stop offset="0%" style={{ stopColor: glowColor ?? 'var(--dot-glow)' }} />
+            {/* mesma cor com opacidade 0: "transparent" e preto e escureceria o glow */}
+            <stop offset="100%" style={{ stopColor: glowColor ?? 'var(--dot-glow)', stopOpacity: 0 }} />
           </radialGradient>
         </defs>
         <circle
