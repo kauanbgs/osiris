@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Modal,
   PanResponder,
   StyleSheet,
@@ -116,6 +117,38 @@ export default function WorkflowScreen({ navigation, route }) {
   const agentAbortRefs = useRef(new Map());
   const saveQueueRef = useRef(Promise.resolve());
   const saveRetryTimerRef = useRef(null);
+
+  // Quando o teclado cobre o campo em foco (nome de agente, texto de um nó),
+  // desliza o canvas para cima e devolve ao lugar quando o teclado fecha.
+  useEffect(() => {
+    let keyboardShift = 0;
+
+    const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
+      const input = TextInput.State.currentlyFocusedInput();
+      if (!input?.measureInWindow) return;
+      input.measureInWindow((x, y, width, height) => {
+        const overlap = y + height + 16 - event.endCoordinates.screenY;
+        if (overlap <= 0) return;
+        keyboardShift = overlap;
+        const nextPan = { x: panRef.current.x, y: panRef.current.y - overlap };
+        panRef.current = nextPan;
+        setPan(nextPan);
+      });
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (!keyboardShift) return;
+      const nextPan = { x: panRef.current.x, y: panRef.current.y + keyboardShift };
+      keyboardShift = 0;
+      panRef.current = nextPan;
+      setPan(nextPan);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const frameCanvas = useCallback((canvasNodes = nodesRef.current, frameSize = viewport) => {
     if (!canvasNodes.length) return;

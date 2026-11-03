@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import LoginScreen from './src/screens/LoginScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import CadastroScreen from './src/screens/CadastroScreen';
@@ -12,27 +12,52 @@ import ArquivoScreen from './src/screens/ArquivoScreen';
 import WorkflowScreen from './src/screens/WorkflowScreen';
 import { loadIP } from './src/services/serverConfig';
 
-export default function App() {
-  const stack = createNativeStackNavigator();
+// Criado fora do componente para não ser recriado a cada renderização.
+const Stack = createNativeStackNavigator();
 
+const BACKGROUND = '#0d0d0d';
+
+// Tema escuro: sem ele, o fundo branco padrão aparece entre uma tela e outra.
+const theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: BACKGROUND,
+    card: BACKGROUND,
+    primary: '#7c5cff',
+  },
+};
+
+const screenOptions = {
+  headerShown: false,
+  // As abas da navbar trocam com um fade curto, como num app de abas.
+  animation: 'fade',
+  animationDuration: 200,
+  contentStyle: { backgroundColor: BACKGROUND },
+};
+
+// Telas que se abrem "por cima" de outra continuam deslizando da direita.
+const pushOptions = { animation: 'slide_from_right' };
+
+export default function App() {
   // Carrega o IP salvo no celular ao abrir o app.
   useEffect(() => {
     loadIP().catch(() => {});
   }, []);
 
   return (
-    <NavigationContainer>
-      <stack.Navigator initialRouteName="LoginScreen" screenOptions={{ headerShown: false }}>
-        <stack.Screen name="LoginScreen" component={LoginScreen} />
-        <stack.Screen name="HomeScreen" component={HomeScreen} />
-        <stack.Screen name="Cadastro" component={CadastroScreen} />
-        <stack.Screen name="Chats" component={ChatsScreen} />
-        <stack.Screen name="Configuracoes" component={SettingsScreen} />
-        <stack.Screen name="Memoria" component={MemoriaScreen} />
-        <stack.Screen name="Terminal" component={TerminalScreen} />
-        <stack.Screen name="ArquivoScreen" component={ArquivoScreen} />
-        <stack.Screen name="WorkflowScreen" component={WorkflowScreen} />
-      </stack.Navigator>
+    <NavigationContainer theme={theme}>
+      <Stack.Navigator initialRouteName="LoginScreen" screenOptions={screenOptions}>
+        <Stack.Screen name="LoginScreen" component={LoginScreen} />
+        <Stack.Screen name="HomeScreen" component={HomeScreen} />
+        <Stack.Screen name="Cadastro" component={CadastroScreen} options={pushOptions} />
+        <Stack.Screen name="Chats" component={ChatsScreen} />
+        <Stack.Screen name="Configuracoes" component={SettingsScreen} />
+        <Stack.Screen name="Memoria" component={MemoriaScreen} options={pushOptions} />
+        <Stack.Screen name="Terminal" component={TerminalScreen} />
+        <Stack.Screen name="ArquivoScreen" component={ArquivoScreen} />
+        <Stack.Screen name="WorkflowScreen" component={WorkflowScreen} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }

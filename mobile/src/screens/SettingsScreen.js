@@ -7,7 +7,6 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
-  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -15,6 +14,8 @@ import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
 import BottomNav from "../components/Navbar";
 import ModelSettings from "../components/ModelSettings";
+import { KeyboardScrollView } from "../components/KeyboardAware";
+import { CHAT_SESSION_KEY } from "../services/chatSession";
 
 export default function SettingsScreen({ navigation, route }) {
   // guestMode = true quando vindo da LoginScreen (sem estar autenticado)
@@ -112,7 +113,7 @@ export default function SettingsScreen({ navigation, route }) {
             await AsyncStorage.multiRemove([
               "token",
               "user",
-              "@osiris/active_chat_id",
+              CHAT_SESSION_KEY,
             ]);
           } catch (e) {
             console.warn("Erro ao limpar sessão:", e?.message);
@@ -131,7 +132,7 @@ export default function SettingsScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Configurações do Sistema</Text>
 
         {guestMode && (
@@ -209,7 +210,7 @@ export default function SettingsScreen({ navigation, route }) {
             <Text style={styles.logoutText}>Sair da conta</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </KeyboardScrollView>
 
       {!guestMode && (
         <BottomNav

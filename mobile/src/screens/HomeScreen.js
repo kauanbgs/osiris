@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  AppState,
   Keyboard,
 } from "react-native";
 import * as Speech from "expo-speech";
@@ -26,6 +27,12 @@ import PlusActionMenu from "../components/PlusActionMenu";
 import sheets from "../services/api";
 import { aiUrl } from "../services/serverConfig";
 import { getActiveModel, sendCloudPrompt } from "../services/modelConfig";
+import {
+  clearChatSession,
+  isChatSessionExpired,
+  loadChatSession,
+  saveChatSession,
+} from "../services/chatSession";
 
 const colors = {
   background: "#0d0d0d",
@@ -37,6 +44,7 @@ const colors = {
   bubbleUser: "#7c5cff",
   bubbleAgent: "#1a1a1a",
   bubbleAgentBorder: "#2a2a2a",
+  textMuted: "#8a8a8a",
 };
 
 const fontFamily = Platform.select({
@@ -392,33 +400,80 @@ export default function HomeScreen({ navigation, route }) {
   }, []);
 
   // Carrega histórico quando a tela ganha foco ou recebe params
-  useEffect(() => {
-    async function loadChatHistory() {
-      const paramChatId = route?.params?.chatId ?? null;
+  // Conversa aberta e quando ela foi usada pela última vez (ver chatSession).
+  const activeChatIdRef = useRef(null);
+  activeChatIdRef.current = activeChatId;
+  const lastActiveRef = useRef(Date.now());
 
-      if (paramChatId === null) {
-        setMessages([]);
-        setActiveChatId(null);
-        return;
-      }
+  function touchChat(chatId = activeChatIdRef.current) {
+    lastActiveRef.current = Date.now();
+    saveChatSession(chatId);
+  }
 
-      try {
-        const chatId = Number(paramChatId);
-        setActiveChatId(chatId);
-        const res = await sheets.getMessages(chatId);
-        const loaded = (res.data?.messages || []).map((m) => ({
-          id: String(m.id_message),
-          role: m.type === "user" ? "user" : "agent",
-          text: m.content,
-        }));
-        setMessages(loaded);
-      } catch (error) {
-        console.warn("Não foi possível carregar histórico:", error?.message);
-      }
+  function startNewChat() {
+    setMessages([]);
+    setActiveChatId(null);
+    setMessage("");
+    setAttachment(null);
+    lastActiveRef.current = Date.now();
+    clearChatSession();
+  }
+
+  async function openChat(chatId) {
+    setActiveChatId(chatId);
+    touchChat(chatId);
+    try {
+      const res = await sheets.getMessages(chatId);
+      const loaded = (res.data?.messages || []).map((m) => ({
+        id: String(m.id_message),
+        role: m.type === "user" ? "user" : "agent",
+        text: m.content,
+      }));
+      setMessages(loaded);
+    } catch (error) {
+      console.warn("Não foi possível carregar histórico:", error?.message);
     }
+  }
 
-    loadChatHistory();
-  }, [route?.params?.chatId, route?.params?.newChat]);
+  // Os parâmetros da rota são pedidos vindos de outras telas: abrir uma
+  // conversa da lista (chatId) ou começar uma nova (newChat). Sem pedido,
+  // reabre a última conversa se ela ainda não expirou.
+  useEffect(() => {
+    const paramChatId = route?.params?.chatId ?? null;
+
+    if (route?.params?.newChat) {
+      startNewChat();
+    } else if (paramChatId !== null) {
+      openChat(Number(paramChatId));
+    } else {
+      loadChatSession().then((savedChatId) => {
+        if (savedChatId && !activeChatIdRef.current) openChat(savedChatId);
+      });
+    }
+  }, [route?.params?.chatId, route?.params?.newChat, route?.params?.openedAt]);
+
+  // Ao voltar para a Home (ou para o app) depois de muito tempo, começa uma
+  // conversa nova; ao sair, marca o horário para contar o tempo sem uso.
+  useEffect(() => {
+    const expireIfIdle = () => {
+      if (activeChatIdRef.current && isChatSessionExpired(lastActiveRef.current)) {
+        startNewChat();
+      }
+    };
+
+    const unsubscribeFocus = navigation.addListener("focus", expireIfIdle);
+    const unsubscribeBlur = navigation.addListener("blur", () => touchChat());
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && navigation.isFocused()) expireIfIdle();
+      else if (state === "background" && navigation.isFocused()) touchChat();
+    });
+
+    return () => {
+      unsubscribeFocus();
+      unsubscribeBlur();
+      appStateSub.remove();
+    };
+  }, [navigation]);
 
   // Recarrega o modelo escolhido ao voltar das Configurações.
   useEffect(() => {
@@ -570,8 +625,8 @@ export default function HomeScreen({ navigation, route }) {
         chatId = chatRes.data?.chat?.id_chat;
 
         setActiveChatId(chatId);
-        await AsyncStorage.setItem("@osiris/active_chat_id", String(chatId));
       }
+      touchChat(chatId);
 
       const contentToSave = currentAttachment
         ? `[Anexo: ${currentAttachment.name}] ${text}`.trim()
@@ -605,6 +660,7 @@ export default function HomeScreen({ navigation, route }) {
       };
 
       setMessages((previous) => [...previous, agentMessage]);
+      touchChat(chatId);
       if (model.type !== "cloud") setDesktopConnected(true);
     } catch (error) {
       console.error("Erro ao falar com a IA:", error);
@@ -641,18 +697,30 @@ export default function HomeScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusIndicator
-        connected={desktopConnected}
-        modelLoaded={modelLoaded}
-        modelName={modelName}
-        cloudModelName={isCloudModel ? activeModel.name : null}
-        onPress={() => navigation.navigate("Configuracoes", undefined, { pop: true })}
-      />
+      <View style={styles.headerRow}>
+        {hasConversation ? (
+          <TouchableOpacity
+            style={styles.newChatButton}
+            onPress={startNewChat}
+            disabled={isAgentTyping}
+            accessibilityLabel="Nova conversa"
+          >
+            <Feather name="edit" size={15} color={colors.textMuted} />
+            <Text style={styles.newChatText}>Nova conversa</Text>
+          </TouchableOpacity>
+        ) : (
+          <View />
+        )}
+        <StatusIndicator
+          connected={desktopConnected}
+          modelLoaded={modelLoaded}
+          modelName={modelName}
+          cloudModelName={isCloudModel ? activeModel.name : null}
+          onPress={() => navigation.navigate("Configuracoes", undefined, { pop: true })}
+        />
+      </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         {hasConversation ? (
           <FlatList
             ref={listRef}
@@ -712,6 +780,22 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
     justifyContent: "space-between",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  newChatButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  newChatText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginLeft: 6,
   },
   statusRow: {
     flexDirection: "row",

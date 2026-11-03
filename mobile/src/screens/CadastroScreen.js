@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  Platform,
   KeyboardAvoidingView,
   ScrollView,
   StyleSheet,
@@ -84,7 +83,7 @@ export default function Cadastro({ navigation }) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
     >
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 

@@ -12,6 +12,7 @@ import {
 import { Mail, KeyRound, Settings } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DotField from "../components/DotField";
+import { KeyboardAvoider } from "../components/KeyboardAware";
 import api from "../services/api";
 import { getIP } from "../services/serverConfig";
 
@@ -73,7 +74,7 @@ export default function Login({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoider style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
       <DotField
@@ -180,7 +181,7 @@ export default function Login({ navigation }) {
         <Settings size={16} color="#888888" strokeWidth={2} />
         <Text style={styles.serverText}>Configurar servidor</Text>
       </TouchableOpacity>
-    </View>
+    </KeyboardAvoider>
   );
 }
 
