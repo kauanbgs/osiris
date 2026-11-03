@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
+const extractFileContent = require("../utils/fileReader");
 
 class FileController {
   static async createLog(req, res, next) {
@@ -130,14 +131,21 @@ class FileController {
       file = req.file;
 
       const fileBuffer = fs.readFileSync(file.path);
+
       const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
 
-      const extension = path.extname(file.originalname).slice(1) || null;
+      const extension =
+        path.extname(file.originalname).slice(1).toLowerCase() || null;
+
       const mimeType = file.mimetype || "application/octet-stream";
 
+      // Extrai o conteúdo do arquivo
+      const extracted = await extractFileContent(fileBuffer, extension);
+
+      // Salva os dados do arquivo
       const [result] = await pool.promise().execute(
         `INSERT INTO file (name, path, extension, size, hash, type)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)`,
         [file.originalname, file.path, extension, file.size, hash, mimeType],
       );
 
@@ -146,12 +154,22 @@ class FileController {
         file_name: file.originalname,
         action: "upload",
         status: "success",
-        message: "Arquivo enviado com sucesso.",
+        message: "Arquivo enviado e processado.",
+      });
+
+      // Registra o resultado da leitura
+      await FileController.registerLog({
+        id_file: result.insertId,
+        file_name: file.originalname,
+        action: "read",
+        status: extracted.readable ? "success" : "error",
+        message: extracted.message,
       });
 
       return res.status(201).json({
         message: "Arquivo enviado com sucesso.",
         sucesso: true,
+
         file: {
           id_file: result.insertId,
           name: file.originalname,
@@ -159,6 +177,13 @@ class FileController {
           size: file.size,
           hash,
           type: mimeType,
+        },
+
+        reading: {
+          readable: extracted.readable,
+          content: extracted.content,
+          truncated: extracted.truncated || false,
+          message: extracted.message,
         },
       });
     } catch (error) {
@@ -177,13 +202,16 @@ class FileController {
 
   static async list(req, res, next) {
     try {
-      const [rows] = await pool.promise().execute(
+      const [files] = await pool.promise().execute(
         `SELECT id_file, name, path, extension, size, hash, type
-         FROM file
-         ORDER BY id_file DESC`,
+       FROM file
+       ORDER BY id_file DESC`,
       );
 
-      return res.status(200).json({ files: rows });
+      return res.status(200).json({
+        total: files.length,
+        files,
+      });
     } catch (error) {
       return next(error);
     }

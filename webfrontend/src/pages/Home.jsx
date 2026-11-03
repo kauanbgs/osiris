@@ -439,111 +439,153 @@ export default function Home() {
 
     const promptText = input.trim();
 
-    const content =
+    // Conteúdo que aparece na conversa e fica salvo como mensagem do usuário.
+    const visibleContent = [
+      promptText,
       files.length > 0
-        ? `${promptText}\n\n📎 ${files.map((f) => f.name).join(", ")}`
-        : promptText;
+        ? `📎 ${files.map((file) => file.name).join(", ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    // Conteúdo completo que será enviado internamente para a IA.
+    let content = promptText;
 
     setInput("");
-
-    setFiles([]);
 
     setIsLoading(true);
 
     let currentChatId = id;
 
-    // ========================================
-    // CRIA CHAT
-    // ========================================
-
-    if (!currentChatId) {
-      try {
-        creatingChatRef.current = true;
-
-        const title =
-          promptText.length > 30
-            ? promptText.slice(0, 30) + "..."
-            : promptText || "Novo chat";
-
-        const response = await sheets.postChat({
-          title,
-        });
-
-        const newChat = response.data?.chat || response.data;
-
-        if (newChat?.id_chat) {
-          currentChatId = newChat.id_chat;
-
-          window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
-
-          navigate(`/home/${currentChatId}`, {
-            replace: true,
-          });
-        }
-      } catch (err) {
-        console.error("Erro ao criar chat:", err);
-      }
-    }
-
-    // ========================================
-    // MENSAGEM DO USUÁRIO
-    // ========================================
-
-    const userMessage = {
-      content,
-
-      sender: user?.name || "Usuário",
-
-      isBot: false,
-    };
-
-    // ========================================
-    // ADICIONA MENSAGEM + BOT TEMPORÁRIO
-    // ========================================
-
-    setMessages((prev) => [
-      ...prev,
-
-      userMessage,
-
-      {
-        content: "",
-
-        reasoning: "",
-
-        sender: "Osiris",
-
-        isBot: true,
-
-        isStreaming: true,
-
-        agentStatus: {
-          type: "starting",
-
-          agent: null,
-
-          label: "Iniciando...",
-        },
-      },
-    ]);
-
-    // ========================================
-    // SALVA MENSAGEM DO USUÁRIO
-    // ========================================
-
-    if (currentChatId) {
-      try {
-        await sheets.postMessage(currentChatId, {
-          type: "user",
-
-          content,
-        });
-      } catch (err) {
-        console.error("Erro ao salvar mensagem do usuário:", err);
-      }
-    }
-
     try {
+      // ========================================
+      // ENVIA E LÊ OS ARQUIVOS
+      // ========================================
+
+      if (files.length > 0) {
+        const uploadedFiles = await Promise.all(
+          files.map((file) => sheets.uploadFile(file)),
+        );
+
+        const extractedContents = uploadedFiles.map((response, index) => {
+          const reading = response.data?.reading;
+
+          if (!reading?.readable || !reading.content?.trim()) {
+            throw new Error(
+              reading?.message ||
+                `Não foi possível ler o arquivo "${files[index].name}".`,
+            );
+          }
+
+          return `Arquivo: ${files[index].name}
+
+Utilize o conteúdo abaixo como referência para responder ao pedido do usuário.
+Não reproduza o documento inteiro, a menos que isso seja solicitado.
+
+<conteudo_arquivo>
+${reading.content}
+</conteudo_arquivo>`;
+        });
+
+        content = [promptText, ...extractedContents]
+          .filter(Boolean)
+          .join("\n\n");
+      }
+
+      setFiles([]);
+
+      // ========================================
+      // CRIA CHAT
+      // ========================================
+
+      if (!currentChatId) {
+        try {
+          creatingChatRef.current = true;
+
+          const title =
+            promptText.length > 30
+              ? promptText.slice(0, 30) + "..."
+              : promptText || "Novo chat";
+
+          const response = await sheets.postChat({
+            title,
+          });
+
+          const newChat = response.data?.chat || response.data;
+
+          if (newChat?.id_chat) {
+            currentChatId = newChat.id_chat;
+
+            window.dispatchEvent(new CustomEvent("osiris:chats-updated"));
+
+            navigate(`/home/${currentChatId}`, {
+              replace: true,
+            });
+          }
+        } catch (err) {
+          console.error("Erro ao criar chat:", err);
+        }
+      }
+
+      // ========================================
+      // MENSAGEM DO USUÁRIO
+      // ========================================
+
+      const userMessage = {
+        content: visibleContent,
+
+        sender: user?.name || "Usuário",
+
+        isBot: false,
+      };
+
+      // ========================================
+      // ADICIONA MENSAGEM + BOT TEMPORÁRIO
+      // ========================================
+
+      setMessages((prev) => [
+        ...prev,
+
+        userMessage,
+
+        {
+          content: "",
+
+          reasoning: "",
+
+          sender: "Osiris",
+
+          isBot: true,
+
+          isStreaming: true,
+
+          agentStatus: {
+            type: "starting",
+
+            agent: null,
+
+            label: "Iniciando...",
+          },
+        },
+      ]);
+
+      // ========================================
+      // SALVA MENSAGEM DO USUÁRIO
+      // ========================================
+
+      if (currentChatId) {
+        try {
+          await sheets.postMessage(currentChatId, {
+            type: "user",
+
+            content: visibleContent,
+          });
+        } catch (err) {
+          console.error("Erro ao salvar mensagem do usuário:", err);
+        }
+      }
+
       // ======================================
       // HISTORY
       // ======================================
@@ -715,6 +757,21 @@ export default function Home() {
               label: "Ocorreu um erro.",
             },
           };
+        } else {
+          updated.push({
+            content: `⚠️ ${
+              err.message || "Erro ao processar os arquivos."
+            }`,
+            reasoning: "",
+            sender: "Osiris",
+            isBot: true,
+            isStreaming: false,
+            agentStatus: {
+              type: "error",
+              agent: null,
+              label: "Ocorreu um erro.",
+            },
+          });
         }
 
         return updated;

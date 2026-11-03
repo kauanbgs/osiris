@@ -2,9 +2,6 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "http://localhost:5000/api/osiris",
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 api.interceptors.request.use((config) => {
@@ -23,7 +20,8 @@ const sheets = {
   getChats: () => api.get("/chat"),
   updateChat: (id_chat, data) => api.put(`/chat/${id_chat}`, data),
   deleteChat: (id_chat) => api.delete(`/chat/${id_chat}`),
-  postMessage: (id_chat, message) => api.post(`/chat/${id_chat}/messages`, message),
+  postMessage: (id_chat, message) =>
+    api.post(`/chat/${id_chat}/messages`, message),
   getMessages: (id_chat) => api.get(`/chat/${id_chat}/messages`),
   saveMemory: (data) => api.post("/memory", data),
   getMemory: () => api.get("/memory"),
@@ -31,13 +29,22 @@ const sheets = {
   deleteMemory: (id_memory) => api.delete(`/memory/${id_memory}`),
   // Terminal
   terminalExecute: (data) => api.post("/terminal/exec", data),
-  executeCommand: (command, timeout_ms) => api.post("/terminal/exec", { command, timeout_ms }),
+  executeCommand: (command, timeout_ms) =>
+    api.post("/terminal/exec", { command, timeout_ms }),
   terminalHistory: (params) => api.get("/terminal/history", { params }),
   terminalClearHistory: () => api.delete("/terminal/history"),
-}
+  uploadFile: (file) => {
+    const formData = new FormData();
+
+    formData.append("file", file);
+
+    return api.post("/file", formData);
+  },
+};
 export const auth = {
   login: (email, password) => api.post("/auth/login", { email, password }),
-  register: (name, email, password) => api.post("/auth/register", { name, email, password }),
+  register: (name, email, password) =>
+    api.post("/auth/register", { name, email, password }),
   getUser: () => api.get("/auth/me"),
 };
 
