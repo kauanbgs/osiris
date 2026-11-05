@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ImagePlus, Palette, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { CSS_TEMPLATE, applyTheme, fileToDataUrl, loadImage, loadTheme, saveImage, saveTheme } from "@/lib/theme";
+import { CSS_TEMPLATE, applyTheme, fileToDataUrl, loadImage, loadTheme, publishThemeColors, saveImage, saveTheme } from "@/lib/theme";
 
 export default function Configuracoes() {
   const [theme, setTheme] = useState(loadTheme);
@@ -17,6 +17,7 @@ export default function Configuracoes() {
     setImageError("");
     setImage(src);
     applyTheme(theme, src);
+    publishThemeColors();
   }
 
   async function pickFile(e) {
@@ -34,6 +35,7 @@ export default function Configuracoes() {
     setTheme(next);
     saveTheme(next);
     applyTheme(next, image);
+    publishThemeColors();
   }
 
   function saveAsTheme() {
@@ -52,6 +54,7 @@ export default function Configuracoes() {
             <h1 className="text-xl font-semibold">Aparência</h1>
             <p className="text-sm text-muted-foreground">
               Escreva seu próprio CSS. Ele é aplicado em todo o sistema na hora e fica salvo neste computador.
+              As cores também vão para o celular que estiver usando "Cores do web".
             </p>
           </div>
         </header>

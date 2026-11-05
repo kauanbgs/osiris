@@ -1,12 +1,12 @@
 // BalaoMensagem.js — balão de uma mensagem do chat (usuário ou agente): texto,
 // anexo de imagem ou arquivo, e os botões de copiar e de ouvir a resposta.
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Image, Text, TouchableOpacity, View } from "react-native";
 import * as Speech from "expo-speech";
 import * as Clipboard from "expo-clipboard";
 import { Feather } from "@expo/vector-icons";
 
-import { CHAT_FONT } from "../theme";
+import { CHAT_FONT, createThemedStyles, useThemeColor } from "../theme";
 
 const colors = {
   textPrimary: "#e8e8e8",
@@ -19,6 +19,8 @@ const colors = {
 };
 
 export default function BalaoMensagem({ role, text, attachment }) {
+  const styles = useEstilosBalao();
+  const themeColor = useThemeColor();
   const isUser = role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -144,7 +146,7 @@ export default function BalaoMensagem({ role, text, attachment }) {
               <Feather
                 name={copied ? "check" : "copy"}
                 size={14}
-                color={copied ? colors.green : colors.textMuted}
+                color={copied ? themeColor(colors.green) : themeColor(colors.textMuted)}
               />
             </TouchableOpacity>
 
@@ -164,7 +166,7 @@ export default function BalaoMensagem({ role, text, attachment }) {
                   <Feather
                     name={isSpeaking ? "square" : "volume-2"}
                     size={14}
-                    color={isSpeaking ? colors.purple : colors.textMuted}
+                    color={isSpeaking ? themeColor(colors.purple) : themeColor(colors.textMuted)}
                   />
                 </Animated.View>
               </TouchableOpacity>
@@ -177,7 +179,7 @@ export default function BalaoMensagem({ role, text, attachment }) {
 }
 
 // Também usados pelo indicador de "digitando" da tela inicial.
-export const estilosBalao = StyleSheet.create({
+export const useEstilosBalao = createThemedStyles({
   bubbleRow: {
     flexDirection: "row",
     marginBottom: 10,
@@ -260,4 +262,3 @@ export const estilosBalao = StyleSheet.create({
   },
 });
 
-const styles = estilosBalao;

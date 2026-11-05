@@ -30,6 +30,9 @@ const sheets = {
   // ── Health ────────────────────────────────────────────────────────
   health: () => api.get("/health", { timeout: 5000 }),
 
+  // ── Tema do desktop ───────────────────────────────────────────────
+  getTheme: () => api.get("/theme", { timeout: 4000 }),
+
   // ── Chats ─────────────────────────────────────────────────────────
   createChat: (title) => api.post("/chat", { title }),
   listChats: () => api.get("/chat"),

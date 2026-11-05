@@ -18,9 +18,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { readTextFile } from '../services/attachments';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import BottomNav from '../components/Navbar';
+import { useNavbarSpace } from '../components/Navbar';
 import sheets from '../services/api';
 import { aiUrl, loadIP } from '../services/serverConfig';
+import { createThemedStyles, useThemeColor, ACCENTS } from '../theme';
 
 const colors = {
   background: '#0d0d0d',
@@ -87,6 +88,9 @@ function applyAgentFileOperations(files, operations) {
 }
 
 export default function WorkflowScreen({ navigation, route }) {
+  const navbarSpace = useNavbarSpace();
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [workflows, setWorkflows] = useState([]);
   const [workflow, setWorkflow] = useState(null);
   const [nodes, setNodes] = useState([]);
@@ -124,6 +128,7 @@ export default function WorkflowScreen({ navigation, route }) {
     let keyboardShift = 0;
 
     const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
+      if (!navigation.isFocused()) return;
       const input = TextInput.State.currentlyFocusedInput();
       if (!input?.measureInWindow) return;
       input.measureInWindow((x, y, width, height) => {
@@ -574,29 +579,29 @@ export default function WorkflowScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon} accessibilityLabel="Voltar">
-          <Feather name="chevron-left" size={22} color={colors.text} />
+          <Feather name="chevron-left" size={22} color={themeColor(colors.text)} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.workflowSelect} onPress={() => setPickerOpen(true)}>
           <Text style={styles.eyebrow}>WORKFLOW · {nodes.length} NÓ(S)</Text>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={1}>{workflow?.name || 'Workflows'}</Text>
-            <Feather name="chevron-down" size={15} color={colors.muted} />
+            <Feather name="chevron-down" size={15} color={themeColor(colors.muted)} />
           </View>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => refreshCanvas(false)} style={styles.headerIcon} accessibilityLabel="Atualizar">
-          <Feather name="refresh-cw" size={16} color={colors.muted} />
+          <Feather name="refresh-cw" size={16} color={themeColor(colors.muted)} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.toolbar}>
         <ToolButton Icon={MousePointer2} label={connectMode ? 'Cancelar conexão' : 'Selecionar / conectar'} active={connectMode} onPress={() => { setConnectMode((current) => !current); setConnectSource(null); }} />
-        <ToolButton Icon={SquareTerminal} label="Terminal" onPress={() => addNode('terminal')} />
-        <ToolButton Icon={Bot} label="Agent" onPress={() => addNode('agent')} />
-        <ToolButton Icon={Paperclip} label="File" onPress={() => addNode('file')} />
-        <ToolButton Icon={CaseSensitive} label="Text" onPress={() => addNode('text')} />
+        <ToolButton Icon={SquareTerminal} label="Terminal" color={ACCENTS.green} onPress={() => addNode('terminal')} />
+        <ToolButton Icon={Bot} label="Agent" color="#a78bfa" onPress={() => addNode('agent')} />
+        <ToolButton Icon={Paperclip} label="File" color={ACCENTS.blue} onPress={() => addNode('file')} />
+        <ToolButton Icon={CaseSensitive} label="Text" color={ACCENTS.amber} onPress={() => addNode('text')} />
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -612,7 +617,7 @@ export default function WorkflowScreen({ navigation, route }) {
         {...pinchResponder.panHandlers}
       >
         {loading ? (
-          <View style={styles.emptyState}><ActivityIndicator color={colors.purple} /></View>
+          <View style={styles.emptyState}><ActivityIndicator color={themeColor(colors.purple)} /></View>
         ) : !workflow ? (
           <View style={styles.emptyState}><Text style={styles.emptyText}>Crie um workflow no desktop para começar.</Text></View>
         ) : nodes.length === 0 ? (
@@ -659,23 +664,21 @@ export default function WorkflowScreen({ navigation, route }) {
           </View>
         )}
 
-        <View style={styles.zoomControls}>
-          <TouchableOpacity style={styles.zoomButton} onPress={() => adjustZoom(0.15)} accessibilityLabel="Aumentar zoom"><Feather name="plus" size={19} color={colors.text} /></TouchableOpacity>
+        <View style={[styles.zoomControls, { bottom: 20 + navbarSpace }]}>
+          <TouchableOpacity style={styles.zoomButton} onPress={() => adjustZoom(0.15)} accessibilityLabel="Aumentar zoom"><Feather name="plus" size={19} color={themeColor(colors.text)} /></TouchableOpacity>
           <Text style={styles.zoomLabel}>{Math.round(zoom * 100)}%</Text>
-          <TouchableOpacity style={styles.zoomButton} onPress={() => adjustZoom(-0.15)} accessibilityLabel="Diminuir zoom"><Feather name="minus" size={19} color={colors.text} /></TouchableOpacity>
-          <TouchableOpacity style={styles.zoomButton} onPress={() => frameCanvas()} accessibilityLabel="Enquadrar workflow"><Feather name="maximize-2" size={15} color={colors.text} /></TouchableOpacity>
+          <TouchableOpacity style={styles.zoomButton} onPress={() => adjustZoom(-0.15)} accessibilityLabel="Diminuir zoom"><Feather name="minus" size={19} color={themeColor(colors.text)} /></TouchableOpacity>
+          <TouchableOpacity style={styles.zoomButton} onPress={() => frameCanvas()} accessibilityLabel="Enquadrar workflow"><Feather name="maximize-2" size={15} color={themeColor(colors.text)} /></TouchableOpacity>
         </View>
-        <Text style={styles.gestureHint}>Arraste o fundo para mover · pinça para zoom · cabeçalho para mover nós</Text>
+        <Text style={[styles.gestureHint, { bottom: 30 + navbarSpace }]}>Arraste o fundo para mover · pinça para zoom · cabeçalho para mover nós</Text>
       </View>
-
-      <BottomNav navigation={navigation} activeKey="workflow" />
 
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.workflowPicker}>
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Selecionar workflow</Text>
-              <TouchableOpacity onPress={() => setPickerOpen(false)}><Feather name="x" size={20} color={colors.muted} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setPickerOpen(false)}><Feather name="x" size={20} color={themeColor(colors.muted)} /></TouchableOpacity>
             </View>
             <FlatList
               data={workflows}
@@ -683,9 +686,9 @@ export default function WorkflowScreen({ navigation, route }) {
               ListEmptyComponent={<Text style={styles.emptyText}>Nenhum workflow encontrado.</Text>}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.workflowOption} onPress={() => chooseWorkflow(item)}>
-                  <Feather name="git-branch" size={17} color={colors.purple} />
+                  <Feather name="git-branch" size={17} color={themeColor(colors.purple)} />
                   <Text style={styles.optionText} numberOfLines={1}>{item.name}</Text>
-                  {String(item.id_workflow) === String(workflow?.id_workflow) ? <Feather name="check" size={17} color={colors.purple} /> : null}
+                  {String(item.id_workflow) === String(workflow?.id_workflow) ? <Feather name="check" size={17} color={themeColor(colors.purple)} /> : null}
                 </TouchableOpacity>
               )}
             />
@@ -696,15 +699,18 @@ export default function WorkflowScreen({ navigation, route }) {
   );
 }
 
-function ToolButton({ Icon, label, onPress, active = false }) {
+function ToolButton({ Icon, label, onPress, active = false, color = '#e4e4e7' }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   return (
     <TouchableOpacity style={[styles.toolButton, active && styles.toolButtonActive]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
-      <Icon size={18} color={active ? '#a78bfa' : '#e4e4e7'} strokeWidth={2} />
+      <Icon size={18} color={active ? themeColor('#a78bfa') : themeColor(color)} strokeWidth={2} />
     </TouchableOpacity>
   );
 }
 
 function WorkflowEdge({ sourceX, sourceY, targetX, targetY }) {
+  const themeColor = useThemeColor();
   const startX = sourceX + 250;
   const startY = sourceY + 150;
   const endX = targetX + 250;
@@ -721,12 +727,14 @@ function WorkflowEdge({ sourceX, sourceY, targetX, targetY }) {
 
   return (
     <Svg width={width} height={height} style={{ position: 'absolute', left, top }} pointerEvents="none">
-      <Path d={`M ${sx} ${sy} C ${sx + (tx - sx) * 0.4} ${sy}, ${tx - (tx - sx) * 0.4} ${ty}, ${tx} ${ty}`} stroke="#8b5cf6" strokeWidth={5} fill="none" />
+      <Path d={`M ${sx} ${sy} C ${sx + (tx - sx) * 0.4} ${sy}, ${tx - (tx - sx) * 0.4} ${ty}, ${tx} ${ty}`} stroke={themeColor("#8b5cf6")} strokeWidth={5} fill="none" />
     </Svg>
   );
 }
 
 const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIndex, zoomRef, onUpdate, onDelete, connectMode, selectedForConnection, onLink, agentRun, terminalRun, setTerminalRun, desktopOnline, hasFileInput, hasFileOutput, onRunAgent }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const start = useRef(node.position || { x: 0, y: 0 });
   const currentPosition = useRef(node.position || { x: 0, y: 0 });
   const nodePosition = node.position || { x: 100, y: 100 + fallbackIndex * 340 };
@@ -807,7 +815,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
       <View style={[styles.nodeHeader, type === 'agent' && styles.agentNodeHeader, type === 'file' && styles.fileNodeHeader]} {...panResponder.panHandlers}>
         {type === 'agent' ? (
           <>
-            <Bot size={15} color="#71717a" />
+            <Bot size={15} color={themeColor("#a78bfa")} />
             <TextInput
               value={node.data?.label || 'Agent'}
               onChangeText={(labelText) => onUpdate(node.id, { data: { label: labelText } })}
@@ -816,7 +824,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               accessibilityLabel="Nome do agente"
             />
             <View style={styles.agentStatus}>
-              <View style={[styles.agentStatusDot, { backgroundColor: agentStatus === 'running' ? '#f59e0b' : agentStatus === 'error' || !desktopOnline ? '#ef4444' : '#10b981' }]} />
+              <View style={[styles.agentStatusDot, { backgroundColor: agentStatus === 'running' ? '#f59e0b' : agentStatus === 'error' || !desktopOnline ? themeColor('#ef4444') : themeColor('#10b981') }]} />
               <Text style={[styles.agentStatusText, agentStatus === 'running' && styles.agentRunningText]}>
                 {agentStatus === 'running' ? 'executando...' : agentStatus === 'error' ? 'erro' : desktopOnline ? 'online' : 'offline'}
               </Text>
@@ -827,13 +835,13 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
         ) : type === 'file' ? (
           <>
             <View style={styles.fileNodeHeading}>
-              <Feather name="file-text" size={15} color="#71717a" />
+              <Feather name="file-text" size={15} color={themeColor(ACCENTS.blue)} />
               <Text style={styles.fileNodeTitle}>{label || 'Arquivos'}</Text>
               {files.length > 0 ? (
                 <View style={styles.fileCountBadge}><Text style={styles.fileCountText}>{files.length}</Text></View>
               ) : null}
             </View>
-            <Feather name="more-vertical" size={15} color="#52525b" />
+            <Feather name="more-vertical" size={15} color={themeColor("#52525b")} />
           </>
         ) : (
           <>
@@ -847,12 +855,12 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
         )}
         {connectMode ? (
           <TouchableOpacity style={styles.linkButton} onPress={() => onLink(node.id)} accessibilityLabel={`Selecionar conexão de ${label}`}>
-            <Feather name="link-2" size={15} color={selectedForConnection ? colors.purple : '#77737c'} />
+            <Feather name="link-2" size={15} color={selectedForConnection ? themeColor(colors.purple) : themeColor('#77737c')} />
           </TouchableOpacity>
         ) : null}
         {type !== 'file' ? (
           <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(node.id)} accessibilityLabel={`Excluir ${label}`}>
-            <Feather name="x" size={16} color="#77737c" />
+            <Feather name="x" size={16} color={themeColor("#77737c")} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -869,7 +877,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
             value={node.data?.text || ''}
             onChangeText={(text) => onUpdate(node.id, { data: { text } })}
             placeholder="Digite..."
-            placeholderTextColor="#71717a"
+            placeholderTextColor={themeColor("#71717a")}
             multiline
             style={styles.workflowTextInput}
             textAlign="center"
@@ -882,14 +890,14 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
             value={node.data?.label || ''}
             onChangeText={(labelText) => onUpdate(node.id, { data: { label: labelText } })}
             placeholder="Nome do terminal"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={themeColor("#71717a")}
             style={styles.terminalLabelInput}
           />
           <TextInput
             value={node.data?.terminalContent || ''}
             onChangeText={(terminalContent) => onUpdate(node.id, { data: { terminalContent } })}
             placeholder="A saída do terminal aparecerá aqui..."
-            placeholderTextColor="#52525b"
+            placeholderTextColor={themeColor("#52525b")}
             multiline
             style={styles.terminalEditor}
             textAlignVertical="top"
@@ -902,7 +910,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               value={node.data?.terminalCommand || ''}
               onChangeText={(terminalCommand) => onUpdate(node.id, { data: { terminalCommand } })}
               placeholder="Digite um comando..."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={themeColor("#71717a")}
               style={styles.terminalCommandInput}
               autoCapitalize="none"
               autoCorrect={false}
@@ -910,7 +918,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               returnKeyType="go"
             />
             <TouchableOpacity style={styles.terminalRunButton} onPress={executeTerminalCommand} disabled={terminalRun?.running}>
-              {terminalRun?.running ? <ActivityIndicator size="small" color="#c4b5fd" /> : <Feather name="play" size={15} color="#c4b5fd" />}
+              {terminalRun?.running ? <ActivityIndicator size="small" color={themeColor("#c4b5fd")} /> : <Feather name="play" size={15} color={themeColor("#c4b5fd")} />}
             </TouchableOpacity>
           </View>
           <Text style={styles.terminalSafetyHint}>Executado no desktop conectado · limite de segurança da API</Text>
@@ -921,7 +929,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
             value={node.data?.prompt || ''}
             onChangeText={(prompt) => onUpdate(node.id, { data: { prompt } })}
             placeholder="Descreva o que este agente deve fazer..."
-            placeholderTextColor="#52525b"
+            placeholderTextColor={themeColor("#52525b")}
             multiline
             style={styles.agentPromptInput}
             textAlignVertical="top"
@@ -930,7 +938,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
           {(agentOutput || agentStatus === 'running') ? (
             <View style={styles.agentOutputPanel}>
               {agentStatus === 'running' && !agentOutput ? (
-                <View style={styles.agentWaiting}><ActivityIndicator size="small" color={colors.purple} /><Text style={styles.agentWaitingText}>Aguardando resposta...</Text></View>
+                <View style={styles.agentWaiting}><ActivityIndicator size="small" color={themeColor(colors.purple)} /><Text style={styles.agentWaitingText}>Aguardando resposta...</Text></View>
               ) : <Text style={styles.agentOutputText} selectable>{agentOutput}</Text>}
             </View>
           ) : null}
@@ -939,7 +947,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               <Text style={styles.agentModelLabel}>modelo</Text>
               <TouchableOpacity style={styles.agentModelButton} onPress={() => setModelPickerOpen(true)} disabled={agentStatus === 'running'}>
                 <Text style={styles.agentModelButtonText} numberOfLines={1}>{modelLabel}</Text>
-                <Feather name="chevron-down" size={14} color="#d4d4d8" />
+                <Feather name="chevron-down" size={14} color={themeColor("#d4d4d8")} />
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -947,7 +955,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               onPress={() => onRunAgent(node.id)}
               accessibilityLabel={agentStatus === 'running' ? 'Parar agente' : 'Executar agente'}
             >
-              <Feather name={agentStatus === 'running' ? 'square' : 'play'} size={12} color={agentStatus === 'running' ? '#f87171' : '#c4b5fd'} />
+              <Feather name={agentStatus === 'running' ? 'square' : 'play'} size={12} color={agentStatus === 'running' ? themeColor('#f87171') : themeColor('#c4b5fd')} />
               <Text style={[styles.runButtonText, agentStatus === 'running' && styles.stopButtonText]}>{agentStatus === 'running' ? 'Parar' : 'Run'}</Text>
             </TouchableOpacity>
           </View>
@@ -956,7 +964,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               <View style={styles.workflowPicker}>
                 <View style={styles.pickerHeader}>
                   <Text style={styles.pickerTitle}>Selecionar modelo</Text>
-                  <TouchableOpacity onPress={() => setModelPickerOpen(false)}><Feather name="x" size={20} color={colors.muted} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => setModelPickerOpen(false)}><Feather name="x" size={20} color={themeColor(colors.muted)} /></TouchableOpacity>
                 </View>
                 {AGENT_MODELS.map((model) => (
                   <TouchableOpacity
@@ -965,7 +973,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
                     onPress={() => { onUpdate(node.id, { data: { model: model.value } }); setModelPickerOpen(false); }}
                   >
                     <Text style={styles.optionText}>{model.label}</Text>
-                    {model.value === modelValue ? <Feather name="check" size={17} color={colors.purple} /> : null}
+                    {model.value === modelValue ? <Feather name="check" size={17} color={themeColor(colors.purple)} /> : null}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -979,7 +987,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
             value={node.data?.label || ''}
             onChangeText={(labelText) => onUpdate(node.id, { data: { label: labelText } })}
             placeholder="Nome do nó"
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={themeColor(colors.muted)}
             style={styles.labelInput}
             selectTextOnFocus
           />
@@ -987,19 +995,19 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
         {type === 'file' ? (
           <View style={styles.fileNodeContent}>
             <TouchableOpacity style={styles.fileDropzone} onPress={pickFiles} activeOpacity={0.75}>
-              <Feather name="upload" size={20} color="#52525b" />
+              <Feather name="upload" size={20} color={themeColor("#52525b")} />
               <Text style={styles.fileDropzoneText}>Clique para selecionar arquivo</Text>
             </TouchableOpacity>
             {node.data?.fileError ? <Text style={styles.agentError}>{node.data.fileError}</Text> : null}
             {files.map((file, index) => (
               <View key={`${file.fileName}-${index}`} style={styles.fileCard}>
                 <View style={styles.fileCardHeader}>
-                  <Feather name="file-text" size={13} color="#71717a" />
+                  <Feather name="file-text" size={13} color={themeColor("#71717a")} />
                   <TextInput
                     value={file.fileName || ''}
                     onChangeText={(fileName) => updateFile(index, { fileName })}
                     placeholder="Nome do arquivo"
-                    placeholderTextColor={colors.muted}
+                    placeholderTextColor={themeColor(colors.muted)}
                     style={styles.fileNameInput}
                     autoCapitalize="none"
                     numberOfLines={1}
@@ -1010,7 +1018,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
                     onPress={() => onUpdate(node.id, { data: { files: files.filter((_, fileIndex) => fileIndex !== index) } })}
                     accessibilityLabel={`Remover ${file.fileName || 'arquivo'}`}
                   >
-                    <Feather name="x" size={13} color="#71717a" />
+                    <Feather name="x" size={13} color={themeColor("#71717a")} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.fileContentPreview}>
@@ -1018,7 +1026,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
                     value={file.fileContent || ''}
                     onChangeText={(fileContent) => updateFile(index, { fileContent, fileSize: fileContent.length })}
                     placeholder="Arquivo vazio"
-                    placeholderTextColor="#71717a"
+                    placeholderTextColor={themeColor("#71717a")}
                     multiline
                     style={styles.fileContentInput}
                     autoCapitalize="none"
@@ -1043,7 +1051,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: { flex: 1, backgroundColor: colors.background },
   header: { height: 60, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerIcon: { width: 38, height: 42, alignItems: 'center', justifyContent: 'center' },

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { publishCustomTheme } from "@/lib/theme";
 import { auth } from "@/services/api";
 
 export const AuthContext = createContext(null);
@@ -13,6 +14,11 @@ export function AuthProvider({ children }) {
     }
   });
   const [loading, setLoading] = useState(true);
+
+  const userId = user?.id_user;
+  useEffect(() => {
+    if (userId) publishCustomTheme();
+  }, [userId]);
 
   useEffect(() => {
     async function loadUser() {

@@ -5,13 +5,13 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  StyleSheet,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomNav from '../components/Navbar';
+import BottomNav, { NavbarSpacer } from '../components/Navbar';
 import sheets from '../services/api';
+import { createThemedStyles, useThemeColor } from '../theme';
 
 const colors = {
   background: '#0d0d0d',
@@ -25,6 +25,8 @@ const colors = {
 };
 
 export default function MemoriaScreen({ navigation }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [newItem, setNewItem] = useState('');
   const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ export default function MemoriaScreen({ navigation }) {
   const hasMemories = memories.length > 0;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.content}>
         <Text style={styles.title}>Memória</Text>
 
@@ -117,7 +119,7 @@ export default function MemoriaScreen({ navigation }) {
             <TextInput
               style={styles.input}
               placeholder="Digite aqui"
-              placeholderTextColor="#666"
+              placeholderTextColor={themeColor("#666")}
               value={newItem}
               onChangeText={setNewItem}
               onSubmitEditing={handleSave}
@@ -142,7 +144,7 @@ export default function MemoriaScreen({ navigation }) {
         <View style={styles.listCard}>
           {loading ? (
             <View style={styles.emptyState}>
-              <ActivityIndicator size="small" color={colors.purple} />
+              <ActivityIndicator size="small" color={themeColor(colors.purple)} />
             </View>
           ) : hasMemories ? (
             <FlatList
@@ -164,17 +166,19 @@ export default function MemoriaScreen({ navigation }) {
             </View>
           )}
         </View>
+        <NavbarSpacer />
       </View>
 
       <BottomNav
-        activeKey="settings"
+        activeKey='settings'
         navigation={navigation}
+        onPressItem={(item) => navigation.navigate('MainTabs', { screen: item.route }, { pop: true })}
       />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
@@ -275,6 +279,8 @@ const styles = StyleSheet.create({
   },
 
   memoryItem: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.purple,
     backgroundColor: '#1f1f1f',
     borderRadius: 10,
     padding: 12,

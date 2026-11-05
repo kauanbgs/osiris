@@ -8,17 +8,17 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   TouchableOpacity,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import BottomNav from "../components/Navbar";
+import { NavbarSpacer } from "../components/Navbar";
 import ChatInput from "../components/ChatInput";
 import PlusActionMenu from "../components/PlusActionMenu";
-import BalaoMensagem, { estilosBalao } from "../components/BalaoMensagem";
+import BalaoMensagem, { useEstilosBalao } from "../components/BalaoMensagem";
 import { useConversa } from "../hooks/useConversa";
+import { createThemedStyles, useThemeColor } from "../theme";
 
 const colors = {
   background: "#0d0d0d",
@@ -48,6 +48,8 @@ function shortModelName(name) {
 }
 
 function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, onPress }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   let label = "Desktop offline";
 
   if (cloudModelName) {
@@ -63,20 +65,28 @@ function StatusIndicator({ connected, modelLoaded, modelName, cloudModelName, on
     <TouchableOpacity style={styles.statusRow} onPress={onPress}>
       <View
         style={[
-          styles.statusDot,
-          {
-            backgroundColor: connected ? colors.green : colors.red,
-          },
+          styles.statusPill,
+          { backgroundColor: themeColor(`${connected ? colors.green : colors.red}1f`) },
         ]}
-      />
-      <Text style={styles.statusText} numberOfLines={1} ellipsizeMode="tail">
-        {label}
-      </Text>
+      >
+        <View
+          style={[
+            styles.statusDot,
+            {
+              backgroundColor: connected ? themeColor(colors.green) : themeColor(colors.red),
+            },
+          ]}
+        />
+        <Text style={styles.statusText} numberOfLines={1} ellipsizeMode="tail">
+          {label}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 }
 
 function GreetingHeader({ userName = "Usuário" }) {
+  const styles = useStyles();
   return (
     <View style={styles.content}>
       <Text style={styles.greeting}>
@@ -88,6 +98,8 @@ function GreetingHeader({ userName = "Usuário" }) {
 }
 
 function TypingIndicator() {
+  const estilosBalao = useEstilosBalao();
+  const styles = useStyles();
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
   const dot3 = useRef(new Animated.Value(0)).current;
@@ -147,6 +159,8 @@ function TypingIndicator() {
 }
 
 export default function HomeScreen({ navigation, route }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const conversa = useConversa({ navigation, route });
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -161,7 +175,7 @@ export default function HomeScreen({ navigation, route }) {
   }, [conversa.mensagens, conversa.digitando]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.headerRow}>
         {conversa.temConversa ? (
           <TouchableOpacity
@@ -170,7 +184,7 @@ export default function HomeScreen({ navigation, route }) {
             disabled={conversa.digitando}
             accessibilityLabel="Nova conversa"
           >
-            <Feather name="edit" size={15} color={colors.textMuted} />
+            <Feather name="edit" size={15} color={themeColor(colors.purple)} />
             <Text style={styles.newChatText}>Nova conversa</Text>
           </TouchableOpacity>
         ) : (
@@ -181,7 +195,7 @@ export default function HomeScreen({ navigation, route }) {
           modelLoaded={conversa.modeloCarregado}
           modelName={conversa.nomeModelo}
           cloudModelName={conversa.nomeModeloNuvem}
-          onPress={() => navigation.navigate("Configuracoes", undefined, { pop: true })}
+          onPress={() => navigation.navigate("Configuracoes")}
         />
       </View>
 
@@ -231,13 +245,13 @@ export default function HomeScreen({ navigation, route }) {
           onSelectFiles={conversa.escolherArquivo}
         />
 
-        <BottomNav activeKey="home" navigation={navigation} />
+        <NavbarSpacer />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
@@ -270,6 +284,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
   },
   statusDot: {
     width: 7,

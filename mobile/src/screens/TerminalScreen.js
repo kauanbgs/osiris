@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  StyleSheet,
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
@@ -15,8 +14,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import BottomNav from "../components/Navbar";
+import { NavbarSpacer } from "../components/Navbar";
 import { useTerminal } from "../hooks/useTerminal";
+import { createThemedStyles, useThemeColor } from "../theme";
 
 const colors = {
   background: "#0d0d0d",
@@ -38,6 +38,8 @@ const fontFamily = Platform.select({
 });
 
 export default function TerminalScreen({ navigation }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const terminal = useTerminal();
   const { abas: tabs, abaAtiva: activeTab, abaAtivaId: activeTabId } = terminal;
 
@@ -100,13 +102,23 @@ export default function TerminalScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       {/* Top Header enxuto e limpo */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Terminal</Text>
           <TouchableOpacity
-            style={styles.statusPill}
+            style={[
+              styles.statusPill,
+              terminal.conectado === true && {
+                backgroundColor: themeColor(`${colors.green}1f`),
+                borderColor: themeColor(`${colors.green}66`),
+              },
+              terminal.conectado === false && {
+                backgroundColor: themeColor(`${colors.red}1f`),
+                borderColor: themeColor(`${colors.red}66`),
+              },
+            ]}
             onPress={terminal.verificarConexao}
             activeOpacity={0.7}
           >
@@ -116,10 +128,10 @@ export default function TerminalScreen({ navigation }) {
                 {
                   backgroundColor:
                     terminal.conectado === true
-                      ? colors.green
+                      ? themeColor(colors.green)
                       : terminal.conectado === false
-                      ? colors.red
-                      : colors.textMuted,
+                      ? themeColor(colors.red)
+                      : themeColor(colors.textMuted),
                 },
               ]}
             />
@@ -138,7 +150,7 @@ export default function TerminalScreen({ navigation }) {
           onPress={terminal.limpar}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Feather name="trash-2" size={16} color={colors.textSecondary} />
+          <Feather name="trash-2" size={16} color={themeColor(colors.textSecondary)} />
         </TouchableOpacity>
       </View>
 
@@ -178,7 +190,7 @@ export default function TerminalScreen({ navigation }) {
                     onPress={() => terminal.fecharAba(tab.id)}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Feather name="x" size={11} color={colors.textMuted} />
+                    <Feather name="x" size={11} color={themeColor(colors.textMuted)} />
                   </TouchableOpacity>
                 )}
               </TouchableOpacity>
@@ -192,7 +204,7 @@ export default function TerminalScreen({ navigation }) {
               activeOpacity={0.7}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Feather name="plus" size={13} color={colors.textSecondary} />
+              <Feather name="plus" size={13} color={themeColor(colors.textSecondary)} />
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -214,7 +226,7 @@ export default function TerminalScreen({ navigation }) {
           ListFooterComponent={
             activeTab.loading ? (
               <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={colors.purple} />
+                <ActivityIndicator size="small" color={themeColor(colors.purple)} />
                 <Text style={styles.loadingText}>Executando...</Text>
               </View>
             ) : null
@@ -230,14 +242,14 @@ export default function TerminalScreen({ navigation }) {
                 onPress={() => terminal.navegarHistorico("up")}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Feather name="arrow-up" size={14} color={colors.textSecondary} />
+                <Feather name="arrow-up" size={14} color={themeColor(colors.textSecondary)} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.historyBtn}
                 onPress={() => terminal.navegarHistorico("down")}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Feather name="arrow-down" size={14} color={colors.textSecondary} />
+                <Feather name="arrow-down" size={14} color={themeColor(colors.textSecondary)} />
               </TouchableOpacity>
             </View>
           )}
@@ -248,7 +260,7 @@ export default function TerminalScreen({ navigation }) {
               ref={inputRef}
               style={styles.input}
               placeholder="Digite um comando..."
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={themeColor(colors.textMuted)}
               value={activeTab.command}
               onChangeText={terminal.setComando}
               onSubmitEditing={terminal.executar}
@@ -276,14 +288,13 @@ export default function TerminalScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Navbar */}
-        <BottomNav activeKey="terminal" navigation={navigation} />
+        <NavbarSpacer />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,

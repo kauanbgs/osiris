@@ -1,3 +1,5 @@
+import { api } from "@/services/api";
+
 // Tema = CSS escrito pelo usuario. Fica no localStorage (por maquina).
 // { css: "CSS aplicado agora", themes: [{ id, name, css }] }
 const KEY = "osiris-theme";
@@ -123,4 +125,77 @@ html, body { background-image: var(--osiris-bg-image); background-size: cover; b
     : "";
   cssTag.textContent = theme.css || "";
   window.dispatchEvent(new Event("osiris-theme-change"));
+}
+
+// Variaveis enviadas ao celular, que nao interpreta CSS.
+const SYNCED_COLORS = {
+  background: "--background",
+  card: "--card",
+  input: "--input",
+  border: "--border",
+  foreground: "--foreground",
+  mutedForeground: "--muted-foreground",
+  primary: "--primary",
+  secondary: "--secondary",
+  destructive: "--destructive",
+  accent: "--accent",
+  accentForeground: "--accent-foreground",
+};
+
+// O canvas resolve qualquer cor do CSS (nome, hsl, color-mix) e mistura a
+// transparencia sobre o fundo, resultando sempre em #rrggbb. Um valor invalido
+// e ignorado pelo canvas e sobra a cor de baixo.
+function readThemeColors() {
+  const context = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  const css = getComputedStyle(document.body);
+
+  function paint(color, under) {
+    context.fillStyle = under;
+    context.fillRect(0, 0, 1, 1);
+    context.fillStyle = color || under;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+  }
+  const toHex = (variable, under) => paint(css.getPropertyValue(variable).trim(), under);
+
+  // Com imagem de fundo, --background costuma ser transparente e as superficies,
+  // translucidas. O celular nao tem a imagem: vale a cor do body e, sem ela, uma
+  // base clara se o texto do tema e escuro, para ele continuar legivel.
+  const foreground = toHex(SYNCED_COLORS.foreground, "#808080");
+  const [r, g, b] = [1, 3, 5].map((start) => parseInt(foreground.slice(start, start + 2), 16));
+  const hasDarkText = (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+  const base = paint(css.backgroundColor, hasDarkText ? "#f4f2f7" : "#141414");
+
+  const background = toHex(SYNCED_COLORS.background, base);
+  return Object.fromEntries(
+    Object.entries(SYNCED_COLORS).map(([key, variable]) => [
+      key,
+      key === "background" ? background : toHex(variable, background),
+    ]),
+  );
+}
+
+let publishTimer;
+
+// Espera a digitacao no editor de CSS parar antes de enviar.
+export function publishThemeColors() {
+  if (!localStorage.getItem("osiris_token")) return;
+  clearTimeout(publishTimer);
+  publishTimer = setTimeout(async () => {
+    const colors = readThemeColors();
+    if (!colors) return;
+    try {
+      await api.put("/theme", { colors });
+    } catch (error) {
+      console.warn("Nao foi possivel enviar o tema ao celular:", error.message);
+    }
+  }, 500);
+}
+
+// Ao entrar na conta: envia so um tema personalizado, para um computador com as
+// cores de fabrica nao apagar o tema escolhido em outro.
+export function publishCustomTheme() {
+  if (loadTheme().css || loadImage()) publishThemeColors();
 }

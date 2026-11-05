@@ -4,17 +4,19 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Platform,
   Image,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { CHAT_FONT } from "../theme";
+import { CHAT_FONT, createThemedStyles, useThemeColor } from "../theme";
+
+// Preto na prática, mas com valor próprio para o tema web trocá-lo pelo fundo
+// sem afetar sombras e overlays, que usam #000 de verdade.
+const ACTIONS_ROW_BACKGROUND = "#010101";
 
 const colors = {
   card: "#1a1a1a",
   cardAlt: "#232323",
-  backgroundPure: "#000000",
 
   textPrimary: "#e8e8e8",
   textSecondary: "#c9c9c9",
@@ -42,6 +44,8 @@ export default function ChatInput({
   attachment = null,
   onRemoveAttachment,
 }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   return (
     <View style={styles.wrapper}>
       {/* Pré-visualização do Anexo (Foto ou Arquivo) */}
@@ -55,7 +59,7 @@ export default function ChatInput({
               />
             ) : (
               <View style={styles.attachmentFileIcon}>
-                <Feather name="file-text" size={18} color={colors.purple} />
+                <Feather name="file-text" size={18} color={themeColor(colors.purple)} />
               </View>
             )}
             <View style={styles.attachmentTextWrap}>
@@ -74,7 +78,7 @@ export default function ChatInput({
             onPress={onRemoveAttachment}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Feather name="x" size={16} color={colors.textSecondary} />
+            <Feather name="x" size={16} color={themeColor(colors.textSecondary)} />
           </TouchableOpacity>
         </View>
       )}
@@ -91,7 +95,7 @@ export default function ChatInput({
                 ? "Aguardando resposta do agente…"
                 : placeholder
             }
-            placeholderTextColor={colors.textPlaceholder}
+            placeholderTextColor={themeColor(colors.textPlaceholder)}
             value={value}
             onChangeText={onChangeText}
             editable={!disabled}
@@ -106,7 +110,7 @@ export default function ChatInput({
             disabled={disabled}
             activeOpacity={0.7}
           >
-            <Feather name="plus" size={20} color={colors.textSecondary} />
+            <Feather name="plus" size={20} color={themeColor(colors.textSecondary)} />
           </TouchableOpacity>
 
           <View style={styles.rightActions}>
@@ -130,7 +134,7 @@ export default function ChatInput({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   wrapper: {
     paddingHorizontal: 12,
     paddingBottom: 8,
@@ -220,7 +224,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: colors.backgroundPure,
+    backgroundColor: ACTIONS_ROW_BACKGROUND,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
