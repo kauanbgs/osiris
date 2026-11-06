@@ -265,7 +265,9 @@ export default function TerminalScreen({ navigation }) {
               onChangeText={terminal.setComando}
               onSubmitEditing={terminal.executar}
               returnKeyType="send"
-              editable={!activeTab.loading}
+              // Sem perder o foco: no Android ele iria para um campo de outra aba,
+              // e o pager pularia para lá.
+              submitBehavior="submit"
               autoCorrect={false}
               autoCapitalize="none"
               spellCheck={false}
