@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Animated, Platform, TouchableOpacity, View } from 'react-native';
+import { Animated, PanResponder, Platform, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -18,6 +18,8 @@ const colors = {
 const BAR_HEIGHT = 60;
 const BAR_GAP = 10;
 const INDICATOR_SIZE = 44;
+const DRAG_START_DISTANCE = 6;
+const DRAG_SCALE = 1.2;
 
 // O vidro de verdade só existe no iOS 26 ou mais novo.
 const HAS_LIQUID_GLASS = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
@@ -83,32 +85,97 @@ export default function Navbar({ navigation, activeKey, position, blurTarget, on
 
   const activeIndex = NAV_ITEMS.findIndex((item) => item.key === activeKey);
   const staticPosition = useRef(new Animated.Value(activeIndex)).current;
-  const currentPosition = position ?? staticPosition;
+  const [dragging, setDragging] = useState(false);
+  const dragPosition = useRef(new Animated.Value(activeIndex)).current;
+  const dragScale = useRef(new Animated.Value(1)).current;
+  const itemsRef = useRef(null);
+  const itemsLeft = useRef(0);
+  const dragStartIndex = useRef(activeIndex);
+  const hoveredIndex = useRef(activeIndex);
+
+  // Enquanto se arrasta, a bolinha segue o dedo; no resto do tempo, segue as abas.
+  const shownPosition = dragging ? dragPosition : position ?? staticPosition;
+  const slotWidth = itemsWidth / NAV_ITEMS.length;
 
   function handlePress(item) {
     if (onPressItem) onPressItem(item);
     else navigation.navigate(item.route);
   }
 
+  // O PanResponder é criado uma vez só: é por aqui que ele lê os valores atuais.
+  const latest = useRef(null);
+  latest.current = { activeIndex, slotWidth, handlePress, canDrag: Boolean(position) };
+
+  function finishDrag() {
+    // A tela só muda ao soltar: trocar a cada ícone embaralha as animações do pager.
+    if (hoveredIndex.current !== dragStartIndex.current) {
+      handlePress(NAV_ITEMS[hoveredIndex.current]);
+    }
+    Animated.parallel([
+      Animated.spring(dragPosition, { toValue: hoveredIndex.current, friction: 8, useNativeDriver: true }),
+      Animated.spring(dragScale, { toValue: 1, friction: 8, useNativeDriver: true }),
+    ]).start(({ finished }) => {
+      if (finished) setDragging(false);
+    });
+  }
+  const finishDragRef = useRef(finishDrag);
+  finishDragRef.current = finishDrag;
+
+  const panResponder = useRef(PanResponder.create({
+    // Só o ícone da tela atual pode ser arrastado; nos outros, o toque troca de tela.
+    onMoveShouldSetPanResponderCapture: (_, gesture) => {
+      const { activeIndex: active, slotWidth: slot, canDrag } = latest.current;
+      if (!canDrag || !slot || Math.abs(gesture.dx) < DRAG_START_DISTANCE) return false;
+      // gesture.x0 só é preenchido depois da captura: aqui o início vem do movimento.
+      const startX = gesture.moveX - gesture.dx;
+      return Math.floor((startX - itemsLeft.current) / slot) === active;
+    },
+    onPanResponderGrant: () => {
+      const { activeIndex: active } = latest.current;
+      dragStartIndex.current = active;
+      hoveredIndex.current = active;
+      dragPosition.stopAnimation();
+      dragPosition.setValue(active);
+      setDragging(true);
+      Animated.spring(dragScale, { toValue: DRAG_SCALE, friction: 6, useNativeDriver: true }).start();
+    },
+    onPanResponderMove: (_, gesture) => {
+      const next = dragStartIndex.current + gesture.dx / latest.current.slotWidth;
+      const clamped = Math.min(Math.max(next, 0), NAV_ITEMS.length - 1);
+      dragPosition.setValue(clamped);
+      hoveredIndex.current = Math.round(clamped);
+    },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderRelease: () => finishDragRef.current(),
+    onPanResponderTerminate: () => finishDragRef.current(),
+  })).current;
+
   // Some enquanto o teclado está aberto, deixando espaço para o que se digita.
   if (keyboardVisible) return null;
 
-  const slotWidth = itemsWidth / NAV_ITEMS.length;
+  function handleItemsLayout(event) {
+    setItemsWidth(event.nativeEvent.layout.width);
+    itemsRef.current?.measureInWindow((x) => { itemsLeft.current = x; });
+  }
+
   const content = (
-    <View style={styles.items} onLayout={(event) => setItemsWidth(event.nativeEvent.layout.width)}>
+    <View ref={itemsRef} style={styles.items} onLayout={handleItemsLayout} {...panResponder.panHandlers}>
       {itemsWidth > 0 && (
         <Animated.View
           pointerEvents="none"
           style={[
             styles.indicator,
             {
-              transform: [{
-                translateX: currentPosition.interpolate({
-                  inputRange: NAV_ITEMS.map((_, index) => index),
-                  outputRange: NAV_ITEMS.map((_, index) =>
-                    index * slotWidth + (slotWidth - INDICATOR_SIZE) / 2),
-                }),
-              }],
+              transform: [
+                {
+                  translateX: shownPosition.interpolate({
+                    inputRange: NAV_ITEMS.map((_, index) => index),
+                    outputRange: NAV_ITEMS.map((_, index) =>
+                      index * slotWidth + (slotWidth - INDICATOR_SIZE) / 2),
+                  }),
+                },
+                { scale: dragScale },
+              ],
             },
           ]}
         />
@@ -118,7 +185,7 @@ export default function Navbar({ navigation, activeKey, position, blurTarget, on
           key={item.key}
           item={item}
           index={index}
-          position={currentPosition}
+          position={shownPosition}
           onPress={handlePress}
           styles={styles}
           themeColor={themeColor}

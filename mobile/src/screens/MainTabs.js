@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   navbarArea: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     left: SCREEN_PADDING,
     right: SCREEN_PADDING,
   },
