@@ -1,14 +1,19 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { aiUrl } from "./serverConfig";
 
 // Fala com o servidor de IA do app desktop (Electron, porta 8080).
-async function request(path, { method = "GET", body, timeoutMs = 10000 } = {}) {
+async function request(path, { method = "GET", body, timeoutMs = 10000, token } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers = {};
+  if (body) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   try {
     const response = await fetch(`${aiUrl()}${path}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
@@ -43,6 +48,21 @@ async function request(path, { method = "GET", body, timeoutMs = 10000 } = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function getDesktopStatus() {
+  return request("/api/status", { timeoutMs: 5000 });
+}
+
+// Roda o comando no PC onde o app desktop está aberto.
+export async function executeDesktopCommand(command, timeoutMs = 30000) {
+  const token = await AsyncStorage.getItem("token");
+  return request("/api/terminal/exec", {
+    method: "POST",
+    body: { command, timeout_ms: timeoutMs },
+    timeoutMs: timeoutMs + 5000,
+    token,
+  });
 }
 
 export function getDesktopModels() {

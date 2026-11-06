@@ -1,8 +1,8 @@
 // useTerminal.js — lógica da tela de Terminal: abas de sessão, execução de comandos
-// no PC pela API, histórico de comandos (↑ / ↓) e verificação da conexão.
+// no PC pelo app desktop, histórico de comandos (↑ / ↓) e verificação da conexão.
 import { useCallback, useEffect, useState } from "react";
 
-import sheets from "../services/api";
+import { executeDesktopCommand, getDesktopStatus } from "../services/desktopModels";
 import { getIP, loadIP } from "../services/serverConfig";
 
 // Remove códigos ANSI de escape das saídas do terminal
@@ -28,7 +28,7 @@ export function useTerminal() {
         {
           id: "init-1",
           type: "system",
-          text: `Osíris Terminal — Conectado ao PC (${getIP()}:5000)`,
+          text: `Osíris Terminal — PC ${getIP()}`,
         },
         {
           id: "init-2",
@@ -48,12 +48,12 @@ export function useTerminal() {
   // Aba atualmente selecionada
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Carrega IP e testa status da API do PC
+  // Carrega IP e testa se o app desktop está aberto no PC
   const checkConnection = useCallback(async () => {
     try {
       const ip = await loadIP();
       if (ip) setCurrentIp(ip);
-      await sheets.health();
+      await getDesktopStatus();
       setConnected(true);
     } catch {
       setConnected(false);
@@ -87,7 +87,7 @@ export function useTerminal() {
         {
           id: `init-${Date.now()}-1`,
           type: "system",
-          text: `Osíris Terminal [Sessão ${newIdx}] — PC (${currentIp}:5000)`,
+          text: `Osíris Terminal [Sessão ${newIdx}] — PC ${currentIp}`,
         },
         {
           id: `init-${Date.now()}-2`,
@@ -172,8 +172,7 @@ export function useTerminal() {
     }));
 
     try {
-      const response = await sheets.executeCommand(cmd, 30000);
-      const data = response?.data || {};
+      const data = (await executeDesktopCommand(cmd, 30000)) || {};
 
       const stdout = stripAnsi(data.stdout || "").trimEnd();
       const stderr = stripAnsi(data.stderr || "").trimEnd();
@@ -210,14 +209,7 @@ export function useTerminal() {
         lines: [...t.lines, ...newItems],
       }));
     } catch (err) {
-      let errMsg = "Erro de conexão com o terminal do PC.";
-      if (err?.response?.status === 401) {
-        errMsg = "Não autorizado (401). Faça login no aplicativo.";
-      } else if (err?.response?.data?.error?.message) {
-        errMsg = err.response.data.error.message;
-      } else if (err?.message) {
-        errMsg = err.message;
-      }
+      const errMsg = err?.message || "Erro de conexão com o terminal do PC.";
 
       setConnected(false);
       updateActiveTab((t) => ({

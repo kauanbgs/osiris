@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { useNavbarSpace } from '../components/Navbar';
 import sheets from '../services/api';
+import { executeDesktopCommand } from '../services/desktopModels';
 import { aiUrl, loadIP } from '../services/serverConfig';
 import { createThemedStyles, useThemeColor, ACCENTS } from '../theme';
 
@@ -797,15 +798,14 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
     setTerminalRun({ running: true, error: '' });
     onUpdate(node.id, { data: { terminalCommand: '', terminalStatus: 'running' } });
     try {
-      const response = await sheets.executeCommand(command, 30000);
-      const result = response?.data || {};
+      const result = (await executeDesktopCommand(command, 30000)) || {};
       const output = [result.stdout, result.stderr && `ERRO:\n${result.stderr}`, `\n[exit ${result.exit_code ?? '?'}]`].filter(Boolean).join('\n');
       const previous = node.data?.terminalContent || '';
       onUpdate(node.id, { data: { terminalContent: `${previous}${previous ? '\n' : ''}> ${command}\n${output}`, terminalStatus: 'idle' } });
       setTerminalRun({ running: false, error: '' });
     } catch (runError) {
       onUpdate(node.id, { data: { terminalStatus: 'error' } });
-      setTerminalRun({ running: false, error: runError?.response?.data?.error?.message || runError.message || 'Falha ao executar comando.' });
+      setTerminalRun({ running: false, error: runError.message || 'Falha ao executar comando.' });
     }
   }
 
@@ -921,7 +921,7 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               {terminalRun?.running ? <ActivityIndicator size="small" color={themeColor("#c4b5fd")} /> : <Feather name="play" size={15} color={themeColor("#c4b5fd")} />}
             </TouchableOpacity>
           </View>
-          <Text style={styles.terminalSafetyHint}>Executado no desktop conectado · limite de segurança da API</Text>
+          <Text style={styles.terminalSafetyHint}>Executado no desktop conectado · limite de segurança do desktop</Text>
         </View>
       ) : type === 'agent' ? (
         <View style={styles.agentNodeBody}>
