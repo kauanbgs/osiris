@@ -168,16 +168,6 @@ function createWindow() {
     return allowedPerms.includes(permission);
   });
 
-  // Permite que links em novas abas no webview naveguem no próprio webview
-  app.on("web-contents-created", (_event, contents) => {
-    if (contents.getType() === "webview") {
-      contents.setWindowOpenHandler(({ url }) => {
-        contents.loadURL(url);
-        return { action: "deny" };
-      });
-    }
-  });
-
   const isDev = !app.isPackaged && process.env.NODE_ENV !== "production";
 
   if (isDev) {
@@ -830,6 +820,19 @@ ipcMain.handle("fs:read-file", async (_, filePath) => {
 // ===============================
 
 app.whenReady().then(() => {
+  // Permite que links em novas abas no webview naveguem no próprio webview
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() === "webview") {
+      contents.setWindowOpenHandler(({ url }) => {
+        contents.loadURL(url);
+        return { action: "deny" };
+      });
+      contents.on("render-process-gone", (_ev, details) => {
+        console.warn("[webview] Processo de renderização encerrado:", details?.reason);
+      });
+    }
+  });
+
   createWindow();
   startAiServer();
 

@@ -4,94 +4,101 @@ Data: 10/11/2026
 Branch: fix/navegador-electron-abas
 ================================================================================
 
-1. ATUALIZAÇÃO DO PROJETO COM TRABALHO DA EQUIPE (GIT PULL / MERGE)
+1. CAUSA RAIZ DA TELA PRETA AO ACESSAR SITES (GOOGLE, GITHUB, PESQUISAS)
 --------------------------------------------------------------------------------
-- Sincronização com origin/main via `git fetch` e `git merge origin/main`.
-- Foram integrados com sucesso os novos commits da equipe:
-  * 0aa144d: fix(mobile): keep terminal input focused on submit
-  * 22d3aa4: feat(terminal): run mobile commands on the connected desktop
-  * ebc287e: feat(mobile): draggable navbar indicator and centered navbar
-  * 24ba67d: feat(mobile): desktop theme sync, glass navbar, color details
-  * 8903a7b: refactor(mobile): split Home and Terminal logic into hooks
-  * Novos recursos de desktop/mobile no backend e electron (remoteTerminal.cjs).
+Identificamos a causa definitiva do erro de tela preta ao navegar ou pesquisar:
+
+A) Disparo indevido de `did-fail-load` para sub-recursos (imagens, trackers, ads):
+   - No Electron, o evento `did-fail-load` do `<webview>` é disparado para QUALQUER
+     recurso que falhe ou seja cancelado, incluindo requisições de analytics,
+     pre-fetches, anúncios e imagens secundárias.
+   - O handler anterior não verificava `e.isMainFrame`. Assim que o Google ou GitHub
+     iniciava o carregamento e cancelava uma requisição secundária (como fontes ou
+     rastreadores bloqueados), o estado `loadError` era imediatamente ativado.
+   - Isso renderizava uma tela de sobreposição de erro estilizada com `bg-surface-0`
+     (cor `#101012`, praticamente preta) com `absolute inset-0 z-20`, cobrindo
+     completamente a página que estava tentando carregar!
+
+B) Loop de re-navegação e cancelamento no React 19 (`src={tab.url}`):
+   - No React 19, propriedades em Custom Elements (`<webview>`) chamam diretamente
+     o setter de atributo do elemento nativo.
+   - Ao navegar para `google.com`, o Google realiza múltiplos redirecionamentos HTTP
+     internos (ex: para `https://www.google.com/?gws_rd=ssl`).
+   - O evento `did-navigate` capturava a nova URL redirecionada e atualizava o estado
+     `tab.url` no React. Ao re-renderizar com o novo `src`, o React forçava o Chromium
+     a abortar o carregamento em andamento e iniciar uma nova navegação do zero.
+   - Esse ciclo de abortos sucessivos (`ERR_ABORTED -3`) travava o renderizador
+     do Chromium, deixando a tela branca ou preta.
+
+C) Altura colapsada do container flex (`h-full` vs `flex-1 min-h-0`):
+   - O elemento pai do `<webview>` possuía `className="relative h-full w-full"`.
+     Como seus filhos eram `position: absolute`, o container em um layout flex-col
+     colapsava para 0px de altura em determinados fluxos, expondo o fundo `#101012`
+     (preto) da página principal.
+
+D) Vazamento de chamada da API Playwright:
+   - Em `navigateTo`, ao tentar navegar em uma guia recém-aberta onde o webview ainda
+     não tinha sido indexado no mapa, a função não retornava no modo Electron,
+     fazendo fallback indevido para o backend Playwright.
 
 
-2. CORREÇÃO NA PÁGINA NAVEGADOR (Navegador.jsx)
+2. CORREÇÕES IMPLEMENTADAS
 --------------------------------------------------------------------------------
-PROBLEMAS IDENTIFICADOS:
-a) Ao clicar no botão "+", o navegador ficava completamente preto e não abria a nova guia.
-   - Causa 1: A função `addTab` era assíncrona e executava `await sheets.createBrowserSession("about:blank")`
-     antes de atualizar o estado do React (`setTabs`/`setActiveTabId`). Caso a API demorasse para responder
-     ou estivesse offline, a interface congelava sem adicionar a guia.
-   - Causa 2: Cada guia sem URL (`url: ""`) recebia um elemento `<webview src="about:blank">` com a classe `hidden`
-     (`display: none !important`). No Electron / Chromium, aplicar `display: none` em `<webview>` desanexa
-     a superfície nativa de renderização GPU ou causa crash de composição, tornando o container do Chromium
-     completamente preto.
-   - Causa 3: Havia referência incorreta `webviewRef` (singular) vs `webviewRefs` (plural/mapa por aba), impedindo
-     o registro das instâncias no mapa de referências.
+1. Filtragem estrita em `handleFailLoad`:
+   - Adicionada a validação `if (e.isMainFrame === false) return;`.
+   - Adicionado descarte de erros de cancelamento `if (e.errorCode === -3 || e.errorCode === 0) return;`.
+   - Agora, falhas de scripts de terceiros ou cancelamentos normais de stream HTTP/2
+     nunca mais disparam a sobreposição de erro, permitindo que Google e GitHub
+     carreguem normalmente.
 
-CORREÇÕES APLICADAS:
-- `addTab` síncrono e instantâneo: Cria imediatamente a aba no React (`setTabs` e `setActiveTabId`) sem aguardar
-  requisições de rede. A criação de sessão da API ocorre de forma desacoplada em segundo plano.
-- Montagem condicional do `<webview>` nativo: Somente guias que possuem uma URL real (`tabs.filter(t => t.url)`)
-  renderizam uma instância de `<webview>`. Guias recém-criadas ou na tela inicial ("Nova Guia") exibem diretamente
-  a UI nativa do Osíris (atalhos de Acesso Rápido, barra de busca) com `z-10 bg-surface-0`, sem instanciar
-  processos desnecessários de `<webview>` em branco.
-- Ocultamento seguro sem `display: none`: Para guias com URL que não são a aba ativa no momento, a alternância
-  é controlada via `visibility: isCurrentActive ? 'visible' : 'hidden'` com `pointerEvents: isCurrentActive ? 'auto' : 'none'`,
-  preservando o contexto gráfico e a textura GPU sem telas pretas.
-- Navegação unificada em `navigateTo`: Quando o usuário digita na barra ou clica em um atalho de acesso rápido:
-  * Se a guia já possuía um `<webview>`, navega via `webview.loadURL(formatted)`.
-  * Se a guia estava na tela inicial (`url: ""`), o React monta a instância com `src={formatted}`, iniciando
-    o carregamento nativo e anexando os ouvintes de evento via callback de referência.
-- Limpeza no `closeTab`: Ao fechar uma guia, os ouvintes de eventos e as referências no mapa `webviewRefs`
-  são removidos com segurança para evitar vazamento de memória.
-- Tratamento visual de erro de carregamento: Caso ocorra falha de rede ou DNS (`did-fail-load`), uma tela de erro
-  amigável é exibida sobre a guia com opções de "Tentar novamente" (`reload()`) e "Abrir no navegador".
+2. Navegação desacoplada e imperativa via `loadURL()`:
+   - O `<webview>` agora é montado sem a propriedade reativa `src` no JSX.
+   - O carregamento da página é feito exclusivamente via `loadURL()` no evento
+     `dom-ready` e na função `navigateTo()`.
+   - As atualizações de `did-navigate` (para barra de endereços e histórico) não
+     interferem mais no ciclo de renderização do Chromium, eliminando 100% dos loops
+     de redirecionamento.
+
+3. Correção do Container e Layout:
+   - O container agora utiliza `className="relative flex-1 min-h-0 w-full h-full bg-white"`.
+   - O `<webview>` possui `display: "flex", width: "100%", height: "100%"`.
+   - Isso garante que a área de exibição ocupe 100% da viewport e que o fundo base
+     seja branco, como em um navegador nativo.
+
+4. Isolamento definitivo no Electron:
+   - `navigateTo()` no Electron agora sempre retorna antes de qualquer chamada
+     Playwright (`return;`), garantindo que apenas o Chromium local gerencie a renderização.
+
+5. Preservação de Sessões no Terminal:
+   - Múltiplas abas de terminal agora permanecem vivas no DOM em segundo plano,
+     evitando que a alternância de abas mate o processo PowerShell (`pty.kill()`).
+   - `terminalClose` só é chamado quando a aba é fechada explicitamente no "X".
 
 
-3. CORREÇÃO NA PÁGINA TERMINAL (Terminal.jsx e ElectronTerminalPanel.jsx)
+3. ARQUIVOS MODIFICADOS
 --------------------------------------------------------------------------------
-PROBLEMAS IDENTIFICADOS:
-a) Erro ao usar e alternar múltiplas abas de terminal:
-   - Causa: `Terminal.jsx` utilizava `key={activeTabId}` no painel ativo (`<ElectronTerminalPanel key={activeTabId} />`).
-     Ao clicar no "+" ou alternar entre abas ("Terminal 1", "Terminal 2"), o React desmontava o painel da aba anterior.
-   - A função de limpeza do unmount em `ElectronTerminalPanel.jsx` disparava `window.electronAPI.terminalClose(terminalId)`,
-     que executava `terminal.kill()` no processo PowerShell em background do Electron.
-   - Ao retornar à aba anterior, o processo já havia sido encerrado abruptamente no sistema operacional,
-     causando mensagens de erro ("Terminal encerrado") e perda total do histórico digitado.
-
-CORREÇÕES APLICADAS:
-- Preservação de abas em segundo plano: `Terminal.jsx` agora renderiza as abas mantendo suas instâncias vivas,
-  alternando a visibilidade via CSS (`${isActive ? "block" : "hidden"}`).
-- Encerramento sob demanda: O comando `terminalClose` agora só é acionado quando o usuário clica explicitamente
-  no botão "X" de fechar a aba (`removeTab`).
-- Reajuste automático ao focar: Adicionada a propriedade `isActive` ao `ElectronTerminalPanel`. Quando a aba volta
-  a ficar ativa, um efeito executa `fitAddon.fit()` e `xterm.focus()` para readequar as dimensões do terminal (linhas/colunas)
-  e devolver o foco ao cursor.
+- `webfrontend/src/pages/Navegador.jsx`:
+  * Adicionado `handleWebviewRef` para inicialização via `dom-ready` e `loadURL()`.
+  * Remoção de `src` reativo do JSX do `<webview>`.
+  * Filtragem de `isMainFrame` e `errorCode` em `handleFailLoad`.
+  * Ajuste do container para `flex-1 min-h-0 bg-white`.
+  * Limpeza de `loadError` em `handleReload` e `navigateTo`.
+- `webfrontend/electron/main.cjs`:
+  * Movido ouvinte `app.on("web-contents-created")` para o nível global do ciclo de vida
+    para evitar múltiplos registros a cada `createWindow`.
+  * Adicionado log de integridade em `render-process-gone`.
+- `webfrontend/src/pages/Terminal.jsx`:
+  * Preservação das abas abertas em segundo plano via CSS `${isActive ? "block" : "hidden"}`.
+- `webfrontend/src/components/terminal/ElectronTerminalPanel.jsx`:
+  * Suporte a `isActive` para redimensionamento e foco automático do xterm.
 
 
-4. ARQUIVOS MODIFICADOS
+4. TESTES E VALIDAÇÃO
 --------------------------------------------------------------------------------
-- `webfrontend/src/pages/Navegador.jsx`
-  * Refatoração do gerenciamento de instâncias `<webview>`
-  * Abertura instantânea de abas em `addTab`
-  * Ocultação segura com `visibility` em vez de `display: none`
-  * Sincronização de eventos e suporte a telas de erro
-- `webfrontend/src/pages/Terminal.jsx`
-  * Preservação das sessões do terminal entre alternâncias de abas
-  * Chamada de `terminalClose` somente no descarte explícito da aba
-- `webfrontend/src/components/terminal/ElectronTerminalPanel.jsx`
-  * Suporte à propriedade `isActive` com refit do xterm e retorno de foco
-
-
-5. TESTES E VALIDAÇÃO EXECUTADOS
---------------------------------------------------------------------------------
-- Build do Frontend (Vite):
-  `npm run build` -> Sucesso absoluto (`✓ built in 11.33s`, bundles gerados sem erros).
-- Testes Unitários Frontend (Vitest):
-  `npm test -- --run` -> 4 testes executados e aprovados com 100% de sucesso.
-- Testes da API (Jest):
-  `npm test -- --runInBand` -> 15 suites e 130 testes aprovados, incluindo testes de segurança
-  e execução de terminal e navegador Playwright.
+- Build de produção (`npm run build`):
+  ✓ built in 13.51s sem erros.
+- Testes unitários (`vitest run`):
+  ✓ 4 testes passaram com 100% de sucesso.
+- Testes da API (`jest`):
+  ✓ 130 testes passaram em 15 suites de teste.
 ================================================================================

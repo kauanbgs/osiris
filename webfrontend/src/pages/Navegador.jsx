@@ -186,8 +186,10 @@ export default function Navegador() {
     };
 
     const handleFailLoad = (e) => {
-      // Erros -3 (ERR_ABORTED) são cancelamentos normais (ex: redirecionamentos)
-      if (e.errorCode === -3) return;
+      // Ignora falhas de sub-recursos (imagens, scripts, analytics); só nos importamos com o frame principal
+      if (e.isMainFrame === false) return;
+      // Erros -3 (ERR_ABORTED) e 0 são cancelamentos normais de navegação/redirecionamento
+      if (e.errorCode === -3 || e.errorCode === 0) return;
       updateTab(tabId, {
         isLoading: false,
         loadError: e.errorDescription || "Falha ao carregar a página.",
@@ -221,6 +223,39 @@ export default function Navegador() {
     webview.removeEventListener("page-title-updated", handlers.handleTitleUpdated);
     webview.removeEventListener("did-fail-load", handlers.handleFailLoad);
     delete registeredWebviewHandlers.current[tabId];
+  };
+
+  const handleWebviewRef = (tabId, el) => {
+    if (!el) {
+      const existing = webviewRefs.current[tabId];
+      if (existing) unregisterWebviewEvents(tabId, existing);
+      delete webviewRefs.current[tabId];
+      return;
+    }
+
+    if (webviewRefs.current[tabId] === el) return;
+    webviewRefs.current[tabId] = el;
+    registerWebviewEvents(tabId, el);
+
+    // Carrega a URL inicial assim que o webview estiver pronto
+    const currentTab = tabs.find((t) => t.id === tabId);
+    if (currentTab?.url) {
+      const loadInitial = () => {
+        try {
+          if (el.getURL?.() !== currentTab.url) {
+            el.loadURL(currentTab.url);
+          }
+        } catch (err) {
+          console.warn("[Navegador] Falha no loadInitial:", err?.message);
+        }
+      };
+
+      if (el.getURL) {
+        loadInitial();
+      } else {
+        el.addEventListener("dom-ready", loadInitial, { once: true });
+      }
+    }
   };
 
   // Gerenciamento de Abas
@@ -328,7 +363,7 @@ export default function Navegador() {
     });
 
     // No Electron, navega via loadURL() no webview da aba correta.
-    // O webview é identificado por key={tab.id} e já está no DOM (pode estar oculto).
+    // O webview é identificado por key={tab.id}.
     if (isElectronApp) {
       const webview = webviewRefs.current[tabId];
       if (webview) {
@@ -340,17 +375,15 @@ export default function Navegador() {
           }
         };
 
-        // Se o webview ainda não está pronto, aguarda dom-ready uma vez
         if (!webview.getURL) {
-          // getURL está disponível apenas após dom-ready; espera o evento
           webview.addEventListener("dom-ready", doLoad, { once: true });
         } else {
           doLoad();
         }
-        // No Electron a navegação real é gerenciada pelo Chromium/webview;
-        // não precisamos chamar a API para a navegação visual.
-        return;
       }
+      // No Electron a navegação visual é sempre gerenciada pelo Chromium/webview.
+      // Nunca faz fallback para a API Playwright aqui.
+      return;
     }
 
     // Fallback para modo Web: usa a API Playwright
@@ -474,9 +507,18 @@ export default function Navegador() {
   };
 
   const handleReload = () => {
+    updateActiveTab({ loadError: null, isLoading: true });
     const webview = getActiveWebview();
     if (isElectronApp && webview) {
-      webview.reload();
+      try {
+        webview.reload();
+      } catch {
+        if (activeTab.url) {
+          try {
+            webview.loadURL(activeTab.url);
+          } catch {}
+        }
+      }
       return;
     }
     if (!activeTab.url) return;
@@ -912,7 +954,7 @@ export default function Navegador() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-0">
           {/* WEBVIEWS ELECTRON: somente abas com URL montam webview nativo */}
           {isElectronApp && (
-            <div className="relative h-full w-full">
+            <div className="relative flex-1 min-h-0 w-full h-full bg-white">
               {tabs
                 .filter((tab) => Boolean(tab.url))
                 .map((tab) => {
@@ -920,23 +962,14 @@ export default function Navegador() {
                   return (
                     <webview
                       key={tab.id}
-                      ref={(el) => {
-                        if (el) {
-                          webviewRefs.current[tab.id] = el;
-                          registerWebviewEvents(tab.id, el);
-                        } else {
-                          const existing = webviewRefs.current[tab.id];
-                          if (existing) unregisterWebviewEvents(tab.id, existing);
-                          delete webviewRefs.current[tab.id];
-                        }
-                      }}
-                      src={tab.url}
+                      ref={(el) => handleWebviewRef(tab.id, el)}
                       style={{
                         position: "absolute",
                         top: 0,
                         left: 0,
                         width: "100%",
                         height: "100%",
+                        display: "flex",
                         visibility: isCurrentActive ? "visible" : "hidden",
                         pointerEvents: isCurrentActive ? "auto" : "none",
                         zIndex: isCurrentActive ? 1 : 0,
