@@ -8,7 +8,6 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,8 +15,9 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import BottomNav from "../components/Navbar";
+import { NavbarSpacer } from "../components/Navbar";
 import sheets from "../services/api";
+import { createThemedStyles, useThemeColor, ACCENTS } from "../theme";
 
 const colors = {
   background: "#0d0d0d",
@@ -74,7 +74,21 @@ function getFileIcon(name) {
   return "file";
 }
 
+const FILE_COLORS = {
+  js: ACCENTS.amber, jsx: ACCENTS.amber, ts: ACCENTS.amber, tsx: ACCENTS.amber,
+  json: ACCENTS.green,
+  md: ACCENTS.blue, txt: ACCENTS.blue, log: ACCENTS.blue,
+  html: ACCENTS.pink, css: ACCENTS.pink,
+  py: ACCENTS.cyan, java: ACCENTS.cyan, c: ACCENTS.cyan, cpp: ACCENTS.cyan,
+};
+
+function getFileColor(name) {
+  return FILE_COLORS[name?.split(".").pop()?.toLowerCase()] || colors.muted;
+}
+
 export default function ArquivoScreen({ navigation }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [files, setFiles] = useState([]);
   const [workspaceName, setWorkspaceName] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -258,15 +272,15 @@ export default function ArquivoScreen({ navigation }) {
             accessibilityLabel={isFolder ? `${isExpanded ? "Recolher" : "Expandir"} pasta ${item.name}` : `Abrir arquivo ${item.name}`}
           >
             {isFolder ? (
-              <Feather name={isExpanded ? "chevron-down" : "chevron-right"} size={14} color={colors.muted} />
+              <Feather name={isExpanded ? "chevron-down" : "chevron-right"} size={14} color={themeColor(colors.muted)} />
             ) : <View style={styles.chevronSpace} />}
             <Feather
               name={isFolder ? (isExpanded ? "folder" : "folder") : getFileIcon(item.name)}
               size={15}
-              color={isFolder ? colors.accent : (isActive ? colors.blue : colors.muted)}
+              color={isFolder ? themeColor(colors.accent) : themeColor(isActive ? colors.blue : getFileColor(item.name))}
             />
             <Text style={[styles.fileName, isActive && styles.activeFileName]} numberOfLines={1}>{item.name}</Text>
-            {!isFolder && opening && isActive ? <ActivityIndicator size="small" color={colors.blue} /> : null}
+            {!isFolder && opening && isActive ? <ActivityIndicator size="small" color={themeColor(colors.blue)} /> : null}
           </TouchableOpacity>
         </View>
         {isFolder && isExpanded ? renderItems(item.children, depth + 1) : null}
@@ -275,17 +289,17 @@ export default function ArquivoScreen({ navigation }) {
   });
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton} accessibilityLabel="Voltar">
-          <Feather name="chevron-left" size={22} color={colors.text} />
+          <Feather name="chevron-left" size={22} color={themeColor(colors.text)} />
         </TouchableOpacity>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.title}>Arquivos</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{workspaceName || "Pasta compartilhada do desktop"}</Text>
         </View>
         <TouchableOpacity onPress={() => loadFiles(true)} style={styles.headerButton} accessibilityLabel="Atualizar arquivos">
-          <Feather name="refresh-cw" size={16} color={colors.muted} />
+          <Feather name="refresh-cw" size={16} color={themeColor(colors.muted)} />
         </TouchableOpacity>
       </View>
 
@@ -295,12 +309,12 @@ export default function ArquivoScreen({ navigation }) {
       </View>
 
       {loading ? (
-        <View style={styles.emptyState}><ActivityIndicator color={colors.accent} /></View>
+        <View style={styles.emptyState}><ActivityIndicator color={themeColor(colors.accent)} /></View>
       ) : tree.length ? (
         <ScrollView
           style={styles.treeScroll}
           contentContainerStyle={styles.treeContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFiles(true)} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFiles(true)} tintColor={themeColor(colors.accent)} />}
         >
           {workspaceName ? (
             <View>
@@ -310,30 +324,29 @@ export default function ArquivoScreen({ navigation }) {
                 accessibilityRole="button"
                 accessibilityLabel={`${rootExpanded ? "Recolher" : "Expandir"} pasta ${workspaceName}`}
               >
-                <Feather name={rootExpanded ? "chevron-down" : "chevron-right"} size={14} color={colors.text} />
-                <Feather name="folder" size={17} color="#c084fc" />
+                <Feather name={rootExpanded ? "chevron-down" : "chevron-right"} size={14} color={themeColor(colors.text)} />
+                <Feather name="folder" size={17} color={themeColor("#c084fc")} />
                 <Text style={styles.rootName} numberOfLines={1}>{workspaceName}</Text>
               </TouchableOpacity>
               {rootExpanded ? renderItems(tree) : null}
             </View>
           ) : renderItems(tree)}
+          <NavbarSpacer />
         </ScrollView>
       ) : (
         <View style={styles.emptyState}>
-          <Feather name="folder" size={30} color="#4b4652" />
+          <Feather name="folder" size={30} color={themeColor("#4b4652")} />
           <Text style={styles.emptyText}>{workspaceName ? "Esta pasta está vazia." : "Abra uma pasta no desktop para compartilhar os arquivos."}</Text>
           <Text style={styles.emptyHint}>As pastas compartilhadas no desktop aparecem aqui.</Text>
         </View>
       )}
-
-      <BottomNav activeKey="folder" navigation={navigation} />
 
       <Modal visible={Boolean(activeFile)} animationType="slide" onRequestClose={closeEditor}>
         <SafeAreaView style={styles.editorSafeArea}>
           <KeyboardAvoidingView style={styles.editorContainer} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <View style={styles.editorHeader}>
               <TouchableOpacity onPress={closeEditor} style={styles.editorIconButton} accessibilityLabel="Fechar editor">
-                <Feather name="chevron-left" size={22} color={colors.text} />
+                <Feather name="chevron-left" size={22} color={themeColor(colors.text)} />
               </TouchableOpacity>
               <View style={styles.editorTitleWrap}>
                 <Text style={styles.editorTitle} numberOfLines={1}>{activeFile?.name}</Text>
@@ -359,13 +372,13 @@ export default function ArquivoScreen({ navigation }) {
               spellCheck={false}
               textAlignVertical="top"
               placeholder="Conteúdo do arquivo"
-              placeholderTextColor={colors.muted}
-              selectionColor={colors.accent}
+              placeholderTextColor={themeColor(colors.muted)}
+              selectionColor={themeColor(colors.accent)}
             />
             <View style={styles.editorStatus}>
               <Text style={styles.statusText}>{dirty ? "Alterações não salvas" : "Salvo"}</Text>
               <TouchableOpacity onPress={() => deleteFile(activeFile)} style={styles.editorDelete}>
-                <Feather name="trash-2" size={14} color="#f87171" />
+                <Feather name="trash-2" size={14} color={themeColor("#f87171")} />
                 <Text style={styles.deleteText}>Excluir arquivo</Text>
               </TouchableOpacity>
             </View>
@@ -376,7 +389,7 @@ export default function ArquivoScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: { flex: 1, backgroundColor: colors.background },
   header: { minHeight: 66, flexDirection: "row", alignItems: "center", paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerButton: { width: 42, height: 44, alignItems: "center", justifyContent: "center" },
@@ -399,7 +412,7 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28 },
   emptyText: { color: colors.muted, fontSize: 13, textAlign: "center", marginTop: 12 },
   emptyHint: { color: "#5f5a64", fontSize: 11, textAlign: "center", marginTop: 6 },
-  editorSafeArea: { flex: 1, backgroundColor: colors.background },
+  editorSafeArea: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 12 },
   editorContainer: { flex: 1 },
   editorHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   editorIconButton: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },

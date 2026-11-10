@@ -30,6 +30,9 @@ const sheets = {
   // ── Health ────────────────────────────────────────────────────────
   health: () => api.get("/health", { timeout: 5000 }),
 
+  // ── Tema do desktop ───────────────────────────────────────────────
+  getTheme: () => api.get("/theme", { timeout: 4000 }),
+
   // ── Chats ─────────────────────────────────────────────────────────
   createChat: (title) => api.post("/chat", { title }),
   listChats: () => api.get("/chat"),
@@ -70,6 +73,21 @@ const sheets = {
   getWorkspaceFile: (filePath) => api.get("/file/workspace/content", { params: { path: filePath } }),
   saveWorkspaceFile: (filePath, content) => api.put("/file/workspace/content", { path: filePath, content }),
   deleteWorkspaceFile: (filePath) => api.delete("/file/workspace/item", { params: { path: filePath } }),
+  // Envia um arquivo do celular; a API devolve o texto extraído em `reading`
+  // (PDF, DOCX e arquivos de texto).
+  uploadFile: ({ uri, name, mimeType }) => {
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      name: name || "arquivo",
+      type: mimeType || "application/octet-stream",
+    });
+    return api.post("/file", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      // PDFs grandes demoram para subir e para serem lidos.
+      timeout: 60000,
+    });
+  },
 
   // ── Workflows ───────────────────────────────────────────────────────
   getWorkflows: () => api.get("/workflow"),

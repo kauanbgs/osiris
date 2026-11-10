@@ -117,6 +117,33 @@ async function readError(response, fallback) {
   return new Error(data?.error?.message || `${fallback} (HTTP ${response.status})`);
 }
 
+// Erros temporários do provedor: limite de uso (429), servidor sobrecarregado
+// (503 no Gemini, 529 na Anthropic) e falhas momentâneas do servidor.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+const RETRY_DELAYS_MS = [1000, 2000, 4000];
+const MAX_RETRY_AFTER_MS = 10000;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Faz a requisição e, se o provedor responder com um erro temporário, tenta
+// de novo (até 3 vezes, esperando 1s, 2s e 4s). Se o provedor mandar o
+// cabeçalho Retry-After, respeita esse tempo (até 10s).
+async function fetchWithRetry(url, options) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, options);
+    if (response.ok || !RETRYABLE_STATUS.has(response.status) || attempt >= RETRY_DELAYS_MS.length) {
+      return response;
+    }
+
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const delay =
+      retryAfterSeconds > 0
+        ? Math.min(retryAfterSeconds * 1000, MAX_RETRY_AFTER_MS)
+        : RETRY_DELAYS_MS[attempt];
+    await wait(delay);
+  }
+}
+
 const OPENAI_COMPATIBLE = {
   openai: "https://api.openai.com/v1",
   groq: "https://api.groq.com/openai/v1",
@@ -147,13 +174,21 @@ export async function testCloudKey(providerId, apiKey) {
   if (!response.ok) throw await readError(response, "Chave inválida");
 }
 
-async function callGoogle(model, apiKey, prompt) {
-  const response = await fetch(
+// Cada provedor recebe imagens num formato diferente.
+// images: lista de { mimeType, base64 }.
+async function callGoogle(model, apiKey, prompt, images = []) {
+  const parts = [
+    ...images.map((image) => ({
+      inline_data: { mime_type: image.mimeType, data: image.base64 },
+    })),
+    { text: prompt },
+  ];
+  const response = await fetchWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+      body: JSON.stringify({ contents: [{ role: "user", parts }] }),
     }
   );
   if (!response.ok) throw await readError(response, "Erro no Google Gemini");
@@ -164,11 +199,20 @@ async function callGoogle(model, apiKey, prompt) {
     .join("");
 }
 
-async function callOpenAICompatible(baseUrl, model, apiKey, prompt) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+async function callOpenAICompatible(baseUrl, model, apiKey, prompt, images = []) {
+  const content = images.length
+    ? [
+        { type: "text", text: prompt },
+        ...images.map((image) => ({
+          type: "image_url",
+          image_url: { url: `data:${image.mimeType};base64,${image.base64}` },
+        })),
+      ]
+    : prompt;
+  const response = await fetchWithRetry(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model, messages: [{ role: "user", content }] }),
   });
   if (!response.ok) throw await readError(response, "Erro na API de IA");
 
@@ -176,7 +220,7 @@ async function callOpenAICompatible(baseUrl, model, apiKey, prompt) {
   return data.choices?.[0]?.message?.content || "";
 }
 
-async function callAnthropic(model, apiKey, prompt) {
+async function callAnthropic(model, apiKey, prompt, images = []) {
   const headers = {
     "Content-Type": "application/json",
     "x-api-key": apiKey,
@@ -185,7 +229,18 @@ async function callAnthropic(model, apiKey, prompt) {
   const body = {
     model,
     max_tokens: 16000,
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...images.map((image) => ({
+            type: "image",
+            source: { type: "base64", media_type: image.mimeType, data: image.base64 },
+          })),
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
   };
 
   // Se o modelo recusar o pedido, a API tenta de novo em outro modelo Claude.
@@ -195,7 +250,7 @@ async function callAnthropic(model, apiKey, prompt) {
     body.fallbacks = "default";
   }
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -212,7 +267,13 @@ async function callAnthropic(model, apiKey, prompt) {
     .join("");
 }
 
-export async function sendCloudPrompt({ provider, model }, prompt) {
+// Modelos que recebem imagens. Os do Groq listados aqui (Llama) e o modelo do
+// desktop só recebem texto.
+export function modelSupportsImages(model) {
+  return model?.type === "cloud" && model.provider !== "groq";
+}
+
+export async function sendCloudPrompt({ provider, model }, prompt, images = []) {
   const apiKey = await getCloudKey(provider);
   if (!apiKey) {
     const name = getProvider(provider)?.name || provider;
@@ -222,10 +283,10 @@ export async function sendCloudPrompt({ provider, model }, prompt) {
   }
 
   let text;
-  if (provider === "google") text = await callGoogle(model, apiKey, prompt);
-  else if (provider === "anthropic") text = await callAnthropic(model, apiKey, prompt);
+  if (provider === "google") text = await callGoogle(model, apiKey, prompt, images);
+  else if (provider === "anthropic") text = await callAnthropic(model, apiKey, prompt, images);
   else if (OPENAI_COMPATIBLE[provider])
-    text = await callOpenAICompatible(OPENAI_COMPATIBLE[provider], model, apiKey, prompt);
+    text = await callOpenAICompatible(OPENAI_COMPATIBLE[provider], model, apiKey, prompt, images);
   else throw new Error("Provedor desconhecido.");
 
   if (!text) throw new Error("A IA não retornou nenhuma resposta.");

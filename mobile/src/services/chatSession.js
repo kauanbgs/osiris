@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Conversa aberta na Home. Como no ChatGPT, ela continua aberta ao trocar de
-// tela ou fechar o app, mas depois de um tempo sem uso a Home começa uma nova.
+// Conversa aberta na Home. Ela continua aberta ao trocar de tela ou ao voltar
+// do segundo plano, mas depois de um tempo sem uso a Home começa uma nova.
+// Ao abrir o app do zero a Home sempre começa uma conversa nova.
 export const CHAT_SESSION_KEY = "@osiris/chat_session";
 export const CHAT_SESSION_TTL_MS = 30 * 60 * 1000;
 

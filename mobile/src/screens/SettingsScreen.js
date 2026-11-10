@@ -5,19 +5,23 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet,
   StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
 import sheets from "../services/api";
-import BottomNav from "../components/Navbar";
+import { NavbarSpacer } from "../components/Navbar";
+import { BACKGROUND, THEMES, createThemedStyles, useTheme, useThemeColor, ACCENTS } from "../theme";
 import ModelSettings from "../components/ModelSettings";
+import IconTile from "../components/IconTile";
 import { KeyboardScrollView } from "../components/KeyboardAware";
 import { CHAT_SESSION_KEY } from "../services/chatSession";
 
 export default function SettingsScreen({ navigation, route }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
+  const { themeId, setThemeId, statusBarStyle } = useTheme();
   // guestMode = true quando vindo da LoginScreen (sem estar autenticado)
   const guestMode = route?.params?.guestMode === true;
   const [ip, setIp] = useState("");
@@ -72,7 +76,7 @@ export default function SettingsScreen({ navigation, route }) {
       // A tela de configurações também pode ser aberta antes do login.
       // Verifica a sessão antes de navegar para uma tela protegida.
       await sheets.getMe();
-      navigation.navigate("Memoria", undefined, { pop: true });
+      navigation.navigate("Memoria");
     } catch (error) {
       if (error.response?.status === 401) {
         Alert.alert(
@@ -82,7 +86,7 @@ export default function SettingsScreen({ navigation, route }) {
             { text: "Cancelar", style: "cancel" },
             {
               text: "Fazer login",
-              onPress: () => navigation.reset({
+              onPress: () => navigation.getParent().reset({
                 index: 0,
                 routes: [{ name: "LoginScreen" }],
               }),
@@ -119,7 +123,7 @@ export default function SettingsScreen({ navigation, route }) {
             console.warn("Erro ao limpar sessão:", e?.message);
           }
           // Reseta a pilha para o usuário não voltar às telas logado
-          navigation.reset({
+          navigation.getParent().reset({
             index: 0,
             routes: [{ name: "LoginScreen" }],
           });
@@ -129,8 +133,8 @@ export default function SettingsScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#121212" />
+    <SafeAreaView style={styles.container} edges={guestMode ? undefined : ["top", "left", "right"]}>
+      <StatusBar barStyle={statusBarStyle} backgroundColor={themeColor("#121212")} />
 
       <KeyboardScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Configurações do Sistema</Text>
@@ -145,7 +149,10 @@ export default function SettingsScreen({ navigation, route }) {
         )}
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Celular</Text>
+          <View style={styles.sectionHeading}>
+            <IconTile icon="smartphone" color={ACCENTS.blue} />
+            <Text style={styles.sectionHeadingTitle}>Celular</Text>
+          </View>
           <Text style={styles.sectionDescription}>
             Use o celular como tela desktop para conectar ao Osiris.
           </Text>
@@ -154,7 +161,7 @@ export default function SettingsScreen({ navigation, route }) {
           <TextInput
             style={styles.input}
             placeholder="192.168.100.202"
-            placeholderTextColor="#666"
+            placeholderTextColor={themeColor("#666")}
             autoCapitalize="none"
             autoCorrect={false}
             value={ip}
@@ -177,8 +184,41 @@ export default function SettingsScreen({ navigation, route }) {
             </Text>
           </TouchableOpacity>
 
-          {status ? <Text style={styles.hint}>{status}</Text> : null}
+          {status ? (
+            <Text style={[styles.hint, { color: themeColor(status.startsWith("OK") ? "#2ecc71" : "#e74c3c") }]}>
+              {status}
+            </Text>
+          ) : null}
           <Text style={styles.hint}>Atual: {getIP()}</Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeading}>
+            <IconTile icon="droplet" color={ACCENTS.pink} />
+            <Text style={styles.sectionHeadingTitle}>Tema</Text>
+          </View>
+          <Text style={styles.sectionDescription}>
+            Escolha as cores do aplicativo. "Cores do web" acompanha o tema do desktop.
+          </Text>
+
+          <View style={styles.themeOptions}>
+            {Object.entries(THEMES).map(([id, { label }]) => {
+              const selected = id === themeId;
+              return (
+                <TouchableOpacity
+                  key={id}
+                  style={[styles.themeOption, selected && styles.themeOptionSelected]}
+                  onPress={() => setThemeId(id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={[styles.themeOptionText, selected && styles.themeOptionTextSelected]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {!guestMode && (
@@ -189,7 +229,10 @@ export default function SettingsScreen({ navigation, route }) {
             accessibilityRole="button"
             accessibilityLabel="Abrir memória do usuário"
           >
-            <Text style={styles.sectionTitle}>Memória</Text>
+            <View style={styles.sectionHeading}>
+            <IconTile icon="bookmark" color={ACCENTS.amber} />
+            <Text style={styles.sectionHeadingTitle}>Memória</Text>
+          </View>
             <Text style={styles.memoryTitle}>Memória do usuário</Text>
             <Text style={styles.sectionDescription}>
               Memórias definidas pelo usuário para melhorar sua experiência.
@@ -210,22 +253,16 @@ export default function SettingsScreen({ navigation, route }) {
             <Text style={styles.logoutText}>Sair da conta</Text>
           </TouchableOpacity>
         )}
+        {!guestMode && <NavbarSpacer />}
       </KeyboardScrollView>
-
-      {!guestMode && (
-        <BottomNav
-          activeKey="settings"
-          navigation={navigation}
-        />
-      )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: BACKGROUND,
   },
   content: {
     flexGrow: 1,
@@ -234,7 +271,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    color: "#FFFFFF",
+    color: "#fefefe",
     fontWeight: "bold",
     marginBottom: 18,
     textAlign: "center",
@@ -248,10 +285,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    color: "#FFFFFF",
+    color: "#fefefe",
     fontSize: 15,
     fontWeight: "700",
     marginBottom: 6,
+  },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  sectionHeadingTitle: {
+    color: "#fefefe",
+    fontSize: 15,
+    fontWeight: "700",
   },
   sectionDescription: {
     color: "#9A9A9A",
@@ -263,8 +311,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 4,
   },
+  themeOptions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  themeOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  themeOptionSelected: {
+    backgroundColor: "#8A56FF",
+    borderColor: "#8A56FF",
+  },
+  themeOptionText: {
+    color: "#CCCCCC",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  themeOptionTextSelected: {
+    color: "#FFFFFF",
+  },
   memoryAction: {
-    color: "#D0D0D0",
+    color: "#BB86FC",
     fontSize: 12,
     marginTop: 6,
   },
@@ -278,7 +350,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    color: "#FFFFFF",
+    color: "#fefefe",
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
@@ -320,7 +392,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logoutButton: {
-    backgroundColor: "transparent",
+    backgroundColor: "#e74c3c1f",
     borderWidth: 1,
     borderColor: "#e74c3c",
   },

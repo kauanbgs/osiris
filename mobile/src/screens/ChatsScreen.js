@@ -4,15 +4,16 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
-  StyleSheet,
   ActivityIndicator,
   Alert,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import BottomNav from '../components/Navbar';
+import { NavbarSpacer } from '../components/Navbar';
+import IconTile from '../components/IconTile';
 import sheets from '../services/api';
+import { createThemedStyles, useThemeColor, ACCENTS } from '../theme';
 
 const colors = {
   background: '#0d0d0d',
@@ -22,18 +23,24 @@ const colors = {
   textSecondary: '#6a6a6a',
   textMuted: '#444444',
   purple: '#7c5cff',
-  purpleDim: '#3a2d70',
   red: '#e74c3c',
   border: '#1c1c1c',
 };
 
+// Cada conversa mantém sempre a mesma cor, para ser reconhecida na lista.
+const CHAT_COLORS = [colors.purple, ACCENTS.blue, ACCENTS.green, ACCENTS.amber, ACCENTS.pink, ACCENTS.cyan];
+
 function ChatItem({ chat, onPress, onDelete }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   return (
     <TouchableOpacity style={styles.chatCard} onPress={onPress} activeOpacity={0.75}>
       <View style={styles.chatCardLeft}>
-        <View style={styles.chatIconWrap}>
-          <Feather name="message-square" size={16} color={colors.purple} />
-        </View>
+        <IconTile
+          icon="message-square"
+          color={CHAT_COLORS[(Number(chat.id_chat) || 0) % CHAT_COLORS.length]}
+          style={styles.chatIcon}
+        />
         <View style={styles.chatCardText}>
           <Text style={styles.chatTitle} numberOfLines={1}>{chat.title}</Text>
           <Text style={styles.chatMeta}>Chat #{chat.id_chat}</Text>
@@ -44,13 +51,15 @@ function ChatItem({ chat, onPress, onDelete }) {
         onPress={onDelete}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
-        <Feather name="trash-2" size={15} color={colors.textMuted} />
+        <Feather name="trash-2" size={15} color={themeColor(colors.red)} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
 }
 
 export default function ChatsScreen({ navigation }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,11 +85,11 @@ export default function ChatsScreen({ navigation }) {
   }, [navigation, fetchChats]);
 
   function handleOpenChat(chat) {
-    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title, openedAt: Date.now() }, { pop: true });
+    navigation.navigate('HomeScreen', { chatId: chat.id_chat, chatTitle: chat.title, openedAt: Date.now() });
   }
 
   function handleNewChat() {
-    navigation.navigate('HomeScreen', { chatId: null, chatTitle: null, newChat: Date.now() }, { pop: true });
+    navigation.navigate('HomeScreen', { chatId: null, chatTitle: null, newChat: Date.now() });
   }
 
   function handleDeleteChat(chat) {
@@ -106,7 +115,7 @@ export default function ChatsScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Conversas</Text>
         <TouchableOpacity style={styles.newChatBtn} onPress={handleNewChat}>
@@ -117,11 +126,11 @@ export default function ChatsScreen({ navigation }) {
 
       {loading ? (
         <View style={styles.centerState}>
-          <ActivityIndicator color={colors.purple} size="large" />
+          <ActivityIndicator color={themeColor(colors.purple)} size="large" />
         </View>
       ) : chats.length === 0 ? (
         <View style={styles.centerState}>
-          <Feather name="message-square" size={42} color={colors.textMuted} />
+          <Feather name="message-square" size={42} color={themeColor(colors.textMuted)} />
           <Text style={styles.emptyTitle}>Nenhuma conversa ainda</Text>
           <Text style={styles.emptySubtitle}>Inicie uma nova conversa para comecar.</Text>
           <TouchableOpacity style={styles.startBtn} onPress={handleNewChat}>
@@ -144,19 +153,18 @@ export default function ChatsScreen({ navigation }) {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => fetchChats(true)}
-              tintColor={colors.purple}
+              tintColor={themeColor(colors.purple)}
             />
           }
+          ListFooterComponent={NavbarSpacer}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
-
-      <BottomNav activeKey="chats" navigation={navigation} />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
@@ -211,13 +219,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  chatIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.purpleDim,
-    alignItems: 'center',
-    justifyContent: 'center',
+  chatIcon: {
     marginRight: 12,
   },
   chatCardText: {

@@ -10,11 +10,11 @@ import {
   Text,
   TouchableOpacity,
   Modal,
-  StyleSheet,
   TouchableWithoutFeedback,
   Platform,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { createThemedStyles, useThemeColor } from "../theme";
 
 export default function PlusActionMenu({
   visible,
@@ -23,6 +23,8 @@ export default function PlusActionMenu({
   onSelectPhotos,
   onSelectFiles,
 }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const closeThen = (action) => () => {
     onClose();
     setTimeout(action, PICKER_DELAY_MS);
@@ -46,7 +48,7 @@ export default function PlusActionMenu({
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="camera-outline" size={20} color="#ffffff" />
+                  <Ionicons name="camera-outline" size={20} color={themeColor("#fefefe")} />
                 </View>
                 <Text style={styles.itemText}>Câmera</Text>
               </TouchableOpacity>
@@ -58,7 +60,7 @@ export default function PlusActionMenu({
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="images-outline" size={20} color="#ffffff" />
+                  <Ionicons name="images-outline" size={20} color={themeColor("#fefefe")} />
                 </View>
                 <Text style={styles.itemText}>Fotos</Text>
               </TouchableOpacity>
@@ -70,7 +72,7 @@ export default function PlusActionMenu({
                 activeOpacity={0.7}
               >
                 <View style={styles.iconCircle}>
-                  <Ionicons name="attach-outline" size={20} color="#ffffff" />
+                  <Ionicons name="attach-outline" size={20} color={themeColor("#fefefe")} />
                 </View>
                 <Text style={styles.itemText}>Arquivos</Text>
               </TouchableOpacity>
@@ -82,7 +84,7 @@ export default function PlusActionMenu({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.45)",

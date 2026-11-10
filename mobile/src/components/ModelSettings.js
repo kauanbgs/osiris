@@ -4,11 +4,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Alert,
   Linking,
 } from 'react-native';
+import IconTile from '../components/IconTile';
 import { Feather } from '@expo/vector-icons';
 import {
   cancelDesktopDownload,
@@ -26,6 +26,7 @@ import {
   selectCloudModel,
   selectDesktopModel,
 } from '../services/modelConfig';
+import { createThemedStyles, useThemeColor, ACCENTS } from '../theme';
 
 const colors = {
   background: '#0d0d0d',
@@ -41,6 +42,7 @@ const colors = {
 };
 
 function ProgressBar({ progress }) {
+  const styles = useStyles();
   return (
     <View style={styles.progressTrack}>
       <View style={[styles.progressFill, { width: `${Math.max(progress, 3)}%` }]} />
@@ -49,6 +51,8 @@ function ProgressBar({ progress }) {
 }
 
 function DesktopTab({ activeModel, onActivate }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(true);
@@ -118,16 +122,16 @@ function DesktopTab({ activeModel, onActivate }) {
   );
 
   let statusText = 'Verificando...';
-  let statusColor = colors.textSecondary;
+  let statusColor = themeColor(colors.textSecondary);
   if (error) {
     statusText = 'Desktop offline';
-    statusColor = colors.red;
+    statusColor = themeColor(colors.red);
   } else if (data && !data.modelLoaded) {
     statusText = 'Nenhum modelo carregado';
     statusColor = '#f1c40f';
   } else if (data) {
     statusText = catalogNames[data.activeModelName] || data.activeModelName;
-    statusColor = colors.green;
+    statusColor = themeColor(colors.green);
   }
 
   return (
@@ -142,13 +146,13 @@ function DesktopTab({ activeModel, onActivate }) {
             }}
             hitSlop={10}
           >
-            <Feather name="refresh-cw" size={16} color={colors.textSecondary} />
+            <Feather name="refresh-cw" size={16} color={themeColor(colors.textSecondary)} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.statusRow}>
           {refreshing && !data ? (
-            <ActivityIndicator size="small" color={colors.purple} />
+            <ActivityIndicator size="small" color={themeColor(colors.purple)} />
           ) : (
             <View style={[styles.dot, { backgroundColor: statusColor }]} />
           )}
@@ -220,7 +224,7 @@ function DesktopTab({ activeModel, onActivate }) {
                     <View style={styles.buttonRow}>
                       <Text style={styles.hint}>Baixando... {download.progress}%</Text>
                       <TouchableOpacity onPress={() => handleCancel(model)}>
-                        <Text style={[styles.link, { color: colors.red }]}>Cancelar</Text>
+                        <Text style={[styles.link, { color: themeColor(colors.red) }]}>Cancelar</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -239,6 +243,8 @@ function DesktopTab({ activeModel, onActivate }) {
 }
 
 function ProviderCard({ provider, activeModel, onActivate }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [key, setKey] = useState('');
   const [savedKey, setSavedKey] = useState('');
   const [visible, setVisible] = useState(false);
@@ -299,7 +305,7 @@ function ProviderCard({ provider, activeModel, onActivate }) {
         <TextInput
           style={styles.input}
           placeholder={provider.placeholder}
-          placeholderTextColor="#555"
+          placeholderTextColor={themeColor("#555")}
           value={key}
           onChangeText={(value) => {
             setKey(value);
@@ -311,7 +317,7 @@ function ProviderCard({ provider, activeModel, onActivate }) {
           editable={!busy}
         />
         <TouchableOpacity onPress={() => setVisible((v) => !v)} hitSlop={10}>
-          <Feather name={visible ? 'eye-off' : 'eye'} size={18} color={colors.textSecondary} />
+          <Feather name={visible ? 'eye-off' : 'eye'} size={18} color={themeColor(colors.textSecondary)} />
         </TouchableOpacity>
       </View>
 
@@ -333,7 +339,7 @@ function ProviderCard({ provider, activeModel, onActivate }) {
       </View>
 
       {result && (
-        <Text style={[styles.resultText, { color: result.ok ? colors.green : colors.red }]}>
+        <Text style={[styles.resultText, { color: result.ok ? themeColor(colors.green) : themeColor(colors.red) }]}>
           {result.msg}
         </Text>
       )}
@@ -364,6 +370,8 @@ function ProviderCard({ provider, activeModel, onActivate }) {
 
 // Seção "Modelos de IA" da tela de Configurações.
 export default function ModelSettings() {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
   const [openSection, setOpenSection] = useState(null);
   const [activeModel, setActiveModelState] = useState(null);
 
@@ -396,7 +404,10 @@ export default function ModelSettings() {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Modelos de IA</Text>
+      <View style={styles.sectionHeading}>
+        <IconTile icon="cpu" color={ACCENTS.green} />
+        <Text style={styles.sectionHeadingTitle}>Modelos de IA</Text>
+      </View>
       <Text style={styles.subtitle}>
         Usando no chat: {activeModel ? activeModel.name : '...'}
       </Text>
@@ -417,7 +428,7 @@ export default function ModelSettings() {
               <Feather
                 name={open ? 'chevron-up' : 'chevron-down'}
                 size={18}
-                color={colors.purple}
+                color={themeColor(colors.purple)}
               />
             </TouchableOpacity>
 
@@ -449,7 +460,7 @@ export default function ModelSettings() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   section: {
     backgroundColor: '#171717',
     borderWidth: 1,
@@ -459,7 +470,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
-    color: '#FFFFFF',
+    color: '#fefefe',
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 6,
@@ -526,6 +537,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 10,
     flexShrink: 1,
+  },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  sectionHeadingTitle: {
+    color: '#fefefe',
+    fontSize: 15,
+    fontWeight: '700',
   },
   sectionHeader: {
     color: colors.textPrimary,

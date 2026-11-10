@@ -15,6 +15,7 @@ const FileController = require("../controllers/fileController");
 const SystemController = require("../controllers/systemController");
 const BrowserController = require("../controllers/browserController");
 const TerminalController = require("../controllers/terminalController");
+const ThemeController = require("../controllers/themeController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -29,6 +30,10 @@ router.post("/auth/login", UserController.login);
 router.post("/auth/google", UserController.googleAuth);
 router.post("/auth/logout", verifyJWT, UserController.logout);
 router.get("/auth/me", verifyJWT, UserController.profile);
+
+// Theme routes (cores do desktop, seguidas pelo celular)
+router.get("/theme", verifyJWT, ThemeController.get);
+router.put("/theme", verifyJWT, ThemeController.save);
 
 // Chat routes
 router.post("/chat", verifyJWT, ChatController.create);

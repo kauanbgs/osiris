@@ -6,6 +6,7 @@ const pty = require("node-pty");
 const express = require("express");
 const { createWorkflowStore } = require("./workflowStore.cjs");
 const workspaceFs = require("./workspaceFs.cjs");
+const remoteTerminal = require("./remoteTerminal.cjs");
 
 const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
 ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
@@ -1009,6 +1010,61 @@ aiServer.post("/api/models/load", async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ===============================
+// TERMINAL VIA REDE (app mobile)
+// ===============================
+
+const API_URL = "http://localhost:5000/api/osiris";
+
+async function fetchUserId(token) {
+  const response = await fetch(`${API_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data?.user?.id_user ?? null;
+}
+
+async function readDesktopToken() {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win || win.isDestroyed()) return null;
+  return win.webContents.executeJavaScript('localStorage.getItem("osiris_token")');
+}
+
+// A porta 8080 fica aberta na rede e qualquer um pode criar conta na API. Por isso
+// só a conta logada aqui no desktop pode executar comandos neste PC.
+async function checkTerminalAccess(authorization) {
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+  if (!token) return { status: 401, error: "Faça login no aplicativo." };
+
+  try {
+    const remoteUser = await fetchUserId(token);
+    if (remoteUser === null) return { status: 401, error: "Sessão expirada. Faça login novamente." };
+
+    const desktopToken = await readDesktopToken();
+    const desktopUser = desktopToken ? await fetchUserId(desktopToken) : null;
+    if (desktopUser === null) return { status: 403, error: "Faça login no app desktop para usar o terminal." };
+    if (desktopUser !== remoteUser) return { status: 403, error: "Entre com a mesma conta do app desktop para usar o terminal." };
+
+    return null;
+  } catch (error) {
+    console.error("Não foi possível validar o acesso ao terminal:", error.message);
+    return { status: 503, error: "O desktop não conseguiu falar com a API para validar o acesso." };
+  }
+}
+
+aiServer.post("/api/terminal/exec", async (req, res) => {
+  const denied = await checkTerminalAccess(req.headers.authorization);
+  if (denied) return res.status(denied.status).json({ error: denied.error });
+
+  const { command, timeout_ms: timeoutMs } = req.body || {};
+  const invalid = remoteTerminal.validateCommand(command);
+  if (invalid) return res.status(400).json({ error: invalid });
+
+  res.json(await remoteTerminal.runCommand(command, timeoutMs));
 });
 
 const AI_SERVER_PORT = 8080;

@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  StyleSheet,
   Text,
   View,
   TextInput,
@@ -15,8 +14,12 @@ import DotField from "../components/DotField";
 import { KeyboardAvoider } from "../components/KeyboardAware";
 import api from "../services/api";
 import { getIP } from "../services/serverConfig";
+import { createThemedStyles, useTheme, useThemeColor } from "../theme";
 
 export default function Login({ navigation }) {
+  const styles = useStyles();
+  const themeColor = useThemeColor();
+  const { statusBarStyle } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,7 +51,7 @@ export default function Login({ navigation }) {
         ["user", JSON.stringify(user || {})],
       ]);
 
-      navigation.replace("HomeScreen");
+      navigation.replace("MainTabs");
     } catch (error) {
       const isTimeout =
         error.code === "ECONNABORTED" ||
@@ -75,7 +78,7 @@ export default function Login({ navigation }) {
 
   return (
     <KeyboardAvoider style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#121212" />
+      <StatusBar barStyle={statusBarStyle} backgroundColor={themeColor("#121212")} />
 
       <DotField
         dotRadius={1.5}
@@ -83,9 +86,9 @@ export default function Login({ navigation }) {
         bulgeStrength={26}
         touchRadius={110}
         glowRadius={90}
-        gradientFrom="#8A56FF"
-        gradientTo="#BB86FC"
-        glowColor="#8A56FF"
+        gradientFrom={themeColor("#8A56FF")}
+        gradientTo={themeColor("#BB86FC")}
+        glowColor={themeColor("#8A56FF")}
       />
 
       <Text style={styles.title}>Osíris</Text>
@@ -95,7 +98,7 @@ export default function Login({ navigation }) {
           <View style={styles.labelRow}>
             <Mail
               size={24}
-              color="#D8D5DF"
+              color={themeColor("#D8D5DF")}
               strokeWidth={2}
               style={{ marginRight: 8 }}
             />
@@ -105,7 +108,7 @@ export default function Login({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Digite seu e-mail"
-            placeholderTextColor="#666"
+            placeholderTextColor={themeColor("#666")}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -121,7 +124,7 @@ export default function Login({ navigation }) {
           <View style={styles.labelRow}>
             <KeyRound
               size={24}
-              color="#D8D5DF"
+              color={themeColor("#D8D5DF")}
               strokeWidth={2}
               style={{ marginRight: 8 }}
             />
@@ -131,7 +134,7 @@ export default function Login({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Digite sua senha"
-            placeholderTextColor="#666"
+            placeholderTextColor={themeColor("#666")}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
@@ -175,20 +178,20 @@ export default function Login({ navigation }) {
 
       <TouchableOpacity
         style={styles.serverRow}
-        onPress={() => !loading && navigation.navigate("Configuracoes", { guestMode: true })}
+        onPress={() => !loading && navigation.navigate("ConfiguracoesConvidado", { guestMode: true })}
         disabled={loading}
       >
-        <Settings size={16} color="#888888" strokeWidth={2} />
+        <Settings size={16} color={themeColor("#888888")} strokeWidth={2} />
         <Text style={styles.serverText}>Configurar servidor</Text>
       </TouchableOpacity>
     </KeyboardAvoider>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: "#0d0d0d",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
@@ -197,7 +200,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: "JetBrainsMono_400Regular",
     fontSize: 48,
-    color: "#FFFFFF",
+    color: "#fefefe",
     fontWeight: "bold",
     marginBottom: 40,
     zIndex: 1,
@@ -238,7 +241,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333",
     borderRadius: 8,
-    color: "#FFFFFF",
+    color: "#fefefe",
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
