@@ -23,6 +23,7 @@ import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { activeProjectKey, useActiveProject } from "@/contexts/useActiveProject";
 import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
+import { OsirisBrand } from "@/components/OsirisLogo";
 
 const workspaceItems = [
   { label: "Home", icon: House, link: "/home" },
@@ -288,10 +289,14 @@ export default function Sidebar() {
 
   return (
     <aside id="osiris-sidebar" className="flex h-full w-56 flex-col border-r border-sidebar-border bg-sidebar px-2.5 pb-3 pt-2 font-sans text-sidebar-accent-foreground z-10 select-none">
-      <div className="mb-6 flex h-8 shrink-0 items-center gap-2 px-1">
-        <span className="font-mono text-xl font-bold tracking-tight text-sidebar-accent-foreground">
-          OSIRIS
-        </span>
+      <div className="mb-6 flex h-10 shrink-0 items-center px-1">
+        <OsirisBrand
+          text="Osiris"
+          textClassName="font-claude font-medium tracking-tight"
+          textSizeClassName="text-lg"
+          markClassName="h-9"
+          className="text-sidebar-accent-foreground"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">

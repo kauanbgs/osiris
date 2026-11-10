@@ -276,6 +276,49 @@ export async function applyAgentResultToFileNodes({
   return { ...parsed, errors: [...new Set(errors)], warnings: [...new Set(warnings)], written };
 }
 
+/**
+ * Relê do disco os FileNodes ligados ao agente (entrada e saída). Um agente
+ * anterior pode ter criado/alterado arquivos em outro FileNode que aponta para
+ * a mesma pasta; o watcher é assíncrono e não garante que o node já esteja
+ * atualizado quando o próximo agente começa. Silencioso fora do Electron.
+ */
+export async function refreshAgentFileNodes({
+  agentId,
+  getNodes,
+  edges,
+  updateNodeData,
+  fsApi = typeof window === "undefined" ? undefined : window.electronAPI,
+}) {
+  const { inputs, outputs } = getAgentFileNodes(agentId, getNodes(), edges);
+  const seen = new Set();
+  for (const node of [...inputs, ...outputs]) {
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    const rootPath = node.data?.rootPath;
+    try {
+      if (rootPath && typeof fsApi?.scanWorkspace === "function") {
+        const scan = await fsApi.scanWorkspace(rootPath);
+        updateNodeData(node.id, { files: scan.files, folders: scan.folders, truncated: scan.truncated });
+      } else if (!rootPath && typeof fsApi?.readFile === "function") {
+        const files = await Promise.all(filesOfNode(node).map(async (file) => {
+          if (!file.filePath) return file;
+          const fresh = await fsApi.readFile(file.filePath).catch(() => null);
+          return fresh && typeof fresh.fileContent === "string"
+            ? { ...file, fileContent: fresh.fileContent, fileSize: new Blob([fresh.fileContent]).size }
+            : file;
+        }));
+        updateNodeData(node.id, { files });
+      }
+    } catch (err) {
+      console.error("[refreshAgentFileNodes] falha ao reler do disco:", err);
+    }
+  }
+}
+
+function filesOfNode(node) {
+  return Array.isArray(node.data?.files) ? node.data.files : [];
+}
+
 const MAX_EDITABLE_CHARS = 30000;
 
 /**

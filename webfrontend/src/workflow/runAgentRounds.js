@@ -1,5 +1,5 @@
 import { executeAgentNode } from "./executeAgentNode.js";
-import { applyAgentResultToFileNodes, buildFileEditInstruction, extractJson } from "./agentFiles.js";
+import { applyAgentResultToFileNodes, buildFileEditInstruction, extractJson, refreshAgentFileNodes } from "./agentFiles.js";
 import { buildJsonHandoffRequest, buildTextHandoffRequest } from "./handoff.js";
 import { getAgentFileNodes, getConnectedFiles } from "./getConnectedFiles.js";
 import { getConnectedNotes, NOTES_TASK } from "./getConnectedNotes.js";
@@ -39,6 +39,11 @@ export async function runAgentRounds({
   const execute = deps.executeAgentNode || executeAgentNode;
   const applyFiles = deps.applyAgentResultToFileNodes || applyAgentResultToFileNodes;
   const runCommands = deps.runTerminalCommands || runTerminalCommands;
+  const refresh = deps.refreshAgentFileNodes || (async (args) => {
+    await refreshAgentFileNodes(args);
+    // Deixa o React Flow aplicar as atualizacoes antes de getNodes().
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
 
   const first = getNodes().find((item) => item.id === agentId);
   if (!first) throw new Error("Agente removido durante a execucao.");
@@ -59,6 +64,10 @@ export async function runAgentRounds({
   for (let round = 1; round <= maxRounds; round++) {
     signal.throwIfAborted();
     rounds = round;
+    // Arquivos criados por agentes anteriores (ou pelo terminal) podem nao estar
+    // ainda no FileNode deste agente: relê do disco antes de montar o contexto.
+    await refresh({ agentId, getNodes, edges, updateNodeData });
+    signal.throwIfAborted();
     const currentNodes = getNodes();
     const node = currentNodes.find((item) => item.id === agentId);
     if (!node) throw new Error("Agente removido durante a execucao.");

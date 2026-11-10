@@ -1,4 +1,5 @@
-import { Handle, Position, useReactFlow } from "@xyflow/react";
+import { Position, useReactFlow } from "@xyflow/react";
+import SideHandles from "@/components/SideHandles";
 import {
   FileText,
   FolderOpen,
@@ -261,26 +262,13 @@ export default function FileNode({ id, data }) {
   return (
     <div className="group relative w-[360px] overflow-hidden rounded-2xl border border-zinc-800 bg-surface-1 shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
 
-      {/* OUTPUT */}
-      <Handle
-        id="files"
-        type="source"
-        position={Position.Right}
+      {/* Conecta em cima, embaixo e nos lados; o sentido do arraste define entrada/saida. */}
+      <SideHandles
         className={handleClass}
-        style={{
-          top: "50%",
-        }}
-      />
-
-      {/* INPUT */}
-      <Handle
-        id="input"
-        type="target"
-        position={Position.Left}
-        className={handleClass}
-        style={{
-          top: "50%",
-        }}
+        legacy={[
+          { id: "files", type: "source", position: Position.Right },
+          { id: "input", type: "target", position: Position.Left },
+        ]}
       />
 
       {/* HEADER */}

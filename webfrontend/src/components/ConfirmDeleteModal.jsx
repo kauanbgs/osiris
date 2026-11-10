@@ -1,5 +1,6 @@
 ﻿import { Trash2, X } from "lucide-react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export default function ConfirmDeleteModal({ title, onConfirm, onCancel }) {
   // Fecha com Escape
@@ -11,7 +12,7 @@ export default function ConfirmDeleteModal({ title, onConfirm, onCancel }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  return (
+  return createPortal(
     // Backdrop
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -65,6 +66,7 @@ export default function ConfirmDeleteModal({ title, onConfirm, onCancel }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

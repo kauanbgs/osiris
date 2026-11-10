@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Mail, KeyRound, User } from "lucide-react";
 
 import DotField from "@/components/DotField";
+import OsirisLogo from "@/components/OsirisLogo";
 import { useAuth } from "@/contexts/AuthContext";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,8 +130,8 @@ export default function Cadastro() {
       <div className="relative z-10 w-full max-w-md">
 
         {/* Título */}
-        <h1 className="font-mono text-6xl font-bold text-zinc-100 text-center mb-10">
-          Osíris
+        <h1 className="mb-10 flex justify-center text-foreground">
+          <OsirisLogo title="Osíris" className="h-28" />
         </h1>
 
         {/* Formulário */}

@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import sheets from "@/services/api";
+import FileAssistantInput from "@/components/FileAssistantInput";
 
 export default function Arquivos() {
   const [workspace, setWorkspace] = useState(null);
@@ -20,6 +21,7 @@ export default function Arquivos() {
   const [openFiles, setOpenFiles] = useState([]);
   const [activePath, setActivePath] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const activeFile =
     openFiles.find((file) => file.filePath === activePath) || null;
@@ -205,17 +207,17 @@ export default function Arquivos() {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden text-white">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden text-foreground">
       {/* HEADER */}
 
-      <header className="shrink-0 border-b border-white/8 px-6 py-5">
+      <header className="shrink-0 border-b border-border px-6 py-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
               Arquivos
             </h1>
 
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               Explore e edite os arquivos locais.
             </p>
           </div>
@@ -226,7 +228,7 @@ export default function Arquivos() {
             className="
               inline-flex h-9 items-center gap-2
               rounded-lg bg-violet-600 px-4
-              text-xs font-medium text-white
+              text-xs font-medium text-primary-foreground
               transition hover:bg-violet-500
               active:scale-[0.98]
             "
@@ -243,9 +245,9 @@ export default function Arquivos() {
       <div className="flex min-h-0 flex-1">
         {/* EXPLORER */}
 
-        <aside className="flex w-72 shrink-0 flex-col border-r border-white/8 bg-zinc-950/40">
-          <div className="flex h-10 shrink-0 items-center border-b border-white/5 px-4">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-background/40">
+          <div className="flex h-10 shrink-0 items-center border-b border-border px-4">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Explorer
             </span>
           </div>
@@ -264,10 +266,10 @@ export default function Arquivos() {
                 }
                 className="
                   flex h-8 shrink-0 cursor-pointer
-                  items-center gap-1 border-b border-white/5
+                  items-center gap-1 border-b border-border
                   px-2 text-xs font-semibold
-                  uppercase tracking-wide text-zinc-300
-                  hover:bg-white/5
+                  uppercase tracking-wide text-foreground
+                  hover:bg-foreground/5
                 "
               >
                 {expanded[workspace.folderPath] ? (
@@ -303,11 +305,11 @@ export default function Arquivos() {
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center px-5 text-center">
-              <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-zinc-900 ring-1 ring-white/5">
-                <Folder className="size-5 text-zinc-600" />
+              <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-card ring-1 ring-border">
+                <Folder className="size-5 text-muted-foreground/60" />
               </div>
 
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 Nenhuma pasta aberta.
               </p>
 
@@ -324,11 +326,11 @@ export default function Arquivos() {
 
         {/* EDITOR */}
 
-        <main className="flex min-w-0 flex-1 flex-col bg-zinc-950/20">
+        <main className="flex min-w-0 flex-1 flex-col bg-background/20">
           {/* TABS */}
 
           {openFiles.length > 0 && (
-            <div className="flex h-10 shrink-0 overflow-x-auto border-b border-white/8">
+            <div className="flex h-10 shrink-0 overflow-x-auto border-b border-border">
               {openFiles.map((file) => {
                 const active =
                   file.filePath === activePath;
@@ -343,11 +345,11 @@ export default function Arquivos() {
                     className={`
                       group flex h-10 min-w-36 max-w-56
                       shrink-0 items-center gap-2
-                      border-r border-white/5 px-3 text-xs
+                      border-r border-border px-3 text-xs
                       ${
                         active
-                          ? "border-t border-t-violet-500 bg-zinc-900 text-zinc-200"
-                          : "bg-zinc-950/30 text-zinc-500 hover:bg-zinc-900/50"
+                          ? "border-t border-t-violet-500 bg-card text-foreground"
+                          : "bg-background/30 text-muted-foreground hover:bg-card/50"
                       }
                     `}
                   >
@@ -359,7 +361,7 @@ export default function Arquivos() {
 
                     {file.dirty ? (
                       <span
-                        className="size-2 shrink-0 rounded-full bg-zinc-300"
+                        className="size-2 shrink-0 rounded-full bg-foreground"
                         title="Alterações não salvas"
                       />
                     ) : (
@@ -370,7 +372,7 @@ export default function Arquivos() {
                         className="
                           size-3.5 shrink-0
                           opacity-0 transition
-                          hover:text-white
+                          hover:text-foreground
                           group-hover:opacity-100
                         "
                       />
@@ -384,8 +386,8 @@ export default function Arquivos() {
           {/* BARRA DO ARQUIVO */}
 
           {activeFile && (
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/5 px-4">
-              <div className="min-w-0 truncate text-xs text-zinc-500">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
+              <div className="min-w-0 truncate text-xs text-muted-foreground">
                 {activeFile.filePath}
               </div>
 
@@ -397,7 +399,7 @@ export default function Arquivos() {
                   ml-4 inline-flex h-8 shrink-0
                   items-center gap-2 rounded-lg
                   bg-violet-600 px-3
-                  text-xs font-medium text-white
+                  text-xs font-medium text-primary-foreground
                   transition hover:bg-violet-500
                   disabled:cursor-not-allowed
                   disabled:opacity-30
@@ -420,36 +422,48 @@ export default function Arquivos() {
                   handleChange(event.target.value)
                 }
                 spellCheck={false}
-                className="
+                readOnly={aiBusy}
+                className={`
+                  ${aiBusy ? "animate-pulse opacity-60" : ""}
                   absolute inset-0
                   h-full w-full resize-none
                   border-0 bg-surface-0
                   p-5
                   font-mono text-[13px]
-                  leading-6 text-zinc-300
+                  leading-6 text-foreground
                   outline-none
                   selection:bg-violet-500/30
-                "
+                `}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center">
-                <FileCode2 className="mb-4 size-14 text-zinc-800" />
+                <FileCode2 className="mb-4 size-14 text-muted-foreground/30" />
 
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted-foreground">
                   Selecione um arquivo
                 </p>
 
-                <p className="mt-1 text-xs text-zinc-700">
+                <p className="mt-1 text-xs text-muted-foreground/60">
                   O conteúdo será aberto aqui.
                 </p>
               </div>
             )}
           </div>
 
+          {/* ASSISTENTE DE IA */}
+
+          {activeFile && (
+            <FileAssistantInput
+              file={activeFile}
+              onApply={handleChange}
+              onBusyChange={setAiBusy}
+            />
+          )}
+
           {/* STATUS */}
 
           {activeFile && (
-            <div className="flex h-7 shrink-0 items-center justify-between border-t border-white/5 px-4 text-[10px] text-zinc-600">
+            <div className="flex h-7 shrink-0 items-center justify-between border-t border-border px-4 text-[10px] text-muted-foreground/60">
               <span>
                 {activeFile.dirty
                   ? "Alterações não salvas"
@@ -508,8 +522,8 @@ function FileTree({
             pr-3 text-left text-xs transition
             ${
               activePath === item.path
-                ? "bg-violet-500/10 text-zinc-100"
-                : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                ? "bg-violet-500/10 text-foreground"
+                : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             }
           `}
           style={{
@@ -594,12 +608,12 @@ function FileTypeIcon({ name }) {
     ["md", "txt", "log"].includes(extension)
   ) {
     return (
-      <FileText className="size-3.5 shrink-0 text-zinc-500" />
+      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
     );
   }
 
   return (
-    <File className="size-3.5 shrink-0 text-zinc-500" />
+    <File className="size-3.5 shrink-0 text-muted-foreground" />
   );
 }
 

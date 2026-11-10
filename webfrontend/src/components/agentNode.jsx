@@ -1,4 +1,5 @@
-import { Handle, Position, useReactFlow, useStore } from "@xyflow/react";
+import { Position, useReactFlow, useStore } from "@xyflow/react";
+import SideHandles from "@/components/SideHandles";
 import { Bot, GripVertical, Loader2, Play, Square, Workflow } from "lucide-react";
 import { useEffect } from "react";
 import WorkflowModelSelect from "@/components/WorkflowModelSelect";
@@ -44,42 +45,15 @@ export default function AgentNode({ id, data }) {
 
   return (
     <div className="group relative w-[520px] overflow-hidden rounded-2xl border border-zinc-800 bg-surface-1 shadow-[0_12px_40px_rgba(0,0,0,0.28)] transition hover:border-zinc-700">
-      {/* FileNode → Agent (esquerda) */}
-      <Handle
-        id="files"
-        type="target"
-        position={Position.Left}
+      {/* Conecta em qualquer lado; o sentido do arraste define entrada/saida. */}
+      <SideHandles
         className={handleClass}
-        style={{ top: "40%" }}
-        title="Arquivos de entrada"
-      />
-
-      {/* Agent → FileNode (direita) */}
-      <Handle
-        id="output"
-        type="source"
-        position={Position.Right}
-        className={handleClass}
-        style={{ top: "40%" }}
-        title="Output / edição de arquivos"
-      />
-
-      {/* Agent → Agent (entrada no topo) */}
-      <Handle
-        id="agent-in"
-        type="target"
-        position={Position.Top}
-        className={`${handleClass} !bg-amber-500 hover:!bg-amber-400`}
-        title="Recebe task de outro agente"
-      />
-
-      {/* Agent → Agent (saída na base) */}
-      <Handle
-        id="agent-out"
-        type="source"
-        position={Position.Bottom}
-        className={`${handleClass} !bg-amber-500 hover:!bg-amber-400`}
-        title="Passa task para outro agente"
+        legacy={[
+          { id: "files", type: "target", position: Position.Left, top: "40%" },
+          { id: "output", type: "source", position: Position.Right, top: "40%" },
+          { id: "agent-in", type: "target", position: Position.Top },
+          { id: "agent-out", type: "source", position: Position.Bottom },
+        ]}
       />
 
       {/* Header */}

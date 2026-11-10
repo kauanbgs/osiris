@@ -49,6 +49,8 @@ import sheets from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 import { getActiveModel } from "@/services/llmService";
+import { transcribeLocal } from "@/services/localSpeech";
+import { isElectron } from "@/utils/isElectron";
 
 import { useSpeech } from "react-text-to-speech";
 
@@ -246,6 +248,17 @@ export default function Home() {
         return;
       }
 
+      if (["network", "not-allowed", "service-not-allowed"].includes(e.error)) {
+        shouldStopRef.current = true;
+        setIsListening(false);
+        alert(
+          e.error === "network"
+            ? "O reconhecimento de voz do navegador não está disponível aqui (sem conexão com o serviço de voz)."
+            : "Permissão de microfone negada. Verifique as configurações do sistema.",
+        );
+        return;
+      }
+
       if (!shouldStopRef.current) {
         setTimeout(() => startRecognition(SpeechRecognition, baseText), 200);
       } else {
@@ -264,7 +277,68 @@ export default function Home() {
     recognition.start();
   }
 
+  // Desktop (Electron): grava com MediaRecorder e transcreve com Whisper.
+  const recorderRef = useRef(null);
+  const [micStatus, setMicStatus] = useState("");
+
+  async function handleRecordToggle() {
+    if (isListening) {
+      recorderRef.current?.stop();
+      return;
+    }
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      alert("Permissão de microfone negada. Verifique as configurações do sistema.");
+      return;
+    }
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    recorderRef.current = recorder;
+    const baseText = input;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      setIsListening(false);
+      recorderRef.current = null;
+
+      if (chunks.length === 0) return;
+
+      try {
+        setMicStatus("Preparando...");
+        const text = await transcribeLocal(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), {
+          onStatus: (p) => {
+            if (p.status === "progress" && typeof p.progress === "number") {
+              setMicStatus(`Baixando modelo de voz (primeira vez)... ${Math.round(p.progress)}%`);
+            } else if (p.status === "transcribing") {
+              setMicStatus("Transcrevendo...");
+            }
+          },
+        });
+        if (text) setInput((baseText ? baseText + " " : "") + text);
+      } catch (error) {
+        alert(error.message || "Não foi possível transcrever o áudio.");
+      } finally {
+        setMicStatus("");
+      }
+    };
+
+    recorder.start();
+    setIsListening(true);
+  }
+
   async function handleMicToggle() {
+    if (isElectron()) {
+      return handleRecordToggle();
+    }
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -312,6 +386,8 @@ export default function Home() {
       shouldStopRef.current = true;
 
       recognitionRef.current?.abort();
+
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     };
   }, []);
 
@@ -1103,6 +1179,7 @@ ${reading.content}
                     size="icon"
                     type="button"
                     onClick={handleMicToggle}
+                    disabled={Boolean(micStatus)}
                     className={`h-8 w-8 rounded-full transition-all ${
                       isListening
                         ? "bg-red-500/20 text-red-400 animate-pulse ring-1 ring-red-500/40"
@@ -1118,6 +1195,12 @@ ${reading.content}
                 </PromptInputAction>
               </div>
 
+              {micStatus && (
+                <span className="mr-auto pl-2 text-xs text-muted-foreground animate-pulse">
+                  {micStatus}
+                </span>
+              )}
+
               {/* Enviar */}
               <PromptInputAction
                 tooltip={isLoading ? "Parar resposta" : "Enviar mensagem"}
@@ -1125,7 +1208,7 @@ ${reading.content}
                 <Button
                   variant="default"
                   size="icon"
-                  className="h-8 w-8 rounded-full bg-white text-black"
+                  className="h-8 w-8 rounded-full bg-action text-action-foreground"
                   onClick={isLoading ? handleStop : handleSubmit}
                   aria-label={isLoading ? "Parar resposta" : "Enviar mensagem"}
                 >

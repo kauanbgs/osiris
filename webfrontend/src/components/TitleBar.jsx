@@ -42,7 +42,7 @@ export default function TitleBar() {
 
       {/* Middle Drag Area / Workspace Title */}
       <div className="flex flex-1 items-center justify-center px-4">
-        <span className="font-mono text-[11px] text-zinc-500 opacity-80">
+        <span className="font-logo text-[11px] text-zinc-500 opacity-80">
           Osiris Environment
         </span>
       </div>

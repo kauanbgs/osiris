@@ -77,6 +77,8 @@ export const CLOUD_PROVIDERS = [
       { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B" },
       { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B" },
       { id: "mistralai/mistral-small-24b-instruct-2501", name: "Mistral Small 24B" },
+      { id: "nvidia/nemotron-3-ultra-550b-a55b:free", name: "NVIDIA Nemotron 3 Ultra (Gratuito)" },
+      { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "NVIDIA Nemotron 3 Ultra" },
       { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (Gratuito)" },
       { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Gratuito)" },
     ],
