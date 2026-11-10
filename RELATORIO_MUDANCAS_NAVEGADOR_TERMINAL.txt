@@ -102,3 +102,4 @@ D) Vazamento de chamada da API Playwright:
 - Testes da API (`jest`):
   ✓ 130 testes passaram em 15 suites de teste.
 ================================================================================
+
