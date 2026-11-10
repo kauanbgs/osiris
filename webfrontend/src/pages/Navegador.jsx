@@ -59,7 +59,11 @@ function sanitizeUrl(rawUrl) {
 
 export default function Navegador() {
   const isElectronApp = isElectron();
-  const webviewRef = useRef(null);
+  // Mapa de refs por aba: cada aba tem sua própria ref de webview
+  const webviewRefs = useRef({});
+
+  // Ref que sempre aponta para o webview da aba ativa
+  const getActiveWebview = () => webviewRefs.current[activeTabId] ?? null;
 
   // =========================================================
   // ESTADOS DO NAVEGADOR (Abas, Histórico, DOM)
@@ -75,6 +79,7 @@ export default function Navegador() {
       historyIndex: 0,
       isLoading: false,
       dom_tree: null,
+      loadError: null,
     },
   ]);
   const [activeTabId, setActiveTabId] = useState("tab-1");
@@ -100,76 +105,93 @@ export default function Navegador() {
   // Aba ativa do navegador
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  const updateActiveTab = (updater) => {
+  // Atualiza uma aba específica pelo id (evita closure stale com activeTabId)
+  const updateTab = (tabId, updater) => {
     setTabs((prev) =>
       prev.map((tab) => {
-        if (tab.id !== activeTabId) return tab;
+        if (tab.id !== tabId) return tab;
         return typeof updater === "function" ? updater(tab) : { ...tab, ...updater };
       })
     );
   };
 
-  // Inicializa sessão da API para a primeira aba caso ainda não exista
+  // Atalho para atualizar a aba correntemente ativa
+  const updateActiveTab = (updater) => updateTab(activeTabId, updater);
+
+  // Inicializa sessão da API para a aba ativa caso ainda não exista
   useEffect(() => {
     if (activeTab && !activeTab.id_session) {
+      const tabId = activeTabId;
       sheets
         .createBrowserSession("about:blank")
         .then((res) => {
           if (res?.data?.session?.id_session) {
-            updateActiveTab({
+            updateTab(tabId, {
               id_session: res.data.session.id_session,
               dom_tree: res.data.session.dom_tree,
             });
           }
         })
         .catch(() => {
-          // Fallback silencioso
+          // Fallback silencioso — API pode não estar disponível
         });
     }
-  }, [activeTabId]);
+  }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sincroniza eventos do Webview Nativo no Electron
-  useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview || !isElectronApp) return;
+  // Registra eventos de cada webview quando ele é montado no DOM (via ref callback).
+  // A função é chamada com o elemento ao montar e com null ao desmontar.
+  // Usamos um Set por aba para não registrar handlers duplicados.
+  const registeredWebviewHandlers = useRef({});
+
+  const registerWebviewEvents = (tabId, webview) => {
+    // Evita registro duplicado (React pode chamar o ref duas vezes em dev mode)
+    if (registeredWebviewHandlers.current[tabId]) return;
 
     const handleStartLoading = () => {
-      updateActiveTab({ isLoading: true });
+      updateTab(tabId, { isLoading: true, loadError: null });
     };
 
     const handleStopLoading = () => {
-      updateActiveTab({ isLoading: false });
+      updateTab(tabId, { isLoading: false });
     };
 
     const handleNavigate = (e) => {
-      if (e.url && e.url !== activeTab.url) {
-        let displayTitle = e.url;
-        try {
-          displayTitle = new URL(e.url).hostname.replace("www.", "");
-        } catch {
-          displayTitle = e.url.slice(0, 20);
-        }
-        updateActiveTab((curr) => {
-          const newHistory = curr.history.includes(e.url)
-            ? curr.history
-            : [...curr.history.slice(0, curr.historyIndex + 1), e.url];
-          return {
-            ...curr,
-            url: e.url,
-            inputUrl: e.url,
-            title: displayTitle,
-            history: newHistory,
-            historyIndex: newHistory.indexOf(e.url) !== -1 ? newHistory.indexOf(e.url) : newHistory.length - 1,
-            isLoading: false,
-          };
-        });
+      if (!e.url || e.url === "about:blank") return;
+      let displayTitle = e.url;
+      try {
+        displayTitle = new URL(e.url).hostname.replace("www.", "");
+      } catch {
+        displayTitle = e.url.slice(0, 20);
       }
+      updateTab(tabId, (curr) => {
+        if (curr.url === e.url) return curr;
+        const newHistory = [...curr.history.slice(0, curr.historyIndex + 1), e.url];
+        return {
+          ...curr,
+          url: e.url,
+          inputUrl: e.url,
+          title: displayTitle,
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+          isLoading: false,
+          loadError: null,
+        };
+      });
     };
 
     const handleTitleUpdated = (e) => {
       if (e.title) {
-        updateActiveTab({ title: e.title });
+        updateTab(tabId, { title: e.title });
       }
+    };
+
+    const handleFailLoad = (e) => {
+      // Erros -3 (ERR_ABORTED) são cancelamentos normais (ex: redirecionamentos)
+      if (e.errorCode === -3) return;
+      updateTab(tabId, {
+        isLoading: false,
+        loadError: e.errorDescription || "Falha ao carregar a página.",
+      });
     };
 
     webview.addEventListener("did-start-loading", handleStartLoading);
@@ -177,15 +199,29 @@ export default function Navegador() {
     webview.addEventListener("did-navigate", handleNavigate);
     webview.addEventListener("did-navigate-in-page", handleNavigate);
     webview.addEventListener("page-title-updated", handleTitleUpdated);
+    webview.addEventListener("did-fail-load", handleFailLoad);
 
-    return () => {
-      webview.removeEventListener("did-start-loading", handleStartLoading);
-      webview.removeEventListener("did-stop-loading", handleStopLoading);
-      webview.removeEventListener("did-navigate", handleNavigate);
-      webview.removeEventListener("did-navigate-in-page", handleNavigate);
-      webview.removeEventListener("page-title-updated", handleTitleUpdated);
+    // Armazena os handlers para remoção posterior
+    registeredWebviewHandlers.current[tabId] = {
+      handleStartLoading,
+      handleStopLoading,
+      handleNavigate,
+      handleTitleUpdated,
+      handleFailLoad,
     };
-  }, [activeTabId, activeTab.url, isElectronApp]);
+  };
+
+  const unregisterWebviewEvents = (tabId, webview) => {
+    const handlers = registeredWebviewHandlers.current[tabId];
+    if (!handlers) return;
+    webview.removeEventListener("did-start-loading", handlers.handleStartLoading);
+    webview.removeEventListener("did-stop-loading", handlers.handleStopLoading);
+    webview.removeEventListener("did-navigate", handlers.handleNavigate);
+    webview.removeEventListener("did-navigate-in-page", handlers.handleNavigate);
+    webview.removeEventListener("page-title-updated", handlers.handleTitleUpdated);
+    webview.removeEventListener("did-fail-load", handlers.handleFailLoad);
+    delete registeredWebviewHandlers.current[tabId];
+  };
 
   // Gerenciamento de Abas
   const addTab = async () => {
@@ -253,6 +289,9 @@ export default function Navegador() {
     const formatted = sanitizeUrl(targetUrl);
     if (!formatted) return;
 
+    // Captura o tabId no momento da chamada para evitar closure stale
+    const tabId = activeTabId;
+
     let displayTitle = formatted;
     try {
       const parsed = new URL(formatted);
@@ -261,7 +300,7 @@ export default function Navegador() {
       displayTitle = formatted.slice(0, 20);
     }
 
-    updateActiveTab((curr) => {
+    updateTab(tabId, (curr) => {
       const newHistory = curr.history.slice(0, curr.historyIndex + 1);
       newHistory.push(formatted);
       return {
@@ -272,19 +311,40 @@ export default function Navegador() {
         history: newHistory,
         historyIndex: newHistory.length - 1,
         isLoading: true,
+        loadError: null,
       };
     });
 
-    if (isElectronApp && webviewRef.current) {
-      try {
-        webviewRef.current.loadURL(formatted);
-      } catch {
-        // Fallback
+    // No Electron, navega via loadURL() no webview da aba correta.
+    // O webview é identificado por key={tab.id} e já está no DOM (pode estar oculto).
+    if (isElectronApp) {
+      const webview = webviewRefs.current[tabId];
+      if (webview) {
+        const doLoad = () => {
+          try {
+            webview.loadURL(formatted);
+          } catch (err) {
+            console.warn("[Navegador] loadURL falhou:", err?.message);
+          }
+        };
+
+        // Se o webview ainda não está pronto, aguarda dom-ready uma vez
+        if (!webview.getURL) {
+          // getURL está disponível apenas após dom-ready; espera o evento
+          webview.addEventListener("dom-ready", doLoad, { once: true });
+        } else {
+          doLoad();
+        }
+        // No Electron a navegação real é gerenciada pelo Chromium/webview;
+        // não precisamos chamar a API para a navegação visual.
+        return;
       }
     }
 
+    // Fallback para modo Web: usa a API Playwright
     try {
-      let currentSessionId = activeTab.id_session;
+      const currentTab = tabs.find((t) => t.id === tabId);
+      let currentSessionId = currentTab?.id_session;
       if (!currentSessionId) {
         const sessionRes = await sheets.createBrowserSession(formatted);
         currentSessionId = sessionRes?.data?.session?.id_session;
@@ -292,7 +352,7 @@ export default function Navegador() {
 
       if (currentSessionId) {
         const navRes = await sheets.navigateBrowser(currentSessionId, formatted);
-        updateActiveTab({
+        updateTab(tabId, {
           id_session: currentSessionId,
           dom_tree: navRes?.data?.dom_tree || null,
           isLoading: false,
@@ -304,7 +364,7 @@ export default function Navegador() {
     }
 
     setTimeout(() => {
-      updateActiveTab({ isLoading: false });
+      updateTab(tabId, { isLoading: false });
     }, 600);
   };
 
@@ -342,8 +402,9 @@ export default function Navegador() {
   };
 
   const handleGoBack = () => {
-    if (isElectronApp && webviewRef.current?.canGoBack?.()) {
-      webviewRef.current.goBack();
+    const webview = getActiveWebview();
+    if (isElectronApp && webview?.canGoBack?.()) {
+      webview.goBack();
       return;
     }
     if (activeTab.historyIndex <= 0) return;
@@ -363,6 +424,7 @@ export default function Navegador() {
       inputUrl: targetUrl,
       title: displayTitle,
       isLoading: Boolean(targetUrl),
+      loadError: null,
     });
     if (targetUrl) {
       setTimeout(() => updateActiveTab({ isLoading: false }), 400);
@@ -370,8 +432,9 @@ export default function Navegador() {
   };
 
   const handleGoForward = () => {
-    if (isElectronApp && webviewRef.current?.canGoForward?.()) {
-      webviewRef.current.goForward();
+    const webview = getActiveWebview();
+    if (isElectronApp && webview?.canGoForward?.()) {
+      webview.goForward();
       return;
     }
     if (activeTab.historyIndex >= activeTab.history.length - 1) return;
@@ -391,6 +454,7 @@ export default function Navegador() {
       inputUrl: targetUrl,
       title: displayTitle,
       isLoading: Boolean(targetUrl),
+      loadError: null,
     });
     if (targetUrl) {
       setTimeout(() => updateActiveTab({ isLoading: false }), 400);
@@ -398,8 +462,9 @@ export default function Navegador() {
   };
 
   const handleReload = () => {
-    if (isElectronApp && webviewRef.current) {
-      webviewRef.current.reload();
+    const webview = getActiveWebview();
+    if (isElectronApp && webview) {
+      webview.reload();
       return;
     }
     if (!activeTab.url) return;
@@ -550,10 +615,10 @@ export default function Navegador() {
   }
 
   const canGoBack = isElectronApp
-    ? (webviewRef.current?.canGoBack?.() ?? activeTab.historyIndex > 0)
+    ? (getActiveWebview()?.canGoBack?.() ?? activeTab.historyIndex > 0)
     : activeTab.historyIndex > 0;
   const canGoForward = isElectronApp
-    ? (webviewRef.current?.canGoForward?.() ?? activeTab.historyIndex < activeTab.history.length - 1)
+    ? (getActiveWebview()?.canGoForward?.() ?? activeTab.historyIndex < activeTab.history.length - 1)
     : activeTab.historyIndex < activeTab.history.length - 1;
   const isSecure = activeTab.url.startsWith("https://");
 
@@ -833,8 +898,155 @@ export default function Navegador() {
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* VIEWPORT PRINCIPAL DO NAVEGADOR */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-0">
-          {!activeTab.url ? (
-            /* TELA INICIAL */
+          {/* WEBVIEWS ELECTRON: sempre montados, visibilidade controlada por CSS */}
+          {isElectronApp && (
+            <div className="relative h-full w-full">
+              {tabs.map((tab) => (
+                <webview
+                  key={tab.id}
+                  ref={(el) => {
+                    if (el) {
+                      webviewRefs.current[tab.id] = el;
+                      registerWebviewEvents(tab.id, el);
+                    } else {
+                      const existing = webviewRefs.current[tab.id];
+                      if (existing) unregisterWebviewEvents(tab.id, existing);
+                      delete webviewRefs.current[tab.id];
+                    }
+                  }}
+                  src={tab.url || "about:blank"}
+                  className={`absolute inset-0 h-full w-full bg-white ${tab.id === activeTabId && tab.url ? "" : "hidden"}`}
+                  allowpopups="true"
+                />
+              ))}
+
+              {/* Tela inicial sobreposta quando a aba ativa não tem URL */}
+              {!activeTab.url && (
+                <div className="absolute inset-0 flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center bg-surface-0 z-10">
+                  <div className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-2xl border border-zinc-800/80 bg-surface-1 shadow-inner">
+                    <Compass className="size-7 text-violet-400" />
+                  </div>
+                  <h2 className="text-lg font-semibold tracking-tight text-zinc-100">
+                    Navegador Osíris
+                  </h2>
+                  <p className="mt-1 max-w-md text-xs text-zinc-400">
+                    Explore a internet, inspecione elementos do DOM com agentes de IA e capture dados estruturados.
+                  </p>
+
+                  {/* Busca central da main */}
+                  <form onSubmit={handleFormSubmit} className="relative mt-6 w-full max-w-lg">
+                    <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                    <input
+                      type="text"
+                      value={activeTab.inputUrl}
+                      onChange={(e) => updateActiveTab({ inputUrl: e.target.value })}
+                      placeholder="Pesquisar ou inserir endereço da web..."
+                      aria-label="Pesquisar ou inserir endereço da web"
+                      className="h-11 w-full rounded-xl border border-zinc-800 bg-surface-1 pl-10 pr-14 text-sm text-zinc-200 placeholder:text-zinc-500 shadow-md transition-all focus:border-violet-500/60 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-500"
+                    >
+                      Ir
+                    </button>
+                  </form>
+
+                  {/* Atalhos rápidos das duas versões */}
+                  <div className="mt-7 w-full max-w-2xl">
+                    <div className="mb-3 flex items-center justify-center gap-2 text-xs font-medium text-zinc-400">
+                      <Sparkles size={13} className="text-violet-400" />
+                      <span>Acesso rápido</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                      {QUICK_BOOKMARKS.map((bookmark) => (
+                        <button
+                          key={bookmark.name}
+                          type="button"
+                          onClick={() => navigateTo(bookmark.url)}
+                          className="group flex flex-col items-start rounded-lg border border-zinc-800/80 bg-surface-1 p-3 text-left transition hover:border-violet-500/40 hover:bg-zinc-800/40"
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <span className="text-xs font-medium text-zinc-200 group-hover:text-violet-300">
+                              {bookmark.name}
+                            </span>
+                            <ExternalLink size={12} className="text-zinc-500 group-hover:text-violet-400" />
+                          </div>
+                          <span className="mt-1 line-clamp-1 text-[11px] text-zinc-500">
+                            {bookmark.desc}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recursos apresentados na main */}
+                  <div className="mt-7 grid w-full max-w-2xl grid-cols-1 gap-3 border-t border-zinc-800/60 pt-5 text-left sm:grid-cols-3">
+                    <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-violet-400">
+                        <Bot size={14} />
+                        <span>Automação por IA</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-zinc-400">
+                        Sessões da API disponíveis para interação com elementos da página.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-400">
+                        <ShieldCheck size={14} />
+                        <span>Webview no Electron</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-zinc-400">
+                        Navegação desktop pelo Chromium nativo, sem as limitações de iframe.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-zinc-800/60 bg-surface-1 p-3">
+                      <div className="mb-1 flex items-center gap-2 text-xs font-medium text-sky-400">
+                        <Layers size={14} />
+                        <span>Inspeção DOM</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-zinc-400">
+                        Extração de seletores e elementos interativos da página.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Sobreposição de erro de carregamento */}
+              {activeTab.loadError && activeTab.url && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-surface-0 px-8 text-center">
+                  <AlertTriangle size={36} className="text-amber-400" />
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-200">Não foi possível carregar a página</p>
+                    <p className="mt-1 text-xs text-zinc-400">{activeTab.loadError}</p>
+                    <p className="mt-0.5 font-mono text-[11px] text-zinc-500 truncate max-w-xs">{activeTab.url}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleReload}
+                      className="flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
+                    >
+                      <RotateCw size={13} />
+                      Tentar novamente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.open(activeTab.url, "_blank")}
+                      className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-surface-1 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                    >
+                      <ExternalLink size={13} />
+                      Abrir no navegador
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isElectronApp && (!activeTab.url ? (
+            /* TELA INICIAL (modo web) */
             <div className="flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center">
               <div className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-2xl border border-zinc-800/80 bg-surface-1 shadow-inner">
                 <Compass className="size-7 text-violet-400" />
@@ -924,14 +1136,6 @@ export default function Navegador() {
                 </div>
               </div>
             </div>
-          ) : isElectronApp ? (
-            /* MODO ELECTRON: WEBVIEW NATIVO */
-            <webview
-              ref={webviewRef}
-              src={activeTab.url}
-              className="h-full w-full bg-white"
-              allowpopups="true"
-            />
           ) : (
             /* MODO WEB: IFRAME COM FALLBACK */
             <div className="relative h-full w-full flex flex-col">
@@ -973,7 +1177,7 @@ export default function Navegador() {
                 className="h-full w-full flex-1 border-0 bg-white"
               />
             </div>
-          )}
+          ))}
         </div>
 
         {/* PAINEL LATERAL 1: INSPEÇÃO DO DOM (Existente da main) */}
