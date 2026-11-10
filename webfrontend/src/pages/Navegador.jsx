@@ -224,34 +224,38 @@ export default function Navegador() {
   };
 
   // Gerenciamento de Abas
-  const addTab = async () => {
+  const addTab = () => {
     if (tabs.length >= 10) return;
     const newId = `tab-${Date.now()}`;
-    let sessionId = null;
-    let initialDom = null;
-
-    try {
-      const res = await sheets.createBrowserSession("about:blank");
-      sessionId = res?.data?.session?.id_session || null;
-      initialDom = res?.data?.session?.dom_tree || null;
-    } catch {
-      // Cria aba mesmo se a API estiver em inicialização
-    }
 
     const newTab = {
       id: newId,
-      id_session: sessionId,
+      id_session: null,
       title: "Nova Guia",
       url: "",
       inputUrl: "",
       history: [""],
       historyIndex: 0,
       isLoading: false,
-      dom_tree: initialDom,
+      dom_tree: null,
+      loadError: null,
     };
 
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
+
+    // Inicializa sessão na API silenciosamente em segundo plano, sem bloquear a UI
+    sheets
+      .createBrowserSession("about:blank")
+      .then((res) => {
+        if (res?.data?.session?.id_session) {
+          updateTab(newId, {
+            id_session: res.data.session.id_session,
+            dom_tree: res.data.session.dom_tree || null,
+          });
+        }
+      })
+      .catch(() => {});
   };
 
   const closeTab = (tabIdToClose, e) => {
@@ -262,6 +266,13 @@ export default function Navegador() {
       sheets.closeBrowserSession(targetTab.id_session).catch(() => {});
     }
 
+    const existingWebview = webviewRefs.current[tabIdToClose];
+    if (existingWebview) {
+      unregisterWebviewEvents(tabIdToClose, existingWebview);
+      delete webviewRefs.current[tabIdToClose];
+    }
+    delete registeredWebviewHandlers.current[tabIdToClose];
+
     if (tabs.length <= 1) {
       updateActiveTab({
         title: "Nova Guia",
@@ -271,6 +282,7 @@ export default function Navegador() {
         historyIndex: 0,
         isLoading: false,
         dom_tree: null,
+        loadError: null,
       });
       return;
     }
@@ -898,31 +910,46 @@ export default function Navegador() {
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* VIEWPORT PRINCIPAL DO NAVEGADOR */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-0">
-          {/* WEBVIEWS ELECTRON: sempre montados, visibilidade controlada por CSS */}
+          {/* WEBVIEWS ELECTRON: somente abas com URL montam webview nativo */}
           {isElectronApp && (
             <div className="relative h-full w-full">
-              {tabs.map((tab) => (
-                <webview
-                  key={tab.id}
-                  ref={(el) => {
-                    if (el) {
-                      webviewRefs.current[tab.id] = el;
-                      registerWebviewEvents(tab.id, el);
-                    } else {
-                      const existing = webviewRefs.current[tab.id];
-                      if (existing) unregisterWebviewEvents(tab.id, existing);
-                      delete webviewRefs.current[tab.id];
-                    }
-                  }}
-                  src={tab.url || "about:blank"}
-                  className={`absolute inset-0 h-full w-full bg-white ${tab.id === activeTabId && tab.url ? "" : "hidden"}`}
-                  allowpopups="true"
-                />
-              ))}
+              {tabs
+                .filter((tab) => Boolean(tab.url))
+                .map((tab) => {
+                  const isCurrentActive = tab.id === activeTabId;
+                  return (
+                    <webview
+                      key={tab.id}
+                      ref={(el) => {
+                        if (el) {
+                          webviewRefs.current[tab.id] = el;
+                          registerWebviewEvents(tab.id, el);
+                        } else {
+                          const existing = webviewRefs.current[tab.id];
+                          if (existing) unregisterWebviewEvents(tab.id, existing);
+                          delete webviewRefs.current[tab.id];
+                        }
+                      }}
+                      src={tab.url}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        visibility: isCurrentActive ? "visible" : "hidden",
+                        pointerEvents: isCurrentActive ? "auto" : "none",
+                        zIndex: isCurrentActive ? 1 : 0,
+                      }}
+                      className="bg-white"
+                      allowpopups="true"
+                    />
+                  );
+                })}
 
-              {/* Tela inicial sobreposta quando a aba ativa não tem URL */}
+              {/* Tela inicial exibida quando a aba ativa não tem URL */}
               {!activeTab.url && (
-                <div className="absolute inset-0 flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center bg-surface-0 z-10">
+                <div className="relative z-10 flex h-full w-full flex-col items-center overflow-y-auto px-6 py-8 text-center bg-surface-0">
                   <div className="mb-4 flex size-14 shrink-0 items-center justify-center rounded-2xl border border-zinc-800/80 bg-surface-1 shadow-inner">
                     <Compass className="size-7 text-violet-400" />
                   </div>

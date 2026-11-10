@@ -44,6 +44,10 @@ export default function TerminalPage() {
   function removeTab(tabId) {
     if (tabs.length <= 1) return;
 
+    if (isElectronMode) {
+      window.electronAPI?.terminalClose?.(tabId);
+    }
+
     const remainingTabs = tabs.filter(
       (tab) => tab.id !== tabId
     );
@@ -169,21 +173,30 @@ export default function TerminalPage() {
         )}
       </div>
 
-      {/* Área do terminal */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {isElectronMode ? (
-          <ElectronTerminalPanel
-            key={activeTabId}
-            terminalId={activeTabId}
-            clearTrigger={clearTrigger}
-          />
-        ) : (
-          <WebTerminalPanel
-            key={activeTabId}
-            terminalId={activeTabId}
-            clearTrigger={clearTrigger}
-          />
-        )}
+      {/* Área do terminal com abas preservadas em segundo plano */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+          return (
+            <div
+              key={tab.id}
+              className={`h-full w-full ${isActive ? "block" : "hidden"}`}
+            >
+              {isElectronMode ? (
+                <ElectronTerminalPanel
+                  terminalId={tab.id}
+                  clearTrigger={isActive ? clearTrigger : 0}
+                  isActive={isActive}
+                />
+              ) : (
+                <WebTerminalPanel
+                  terminalId={tab.id}
+                  clearTrigger={isActive ? clearTrigger : 0}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

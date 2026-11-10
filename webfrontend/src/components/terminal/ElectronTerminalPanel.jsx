@@ -7,9 +7,11 @@ import "@xterm/xterm/css/xterm.css";
 export default function ElectronTerminalPanel({
   terminalId,
   clearTrigger = 0,
+  isActive = true,
 }) {
   const containerRef = useRef(null);
   const xtermRef = useRef(null);
+  const fitAddonRef = useRef(null);
   const resizeObserverRef = useRef(null);
 
   // Limpar terminal pelo botão da página
@@ -18,6 +20,24 @@ export default function ElectronTerminalPanel({
       xtermRef.current.clear();
     }
   }, [clearTrigger]);
+
+  // Reajustar e focar quando a aba volta a ficar ativa
+  useEffect(() => {
+    if (isActive && xtermRef.current && fitAddonRef.current) {
+      const timer = setTimeout(() => {
+        try {
+          fitAddonRef.current.fit();
+          window.electronAPI?.terminalResize?.(
+            terminalId,
+            xtermRef.current.cols,
+            xtermRef.current.rows
+          );
+        } catch {}
+        xtermRef.current.focus();
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, terminalId]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -40,6 +60,7 @@ export default function ElectronTerminalPanel({
     });
 
     const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
 
     xterm.loadAddon(fitAddon);
     xterm.open(containerRef.current);
