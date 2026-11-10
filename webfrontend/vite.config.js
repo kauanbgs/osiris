@@ -3,10 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import osirisBrowserProxy from './vite-browser-proxy.js'
 
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), osirisBrowserProxy()],
   server: {
     port: 5173,
     strictPort: true,

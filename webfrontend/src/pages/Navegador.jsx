@@ -54,7 +54,102 @@ function sanitizeUrl(rawUrl) {
   if (trimmed.includes(".") && !trimmed.includes(" ")) {
     return `https://${trimmed}`;
   }
+  // No modo web (iframe + proxy) a página de resultados do Google exige JavaScript
+  // com cookies próprios e não renderiza; usamos a versão HTML do DuckDuckGo.
+  if (!isElectron()) {
+    return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(trimmed)}`;
+  }
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+}
+
+function hostnameOf(rawUrl) {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return String(rawUrl).slice(0, 20);
+  }
+}
+
+// No modo web, sites como Google/GitHub bloqueiam iframes (X-Frame-Options / CSP).
+// O proxy local (vite.config.js) busca a página e remove esses bloqueios.
+function proxiedUrl(rawUrl) {
+  return `/__osiris_proxy?url=${encodeURIComponent(rawUrl)}`;
+}
+
+// Métodos do <webview> lançam erro antes do evento dom-ready
+function safeWebviewCall(webview, method, ...args) {
+  try {
+    return webview?.[method]?.(...args);
+  } catch {
+    return undefined;
+  }
+}
+
+function TabWebview({ tabId, url, className, registerRef, onLoading, onNavigate, onTitle }) {
+  const elRef = useRef(null);
+  const readyRef = useRef(false);
+  const callbacksRef = useRef({ onLoading, onNavigate, onTitle });
+  callbacksRef.current = { onLoading, onNavigate, onTitle };
+  // O src só é usado na montagem; navegações seguintes usam loadURL
+  const [initialSrc] = useState(url);
+  const latestUrlRef = useRef(url);
+  latestUrlRef.current = url;
+
+  useEffect(() => {
+    const webview = elRef.current;
+    if (!webview) return undefined;
+
+    const handlers = {
+      "dom-ready": () => {
+        if (readyRef.current) return;
+        readyRef.current = true;
+        // URL pedida antes do webview ficar pronto
+        const pending = latestUrlRef.current;
+        if (pending && pending !== initialSrc && safeWebviewCall(webview, "getURL") !== pending) {
+          webview.loadURL(pending).catch(() => {});
+        }
+      },
+      "did-start-loading": () => callbacksRef.current.onLoading(tabId, true),
+      "did-stop-loading": () => callbacksRef.current.onLoading(tabId, false),
+      "did-fail-load": (e) => {
+        if (e.isMainFrame !== false) callbacksRef.current.onLoading(tabId, false);
+      },
+      "did-navigate": (e) => callbacksRef.current.onNavigate(tabId, e.url),
+      "did-navigate-in-page": (e) => {
+        if (e.isMainFrame !== false) callbacksRef.current.onNavigate(tabId, e.url);
+      },
+      "page-title-updated": (e) => {
+        if (e.title) callbacksRef.current.onTitle(tabId, e.title);
+      },
+    };
+
+    for (const [name, fn] of Object.entries(handlers)) webview.addEventListener(name, fn);
+    return () => {
+      for (const [name, fn] of Object.entries(handlers)) webview.removeEventListener(name, fn);
+    };
+  }, [tabId]);
+
+  // Navegação pedida pela barra de endereço / favoritos / histórico
+  useEffect(() => {
+    const webview = elRef.current;
+    if (!webview || !url || !readyRef.current) return;
+    const current = safeWebviewCall(webview, "getURL");
+    if (current !== url) {
+      webview.loadURL(url).catch(() => {});
+    }
+  }, [url]);
+
+  return (
+    <webview
+      ref={(el) => {
+        elRef.current = el;
+        registerRef(el);
+      }}
+      src={initialSrc}
+      className={className}
+      allowpopups="true"
+    />
+  );
 }
 
 export default function Navegador() {
@@ -100,23 +195,32 @@ export default function Navegador() {
   // Aba ativa do navegador
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  const updateActiveTab = (updater) => {
+  const updateTab = (tabId, updater) => {
     setTabs((prev) =>
       prev.map((tab) => {
-        if (tab.id !== activeTabId) return tab;
+        if (tab.id !== tabId) return tab;
         return typeof updater === "function" ? updater(tab) : { ...tab, ...updater };
       })
     );
   };
 
+  const updateActiveTab = (updater) => updateTab(activeTabId, updater);
+
+  // Um <webview>/<iframe> por aba (mantidos montados) — evita tela preta ao trocar de guia
+  const webviewRefs = useRef(new Map());
+  const iframeRefs = useRef(new Map());
+  const getActiveWebview = () => webviewRefs.current.get(activeTabId) || null;
+  webviewRef.current = getActiveWebview();
+
   // Inicializa sessão da API para a primeira aba caso ainda não exista
   useEffect(() => {
     if (activeTab && !activeTab.id_session) {
+      const tabId = activeTab.id;
       sheets
         .createBrowserSession("about:blank")
         .then((res) => {
           if (res?.data?.session?.id_session) {
-            updateActiveTab({
+            updateTab(tabId, {
               id_session: res.data.session.id_session,
               dom_tree: res.data.session.dom_tree,
             });
@@ -128,90 +232,68 @@ export default function Navegador() {
     }
   }, [activeTabId]);
 
-  // Sincroniza eventos do Webview Nativo no Electron
+  // Eventos do Webview Nativo (Electron), sempre vinculados à aba dona do webview
+  const handleWebviewNavigate = (tabId, url) => {
+    if (!url || url === "about:blank") return;
+    updateTab(tabId, (curr) => {
+      if (curr.url === url) return { ...curr, inputUrl: url };
+      const existingIdx = curr.history.indexOf(url);
+      const newHistory =
+        existingIdx !== -1 ? curr.history : [...curr.history.slice(0, curr.historyIndex + 1), url];
+      return {
+        ...curr,
+        url,
+        inputUrl: url,
+        title: curr.title && curr.title !== "Nova Guia" ? curr.title : hostnameOf(url),
+        history: newHistory,
+        historyIndex: existingIdx !== -1 ? existingIdx : newHistory.length - 1,
+      };
+    });
+  };
+
+  // Páginas carregadas pelo proxy (modo web) avisam o app via postMessage
   useEffect(() => {
-    const webview = webviewRef.current;
-    if (!webview || !isElectronApp) return;
-
-    const handleStartLoading = () => {
-      updateActiveTab({ isLoading: true });
-    };
-
-    const handleStopLoading = () => {
-      updateActiveTab({ isLoading: false });
-    };
-
-    const handleNavigate = (e) => {
-      if (e.url && e.url !== activeTab.url) {
-        let displayTitle = e.url;
-        try {
-          displayTitle = new URL(e.url).hostname.replace("www.", "");
-        } catch {
-          displayTitle = e.url.slice(0, 20);
-        }
-        updateActiveTab((curr) => {
-          const newHistory = curr.history.includes(e.url)
-            ? curr.history
-            : [...curr.history.slice(0, curr.historyIndex + 1), e.url];
-          return {
-            ...curr,
-            url: e.url,
-            inputUrl: e.url,
-            title: displayTitle,
-            history: newHistory,
-            historyIndex: newHistory.indexOf(e.url) !== -1 ? newHistory.indexOf(e.url) : newHistory.length - 1,
-            isLoading: false,
-          };
-        });
+    if (isElectronApp) return undefined;
+    const onMessage = (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object" || !msg.__osiris) return;
+      let tabId = null;
+      for (const [id, frame] of iframeRefs.current.entries()) {
+        if (frame?.contentWindow === event.source) tabId = id;
+      }
+      if (!tabId) return;
+      if (msg.__osiris === "navigate" && typeof msg.url === "string") {
+        navigateTo(msg.url, tabId);
+      } else if (msg.__osiris === "loaded") {
+        updateTab(tabId, (curr) => ({
+          ...curr,
+          isLoading: false,
+          title: msg.title || curr.title,
+          inputUrl: typeof msg.url === "string" ? msg.url : curr.inputUrl,
+        }));
       }
     };
-
-    const handleTitleUpdated = (e) => {
-      if (e.title) {
-        updateActiveTab({ title: e.title });
-      }
-    };
-
-    webview.addEventListener("did-start-loading", handleStartLoading);
-    webview.addEventListener("did-stop-loading", handleStopLoading);
-    webview.addEventListener("did-navigate", handleNavigate);
-    webview.addEventListener("did-navigate-in-page", handleNavigate);
-    webview.addEventListener("page-title-updated", handleTitleUpdated);
-
-    return () => {
-      webview.removeEventListener("did-start-loading", handleStartLoading);
-      webview.removeEventListener("did-stop-loading", handleStopLoading);
-      webview.removeEventListener("did-navigate", handleNavigate);
-      webview.removeEventListener("did-navigate-in-page", handleNavigate);
-      webview.removeEventListener("page-title-updated", handleTitleUpdated);
-    };
-  }, [activeTabId, activeTab.url, isElectronApp]);
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  });
 
   // Gerenciamento de Abas
-  const addTab = async () => {
+  const addTab = () => {
     if (tabs.length >= 10) return;
     const newId = `tab-${Date.now()}`;
-    let sessionId = null;
-    let initialDom = null;
 
-    try {
-      const res = await sheets.createBrowserSession("about:blank");
-      sessionId = res?.data?.session?.id_session || null;
-      initialDom = res?.data?.session?.dom_tree || null;
-    } catch {
-      // Cria aba mesmo se a API estiver em inicialização
-    }
-
+    // A aba é criada na hora; a sessão da API é criada pelo efeito de ativação
+    // (sem bloquear a interface quando a API está lenta ou offline).
     const newTab = {
       id: newId,
-      id_session: sessionId,
+      id_session: null,
       title: "Nova Guia",
       url: "",
       inputUrl: "",
       history: [""],
       historyIndex: 0,
       isLoading: false,
-      dom_tree: initialDom,
+      dom_tree: null,
     };
 
     setTabs((prev) => [...prev, newTab]);
@@ -249,19 +331,15 @@ export default function Navegador() {
     }
   };
 
-  const navigateTo = async (targetUrl) => {
+  const navigateTo = async (targetUrl, tabId = activeTabId) => {
     const formatted = sanitizeUrl(targetUrl);
     if (!formatted) return;
 
-    let displayTitle = formatted;
-    try {
-      const parsed = new URL(formatted);
-      displayTitle = parsed.hostname.replace("www.", "");
-    } catch {
-      displayTitle = formatted.slice(0, 20);
-    }
+    const displayTitle = hostnameOf(formatted);
+    const targetTab = tabs.find((t) => t.id === tabId) || activeTab;
+    const updateTarget = (updater) => updateTab(tabId, updater);
 
-    updateActiveTab((curr) => {
+    updateTarget((curr) => {
       const newHistory = curr.history.slice(0, curr.historyIndex + 1);
       newHistory.push(formatted);
       return {
@@ -275,16 +353,10 @@ export default function Navegador() {
       };
     });
 
-    if (isElectronApp && webviewRef.current) {
-      try {
-        webviewRef.current.loadURL(formatted);
-      } catch {
-        // Fallback
-      }
-    }
-
+    // A navegação real é feita pelo <webview>/<iframe> da aba (via prop `url`).
+    // A sessão da API serve apenas para a inspeção de DOM dos agentes.
     try {
-      let currentSessionId = activeTab.id_session;
+      let currentSessionId = targetTab?.id_session;
       if (!currentSessionId) {
         const sessionRes = await sheets.createBrowserSession(formatted);
         currentSessionId = sessionRes?.data?.session?.id_session;
@@ -292,20 +364,14 @@ export default function Navegador() {
 
       if (currentSessionId) {
         const navRes = await sheets.navigateBrowser(currentSessionId, formatted);
-        updateActiveTab({
+        updateTarget({
           id_session: currentSessionId,
           dom_tree: navRes?.data?.dom_tree || null,
-          isLoading: false,
         });
-        return;
       }
     } catch {
-      // Fallback
+      // API indisponível: o navegador continua funcionando normalmente
     }
-
-    setTimeout(() => {
-      updateActiveTab({ isLoading: false });
-    }, 600);
   };
 
   const handleSimulatedClick = async (element) => {
@@ -342,8 +408,8 @@ export default function Navegador() {
   };
 
   const handleGoBack = () => {
-    if (isElectronApp && webviewRef.current?.canGoBack?.()) {
-      webviewRef.current.goBack();
+    if (isElectronApp && safeWebviewCall(webviewRef.current, "canGoBack")) {
+      safeWebviewCall(webviewRef.current, "goBack");
       return;
     }
     if (activeTab.historyIndex <= 0) return;
@@ -370,8 +436,8 @@ export default function Navegador() {
   };
 
   const handleGoForward = () => {
-    if (isElectronApp && webviewRef.current?.canGoForward?.()) {
-      webviewRef.current.goForward();
+    if (isElectronApp && safeWebviewCall(webviewRef.current, "canGoForward")) {
+      safeWebviewCall(webviewRef.current, "goForward");
       return;
     }
     if (activeTab.historyIndex >= activeTab.history.length - 1) return;
@@ -399,11 +465,13 @@ export default function Navegador() {
 
   const handleReload = () => {
     if (isElectronApp && webviewRef.current) {
-      webviewRef.current.reload();
+      safeWebviewCall(webviewRef.current, "reload");
       return;
     }
     if (!activeTab.url) return;
     updateActiveTab({ isLoading: true });
+    const frame = iframeRefs.current.get(activeTabId);
+    if (frame) frame.src = proxiedUrl(activeTab.url);
     if (activeTab.id_session) {
       sheets
         .navigateBrowser(activeTab.id_session, activeTab.url)
@@ -549,12 +617,11 @@ export default function Navegador() {
     }
   }
 
-  const canGoBack = isElectronApp
-    ? (webviewRef.current?.canGoBack?.() ?? activeTab.historyIndex > 0)
-    : activeTab.historyIndex > 0;
-  const canGoForward = isElectronApp
-    ? (webviewRef.current?.canGoForward?.() ?? activeTab.historyIndex < activeTab.history.length - 1)
-    : activeTab.historyIndex < activeTab.history.length - 1;
+  const canGoBack =
+    Boolean(safeWebviewCall(webviewRef.current, "canGoBack")) || activeTab.historyIndex > 0;
+  const canGoForward =
+    Boolean(safeWebviewCall(webviewRef.current, "canGoForward")) ||
+    activeTab.historyIndex < activeTab.history.length - 1;
   const isSecure = activeTab.url.startsWith("https://");
 
   const domElements = activeTab.dom_tree?.elements || [];
@@ -924,22 +991,14 @@ export default function Navegador() {
                 </div>
               </div>
             </div>
-          ) : isElectronApp ? (
-            /* MODO ELECTRON: WEBVIEW NATIVO */
-            <webview
-              ref={webviewRef}
-              src={activeTab.url}
-              className="h-full w-full bg-white"
-              allowpopups="true"
-            />
-          ) : (
-            /* MODO WEB: IFRAME COM FALLBACK */
-            <div className="relative h-full w-full flex flex-col">
+          ) : isElectronApp ? null : (
+            /* MODO WEB: BARRA DE INFO DO IFRAME VIA PROXY LOCAL */
+            <div className="flex w-full shrink-0 flex-col">
               <div className="flex shrink-0 items-center justify-between bg-surface-1 border-b border-zinc-800 px-3 py-1.5 text-[11px] text-zinc-400">
                 <div className="flex items-center gap-1.5 truncate">
-                  <AlertTriangle size={13} className="text-amber-400 shrink-0" />
+                  <Info size={13} className="text-violet-400 shrink-0" />
                   <span className="truncate">
-                    Alguns sites bloqueiam exibição em iframe (X-Frame-Options).
+                    Modo web: páginas carregadas pelo proxy do Osíris. Alguns recursos dinâmicos podem ficar limitados.
                   </span>
                   <span className="hidden font-mono text-zinc-500 md:inline">
                     Sessão: {activeTab.id_session || "Local"}
@@ -966,14 +1025,49 @@ export default function Navegador() {
                   </a>
                 </div>
               </div>
-              <iframe
-                src={activeTab.url}
-                title={activeTab.title}
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                className="h-full w-full flex-1 border-0 bg-white"
-              />
             </div>
           )}
+
+          {/* Um webview/iframe por aba, sempre montados; só a aba ativa fica visível */}
+          <div className={`relative min-h-0 flex-1 ${activeTab.url ? "" : "hidden"}`}>
+            {tabs
+              .filter((tab) => tab.url)
+              .map((tab) => {
+                const visible = tab.id === activeTabId;
+                const layerClass = `absolute inset-0 h-full w-full border-0 bg-white ${
+                  visible ? "z-10" : "invisible pointer-events-none z-0"
+                }`;
+                return isElectronApp ? (
+                  <TabWebview
+                    key={tab.id}
+                    tabId={tab.id}
+                    url={tab.url}
+                    className={layerClass}
+                    registerRef={(el) => {
+                      if (el) webviewRefs.current.set(tab.id, el);
+                      else webviewRefs.current.delete(tab.id);
+                    }}
+                    onLoading={(id, isLoading) => updateTab(id, { isLoading })}
+                    onNavigate={handleWebviewNavigate}
+                    onTitle={(id, title) => updateTab(id, { title })}
+                  />
+                ) : (
+                  <iframe
+                    key={tab.id}
+                    ref={(el) => {
+                      if (el) iframeRefs.current.set(tab.id, el);
+                      else iframeRefs.current.delete(tab.id);
+                    }}
+                    src={proxiedUrl(tab.url)}
+                    title={tab.title}
+                    sandbox="allow-scripts allow-forms allow-popups"
+                    referrerPolicy="no-referrer"
+                    onLoad={() => updateTab(tab.id, { isLoading: false })}
+                    className={layerClass}
+                  />
+                );
+              })}
+          </div>
         </div>
 
         {/* PAINEL LATERAL 1: INSPEÇÃO DO DOM (Existente da main) */}
