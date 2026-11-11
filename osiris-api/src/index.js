@@ -7,6 +7,7 @@ const cors = require("cors");
 const apiRoutes = require("./routes/apiRoutes");
 const verifyJWT = require("./middlewares/verifyJWT");
 const TerminalController = require("./controllers/terminalController");
+const BrowserController = require("./controllers/browserController");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 const app = express();
@@ -15,8 +16,9 @@ app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Mobile direct alias
+// Direct aliases
 app.post("/api/exec", verifyJWT, TerminalController.exec);
+app.all("/__osiris_proxy", BrowserController.proxy);
 
 app.use("/api/osiris", apiRoutes);
 

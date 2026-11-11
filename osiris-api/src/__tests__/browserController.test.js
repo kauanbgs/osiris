@@ -254,4 +254,47 @@ describe("BrowserController", () => {
     expect(navRes.body.dom_tree.elements[0]).toHaveProperty("selector");
     expect(navRes.body.dom_tree.elements[0]).toHaveProperty("tag");
   });
+
+  describe("GET /api/osiris/browser/proxy", () => {
+    it("rejects request without url query parameter", async () => {
+      const res = await request(app).get("/api/osiris/browser/proxy");
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toContain("url");
+    });
+
+    it("rejects request with invalid url", async () => {
+      const res = await request(app).get("/api/osiris/browser/proxy?url=invalid-url");
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toContain("URL");
+    });
+
+    it("rejects request to localhost or private network (SSRF protection)", async () => {
+      const res = await request(app).get("/api/osiris/browser/proxy?url=http://127.0.0.1:8080");
+      expect(res.status).toBe(403);
+      expect(res.body.error.message).toContain("Endereços locais");
+    });
+
+    it("proxies and rewrites HTML content from valid upstream", async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 200,
+        url: "https://example.com",
+        headers: {
+          get: (h) => (h === "content-type" ? "text/html; charset=utf-8" : null),
+        },
+        arrayBuffer: async () => Buffer.from("<html><head><meta http-equiv=\"x-frame-options\" content=\"deny\"><title>Example</title></head><body><h1>Hello</h1></body></html>"),
+      });
+
+      try {
+        const res = await request(app).get("/api/osiris/browser/proxy?url=https://example.com");
+        expect(res.status).toBe(200);
+        expect(res.headers["content-type"]).toContain("text/html");
+        expect(res.text).toContain("<base href=\"https://example.com\">");
+        expect(res.text).toContain("__osiris");
+        expect(res.text).not.toContain("x-frame-options");
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
 });

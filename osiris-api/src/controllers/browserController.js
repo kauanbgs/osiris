@@ -1,5 +1,6 @@
 const BrowserService = require("../services/browserService");
 const BrowserCaptureService = require("../services/browserCaptureService");
+const BrowserProxyService = require("../services/browserProxyService");
 const { BadRequestError } = require("../errors");
 
 class BrowserController {
@@ -132,6 +133,26 @@ class BrowserController {
         ...result,
       });
     } catch (error) {
+      return next(error);
+    }
+  }
+
+  // Proxy web para contornar X-Frame-Options e CSP em clientes web/iframe
+  static async proxy(req, res, next) {
+    try {
+      const rawUrl = req.query?.url || req.body?.url;
+
+      if (typeof rawUrl !== "string" || !rawUrl.trim()) {
+        throw new BadRequestError("Informe o parâmetro 'url'.");
+      }
+
+      return await BrowserProxyService.handleProxy(req, res, rawUrl.trim());
+    } catch (error) {
+      if (req.headers.accept && req.headers.accept.includes("text/html")) {
+        res.status(error.statusCode || 500);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(`<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;background:#0b0b0f;color:#e4e4e7;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;max-width:420px"><h3 style="margin:0 0 8px">Não foi possível abrir a página</h3><p style="color:#a1a1aa;font-size:13px">${String(error.message).replace(/[<>&]/g, "")}</p></div></body>`);
+      }
       return next(error);
     }
   }

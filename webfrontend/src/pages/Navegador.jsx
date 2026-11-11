@@ -71,9 +71,13 @@ function hostnameOf(rawUrl) {
 }
 
 // No modo web, sites como Google/GitHub bloqueiam iframes (X-Frame-Options / CSP).
-// O proxy local (vite.config.js) busca a página e remove esses bloqueios.
+// O proxy da API busca a página, remove esses bloqueios e injeta o script de navegação.
 function proxiedUrl(rawUrl) {
-  return `/__osiris_proxy?url=${encodeURIComponent(rawUrl)}`;
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return `/api/osiris/browser/proxy?url=${encodeURIComponent(rawUrl)}`;
+  }
+  const apiBase = import.meta.env.VITE_API_URL || "http://163.176.45.118:5000/api/osiris";
+  return `${apiBase}/browser/proxy?url=${encodeURIComponent(rawUrl)}`;
 }
 
 // Métodos do <webview> lançam erro antes do evento dom-ready
