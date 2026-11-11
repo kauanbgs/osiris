@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import osirisBrowserProxy from './vite-browser-proxy.js'
 
 export default defineConfig({
-  base: './',
+  base: process.env.VERCEL ? '/' : './',
   plugins: [react(), tailwindcss(), osirisBrowserProxy()],
   server: {
     port: 5173,
