@@ -1031,7 +1031,7 @@ aiServer.post("/api/models/load", async (req, res) => {
 // TERMINAL VIA REDE (app mobile)
 // ===============================
 
-const API_URL = "http://localhost:5000/api/osiris";
+const API_URL = process.env.VITE_API_URL || process.env.API_URL || "http://163.176.45.118:5000/api/osiris";
 
 async function fetchUserId(token) {
   const response = await fetch(`${API_URL}/auth/me`, {
