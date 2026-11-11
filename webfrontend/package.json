@@ -18,6 +18,7 @@
   "build": {
     "appId": "com.osiris.webfrontend",
     "productName": "Osiris",
+    "npmRebuild": false,
     "directories": {
       "output": "dist-electron"
     },
