@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/osiris/:path*",
+      "destination": "http://163.176.45.118:5000/api/osiris/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

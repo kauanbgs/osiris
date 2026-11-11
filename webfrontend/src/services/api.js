@@ -1,8 +1,16 @@
 
 import axios from "axios";
 
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return "/api/osiris";
+  }
+  return "http://163.176.45.118:5000/api/osiris";
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://163.176.45.118:5000/api/osiris",
+  baseURL: getBaseURL(),
 });
 
 // Adiciona o token de autenticação às requisições
