@@ -882,7 +882,8 @@ aiServer.get("/api/status", (req, res) => {
 
 aiServer.post("/api/prompt", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const payload = req.body || {};
+    const prompt = payload.prompt;
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({
@@ -890,7 +891,21 @@ aiServer.post("/api/prompt", async (req, res) => {
       });
     }
 
-    const response = await runLlamaPrompt(prompt);
+    // O celular pode pedir um modelo local pelo nome do arquivo: se for
+    // diferente do ativo, troca antes de responder.
+    if (payload.model && path.basename(String(payload.model)) === payload.model) {
+      const requestedPath = resolveLocalModelPath(payload.model);
+      if (requestedPath && activeModelPath !== requestedPath) {
+        await loadModelAndNotify(requestedPath);
+      }
+    }
+
+    const response = await runLlamaPrompt({
+      prompt,
+      systemPrompt:
+        typeof payload.systemPrompt === "string" ? payload.systemPrompt : "",
+      history: Array.isArray(payload.history) ? payload.history : [],
+    });
 
     res.json({
       success: true,

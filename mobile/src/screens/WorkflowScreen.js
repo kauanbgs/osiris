@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Keyboard,
   Modal,
@@ -13,16 +14,20 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Bot, CaseSensitive, MousePointer2, Paperclip, SquareTerminal } from 'lucide-react-native';
+import { Bot, CaseSensitive, GripVertical, MousePointer2, Paperclip, Play, Square, SquareTerminal, Workflow } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { readTextFile } from '../services/attachments';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, Marker, Path } from 'react-native-svg';
 import { useNavbarSpace } from '../components/Navbar';
 import sheets from '../services/api';
 import { executeDesktopCommand } from '../services/desktopModels';
 import { aiUrl, loadIP } from '../services/serverConfig';
 import { createThemedStyles, useThemeColor, ACCENTS } from '../theme';
+import { runWorkflow } from '../workflow/runWorkflow';
+import { getAgentFileNodes } from '../workflow/nodeContext';
+import { runAgentRounds } from '../workflow/runAgentRounds';
+import { formatAgentOutput } from '../workflow/agentFiles';
 
 const colors = {
   background: '#0d0d0d',
@@ -38,12 +43,6 @@ const CARD_WIDTH = 500;
 const CARD_HEIGHT = 300;
 const INITIAL_ZOOM = 0.5;
 const CANVAS_PADDING = 1400;
-const AGENT_MODELS = [
-  { value: 'qwen2.5-coder:7b', label: 'Qwen 2.5 Coder 7B' },
-  { value: 'qwen2.5:7b', label: 'Qwen 2.5 7B' },
-  { value: 'llama3.2:3b', label: 'Llama 3.2 3B' },
-  { value: 'mistral:7b', label: 'Mistral 7B' },
-];
 
 function newId() {
   return `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -51,41 +50,6 @@ function newId() {
 
 function nodeDisplayName(node) {
   return node.data?.label || node.name || node.type || 'Node';
-}
-
-function extractFileOperations(text) {
-  if (!text) return null;
-  const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-  try { return JSON.parse(cleaned); } catch {}
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch {}
-  }
-  return null;
-}
-
-function applyAgentFileOperations(files, operations) {
-  let nextFiles = [...files];
-  for (const operation of operations) {
-    if (!operation?.fileName || !['create', 'update', 'delete'].includes(operation.action)) continue;
-    const index = nextFiles.findIndex((file) => file.fileName === operation.fileName);
-    if (operation.action === 'delete') {
-      nextFiles = nextFiles.filter((file) => file.fileName !== operation.fileName);
-      continue;
-    }
-    const content = typeof operation.content === 'string' ? operation.content : '';
-    const nextFile = {
-      ...(index >= 0 ? nextFiles[index] : {}),
-      fileName: operation.fileName,
-      fileContent: content,
-      fileSize: content.length,
-      fileType: operation.fileType || nextFiles[index]?.fileType || 'text/plain',
-    };
-    if (index >= 0) nextFiles[index] = nextFile;
-    else nextFiles.push(nextFile);
-  }
-  return nextFiles;
 }
 
 export default function WorkflowScreen({ navigation, route }) {
@@ -101,9 +65,18 @@ export default function WorkflowScreen({ navigation, route }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [connectMode, setConnectMode] = useState(false);
   const [connectSource, setConnectSource] = useState(null);
+  const [nodeSizes, setNodeSizes] = useState({});
   const [agentRuns, setAgentRuns] = useState({});
   const [terminalRuns, setTerminalRuns] = useState({});
   const [desktopOnline, setDesktopOnline] = useState(false);
+  const [desktopModels, setDesktopModels] = useState([]);
+  const [activeModelName, setActiveModelName] = useState(null);
+  const [chainRunning, setChainRunning] = useState(false);
+  const [chainEvents, setChainEvents] = useState([]);
+  const [eventsOpen, setEventsOpen] = useState(false);
+  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
+  const [newWorkflowName, setNewWorkflowName] = useState('');
+  const [newWorkflowDescription, setNewWorkflowDescription] = useState('');
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -120,6 +93,7 @@ export default function WorkflowScreen({ navigation, route }) {
   const requestedWorkflowId = useRef(route?.params?.workflowId || null);
   const pollInFlight = useRef(false);
   const agentAbortRefs = useRef(new Map());
+  const chainAbortRef = useRef(null);
   const saveQueueRef = useRef(Promise.resolve());
   const saveRetryTimerRef = useRef(null);
 
@@ -262,6 +236,17 @@ export default function WorkflowScreen({ navigation, route }) {
       const response = await fetch(`${aiUrl()}/api/status`);
       const status = response.ok ? await response.json() : null;
       setDesktopOnline(Boolean(status?.online));
+      if (!status?.online) {
+        setDesktopModels([]);
+        setActiveModelName(null);
+        return;
+      }
+      if (status?.activeModelName) setActiveModelName(status.activeModelName);
+      const modelsResponse = await fetch(`${aiUrl()}/api/models`);
+      if (!modelsResponse.ok) return;
+      const modelsBody = await modelsResponse.json();
+      if (Array.isArray(modelsBody?.installed)) setDesktopModels(modelsBody.installed);
+      if (modelsBody?.activeModelName) setActiveModelName(modelsBody.activeModelName);
     } catch {
       setDesktopOnline(false);
     }
@@ -375,8 +360,13 @@ export default function WorkflowScreen({ navigation, route }) {
     }
     const sourceNode = nodesRef.current.find((node) => node.id === source);
     const targetNode = nodesRef.current.find((node) => node.id === target);
-    const sourceHandle = sourceNode?.type === 'file' ? 'files' : sourceNode?.type === 'agent' ? 'output' : undefined;
-    const targetHandle = targetNode?.type === 'agent' ? 'files' : 'input';
+    const agentToAgent = sourceNode?.type === 'agent' && targetNode?.type === 'agent';
+    const sourceHandle = sourceNode?.type === 'file'
+      ? 'files'
+      : agentToAgent ? 'agent-out' : sourceNode?.type === 'agent' ? 'output' : undefined;
+    const targetHandle = targetNode?.type === 'agent'
+      ? agentToAgent ? 'agent-in' : 'files'
+      : 'input';
     markCanvasChanged(nodesRef.current, [...edgesRef.current, {
       id: newId(),
       source,
@@ -397,98 +387,143 @@ export default function WorkflowScreen({ navigation, route }) {
     setConnectSource(null);
   }, [connectMode, connectNodes, connectSource]);
 
-  const runAgent = useCallback(async (nodeId) => {
-    const runningController = agentAbortRefs.current.get(nodeId);
-    if (runningController) {
-      runningController.abort();
-      agentAbortRefs.current.delete(nodeId);
-      updateNode(nodeId, { data: { runStatus: 'idle', runError: '' } });
-      setAgentRuns((current) => ({ ...current, [nodeId]: { ...current[nodeId], status: 'idle' } }));
+  const patchNodeData = useCallback((nodeId, partialData) => {
+    const next = nodesRef.current.map((node) => node.id === nodeId
+      ? { ...node, data: { ...node.data, ...partialData } }
+      : node);
+    markCanvasChanged(next);
+  }, [markCanvasChanged]);
+
+  // Devolve o status visual dos nós quando uma execução é interrompida.
+  const setNodeStatusesIdle = useCallback(() => {
+    if (!nodesRef.current.some((node) => node.data?.runStatus === 'running')) return;
+    const next = nodesRef.current.map((node) => node.data?.runStatus === 'running'
+      ? { ...node, data: { ...node.data, runStatus: 'idle', notice: '' } }
+      : node);
+    markCanvasChanged(next);
+  }, [markCanvasChanged]);
+
+  const chainExecuteAgent = useCallback(async (agentId, context, signal) => {
+    return runAgentRounds({
+      agentId,
+      getNodes: () => nodesRef.current,
+      edges: edgesRef.current,
+      context,
+      signal,
+      onUpdate: (nodeId, partialData) => {
+        try { patchNodeData(nodeId, partialData); } catch {}
+      },
+      emit: (event) => setChainEvents((current) => [...current.slice(-49), {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        time: new Date().toLocaleTimeString(),
+        type: event.type || 'info',
+        text: event.text || event.title || '',
+      }]),
+    });
+  }, [patchNodeData]);
+
+  // Executa "Só este" (onlyAgentId) ou o workflow inteiro a partir do primeiro
+  // agente, com handoff entre agentes, igual ao desktop.
+  const runChain = useCallback(async ({ onlyAgentId, startAgentId } = {}) => {
+    if (chainAbortRef.current) {
+      chainAbortRef.current.abort();
       return;
     }
-
-    const agent = nodesRef.current.find((node) => node.id === nodeId);
-    if (!agent) return;
-    const currentNodes = nodesRef.current;
-    const currentEdges = edgesRef.current;
-    const incomingFiles = currentEdges
-      .filter((edge) => edge.target === nodeId && (edge.targetHandle === 'files' || !edge.targetHandle))
-      .map((edge) => currentNodes.find((node) => node.id === edge.source))
-      .filter((node) => node?.type === 'file')
-      .flatMap((node) => Array.isArray(node.data?.files) ? node.data.files : []);
-    const outputFileNodes = currentEdges
-      .filter((edge) => edge.source === nodeId && ['output', 'bottom', undefined].includes(edge.sourceHandle))
-      .map((edge) => currentNodes.find((node) => node.id === edge.target))
-      .filter((node) => node?.type === 'file');
-
-    let instruction = agent.data?.prompt || '';
-    if (outputFileNodes.length) {
-      const targetFiles = outputFileNodes.flatMap((node) => Array.isArray(node.data?.files) ? node.data.files : []);
-      instruction = `Você é um agente que edita arquivos.\n\nARQUIVOS:\n${targetFiles.map((file) => `ARQUIVO: ${file.fileName}\n\n${file.fileContent || ''}`).join('\n\n')}\n\nPEDIDO:\n${instruction}\n\nResponda SOMENTE com JSON no formato {"fileOperations":[{"action":"update","fileName":"nome exato","content":"arquivo completo"}],"message":"resumo curto"}. Atualize/crie apenas arquivos conectados ao nó. Para remover, use action "delete". Sem pseudocódigo e sem blocos markdown.`;
-    }
-    const fileContext = incomingFiles.length
-      ? `ARQUIVOS DE CONTEXTO:\n${incomingFiles.map((file) => `\n### ${file.fileName}\n${String(file.fileContent || '').slice(0, 100000)}`).join('\n')}\n\n` : '';
-    const prompt = `${fileContext}${instruction}`.trim();
-    if (!prompt) {
-      setAgentRuns((current) => ({ ...current, [nodeId]: { status: 'error', output: '', error: 'Descreva primeiro a tarefa deste agente.' } }));
+    if (!nodesRef.current.some((node) => node.type === 'agent')) {
+      setAgentRuns((current) => ({ ...current, [onlyAgentId || 'global']: { status: 'error', error: 'Adicione um agente ao workflow.' } }));
+      setChainEvents([{ id: '1', time: '', type: 'error', text: 'Adicione um agente ao workflow.' }]);
       return;
     }
-
+    try { await loadIP(); } catch {}
+    if (!desktopOnline) {
+      setChainEvents([{ id: '1', time: '', type: 'error', text: 'Desktop offline: abra o aplicativo no computador para executar o modelo.' }]);
+      return;
+    }
     const controller = new AbortController();
-    agentAbortRefs.current.set(nodeId, controller);
-    updateNode(nodeId, { data: { runStatus: 'running', runError: '', output: '' } });
-    setAgentRuns((current) => ({ ...current, [nodeId]: { status: 'running', output: '', error: '' } }));
+    chainAbortRef.current = controller;
+    setChainRunning(true);
+    setChainEvents([]);
+    if (!onlyAgentId) {
+      setAgentRuns((current) => (Object.keys(current).length
+        ? Object.fromEntries(Object.entries(current).map(([id, run]) => [id, { ...run, status: run.status === 'error' ? 'idle' : run.status }]))
+        : current));
+      setTerminalRuns((current) => (Object.keys(current).length
+        ? Object.fromEntries(Object.entries(current).map(([id, run]) => [id, { ...run, status: run.status === 'error' ? 'idle' : run.status }]))
+        : current));
+    }
+    const push = (type, text) => setChainEvents((current) => [...current.slice(-49), {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      time: new Date().toLocaleTimeString(), type, text,
+    }]);
     try {
-      await loadIP();
-      const response = await fetch(`${aiUrl()}/api/prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+      await runWorkflow({
+        nodes: nodesRef.current,
+        edges: edgesRef.current,
+        onlyAgentId,
+        startAgentId,
+        executeAgent: (agentId, context, signal) => chainExecuteAgent(agentId, context, signal),
+        onPlan: (ordered) => {
+          push('run', onlyAgentId
+            ? 'Executando agente individual.'
+            : 'Plano de execucao: ' + ordered.map((node) => node.data?.label || node.id).join(' -> '));
+          if (!onlyAgentId) {
+            const orderedIds = ordered.map((node) => node.id);
+            setAgentRuns((current) => {
+              const next = { ...current };
+              nodesRef.current.forEach((node) => {
+                if (node.type !== 'agent') return;
+                const orderIndex = orderedIds.indexOf(node.id);
+                next[node.id] = orderIndex >= 0
+                  ? { status: orderIndex > 0 ? 'waiting' : 'idle', output: next[node.id]?.output || '', error: '' }
+                  : { status: 'skipped', output: next[node.id]?.output || '', error: '' };
+              });
+              return next;
+            });
+          }
+        },
+        onAgentStart: (agentId, label, index, total, received) => {
+          push('start', 'Executando ' + label + (onlyAgentId ? '' : '...'));
+          setAgentRuns((current) => ({ ...current, [agentId]: { status: 'running', output: current[agentId]?.output || '', error: '' } }));
+          patchNodeData(agentId, { received: received || [], runError: '' });
+        },
+        onAgentDone: (agentId, label, result) => {
+          const handoff = String(result).includes('### PARA O PROXIMO AGENTE') ? ' (handoff extraido)' : '';
+          push('done', label + ' concluido' + handoff);
+          patchNodeData(agentId, { runStatus: 'idle', notice: '' });
+          setAgentRuns((current) => ({ ...current, [agentId]: { status: 'done', output: (result || '').slice(0, 400), error: '' } }));
+        },
+        onAgentError: (agentId, label, runError) => {
+          push('error', label + ': ' + (runError?.message || 'falha'));
+          patchNodeData(agentId, { runStatus: 'error', notice: '' });
+          setAgentRuns((current) => ({ ...current, [agentId]: { status: 'error', error: runError?.message || 'Falha ao executar o agente.' } }));
+        },
         signal: controller.signal,
       });
-      const resultBody = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(resultBody?.error || `Erro HTTP ${response.status}.`);
-      const result = resultBody?.response;
-      if (typeof result !== 'string' || !result.trim()) throw new Error('O modelo não retornou uma resposta.');
-      if (controller.signal.aborted) return;
-
-      updateNode(nodeId, { data: { output: result, runStatus: 'idle', runError: '' } });
-      let displayOutput = result;
-      if (outputFileNodes.length) {
-        const parsed = extractFileOperations(result);
-        if (!parsed || !Array.isArray(parsed.fileOperations)) {
-          throw new Error('O agente não retornou operações de arquivo em JSON válido.');
-        }
-        for (const fileNode of outputFileNodes) {
-          const files = Array.isArray(fileNode.data?.files) ? fileNode.data.files : [];
-          const updatedFiles = applyAgentFileOperations(files, parsed.fileOperations);
-          updateNode(fileNode.id, { data: { files: updatedFiles } });
-          for (const operation of parsed.fileOperations) {
-            if (!['create', 'update'].includes(operation.action) || typeof operation.content !== 'string') continue;
-            const original = files.find((file) => file.fileName === operation.fileName);
-            if (!original?.filePath) continue;
-            try {
-              await sheets.saveWorkspaceFile(original.filePath, operation.content);
-            } catch (writeError) {
-              console.warn('Não foi possível gravar o arquivo conectado:', writeError?.message);
-            }
-          }
-        }
-        displayOutput = parsed.message || `${parsed.fileOperations.length} operação(ões) de arquivo aplicada(s).`;
-      }
-      setAgentRuns((current) => ({ ...current, [nodeId]: { status: 'idle', output: displayOutput, error: '' } }));
-    } catch (requestError) {
-      if (requestError?.name === 'AbortError') {
-        updateNode(nodeId, { data: { runStatus: 'idle', runError: '' } });
-        setAgentRuns((current) => ({ ...current, [nodeId]: { ...current[nodeId], status: 'idle' } }));
-      } else {
-        updateNode(nodeId, { data: { runStatus: 'error', runError: requestError?.message || 'Falha ao executar o agente.' } });
-        setAgentRuns((current) => ({ ...current, [nodeId]: { status: 'error', output: '', error: requestError?.message || 'Falha ao executar o agente.' } }));
+      push('complete', onlyAgentId ? 'Agente concluido.' : 'Workflow concluido.');
+    } catch (runError) {
+      if (runError?.name === 'AbortError' || controller.signal.aborted) {
+        push('cancelled', 'Execucao interrompida.');
+        setAgentRuns((current) => Object.fromEntries(Object.entries(current).map(([id, run]) => [id, run.status === 'running' || run.status === 'waiting' ? { ...run, status: 'cancelled' } : run])));
+      } else if (!onlyAgentId || runError?.message !== 'Agente removido durante a execucao.') {
+        push('error', runError?.message || 'Falha ao executar o workflow.');
       }
     } finally {
-      if (agentAbortRefs.current.get(nodeId) === controller) agentAbortRefs.current.delete(nodeId);
+      chainAbortRef.current = null;
+      setChainRunning(false);
+      setNodeStatusesIdle();
     }
-  }, [updateNode]);
+  }, [chainExecuteAgent, desktopOnline, patchNodeData, setNodeStatusesIdle]);
+
+  const runSingleAgent = useCallback((nodeId) => {
+    if (chainAbortRef.current) { chainAbortRef.current.abort(); return; }
+    if (nodesRef.current.find((node) => node.id === nodeId)?.type !== 'agent') return;
+    setAgentRuns((current) => ({ ...current, [nodeId]: { status: 'running', output: '', error: '' } }));
+    runChain({ onlyAgentId: nodeId });
+  }, [runChain]);
+
+  const stopChain = useCallback(() => {
+    chainAbortRef.current?.abort();
+  }, []);
 
   const chooseWorkflow = useCallback(async (selected) => {
     setPickerOpen(false);
@@ -506,6 +541,26 @@ export default function WorkflowScreen({ navigation, route }) {
       setLoading(false);
     }
   }, [applyCanvas]);
+
+  const createWorkflow = useCallback(async () => {
+    const name = newWorkflowName.trim();
+    if (!name) return;
+    try {
+      const { data } = await sheets.createWorkflow({ name, description: newWorkflowDescription.trim() || name });
+      const created = data?.workflow || data?.osiris || data;
+      setNewWorkflowName('');
+      setNewWorkflowDescription('');
+      setCreatingWorkflow(false);
+      setPickerOpen(false);
+      if (created?.id_workflow) {
+        await chooseWorkflow({ id_workflow: created.id_workflow, name: created.name });
+      } else {
+        await loadWorkflows();
+      }
+    } catch (requestError) {
+      setError(requestError?.response?.data?.error?.message || requestError.message || 'Falha ao criar o workflow.');
+    }
+  }, [chooseWorkflow, loadWorkflows, newWorkflowDescription, newWorkflowName]);
 
   const pinchResponder = useMemo(() => {
     let startDistance = 0;
@@ -559,10 +614,21 @@ export default function WorkflowScreen({ navigation, route }) {
     });
   }, []);
 
+  const nodeWidths = { agent: 520, file: 360, terminal: 560, text: 180 };
+  const nodeHeights = { agent: 360, file: 300, terminal: 380, text: 90 };
   const nodePositions = useMemo(() => new Map(nodes.map((node, index) => {
     const position = node.position || { x: 100, y: 100 + index * 340 };
-    return [node.id, { x: CANVAS_PADDING + position.x, y: CANVAS_PADDING + position.y }];
-  })), [nodes]);
+    return [node.id, {
+      x: CANVAS_PADDING + position.x,
+      y: CANVAS_PADDING + position.y,
+      width: nodeWidths[node.type] || 500,
+      height: nodeSizes[node.id] || nodeHeights[node.type] || 300,
+    }];
+  })), [nodes, nodeSizes]);
+
+  const handleNodeSize = useCallback((nodeId, height) => {
+    setNodeSizes((current) => (Math.abs((current[nodeId] || 0) - height) < 2 ? current : { ...current, [nodeId]: height }));
+  }, []);
 
   function adjustZoom(delta) {
     const oldZoom = zoomRef.current;
@@ -617,10 +683,52 @@ export default function WorkflowScreen({ navigation, route }) {
         }}
         {...pinchResponder.panHandlers}
       >
+        {workflow && (
+          <View style={[styles.execPanel, { top: 8 }]}>
+            <View style={styles.execButtonsRow}>
+              <TouchableOpacity
+                style={[styles.execRunButton, chainRunning && styles.execButtonDisabled]}
+                onPress={() => runChain()}
+                disabled={chainRunning}
+                accessibilityRole="button"
+                accessibilityLabel="Executar workflow"
+              >
+                <Text style={styles.execRunButtonText}>Executar workflow</Text>
+              </TouchableOpacity>
+              {chainRunning && (
+                <TouchableOpacity style={styles.execStopButton} onPress={stopChain} accessibilityRole="button" accessibilityLabel="Parar">
+                  <Text style={styles.execStopButtonText}>Parar</Text>
+                </TouchableOpacity>
+              )}
+              {chainEvents.length > 0 && (
+                <TouchableOpacity style={styles.execToggle} onPress={() => setEventsOpen((current) => !current)} accessibilityRole="button" accessibilityLabel="Execucao">
+                  <Text style={styles.execToggleText}>Execucao{eventsOpen ? '' : ` (${chainEvents.length})`}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {eventsOpen ? (
+              <View style={styles.execEventsList}>
+                {chainEvents.length === 0 ? (
+                  <Text style={styles.emptyText}>Nenhuma execucao nesta sessao.</Text>
+                ) : [...chainEvents].reverse().map((item) => (
+                  <View key={item.id} style={styles.eventRow}>
+                    {item.time ? <Text style={styles.eventTime}>{item.time}</Text> : null}
+                    <Text style={[styles.eventText, item.type === 'error' || item.type === 'cancelled' ? styles.eventTextError : null, item.type === 'done' || item.type === 'complete' ? styles.eventTextDone : null]}>{item.text}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        )}
         {loading ? (
           <View style={styles.emptyState}><ActivityIndicator color={themeColor(colors.purple)} /></View>
         ) : !workflow ? (
-          <View style={styles.emptyState}><Text style={styles.emptyText}>Crie um workflow no desktop para começar.</Text></View>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Nenhum workflow ainda.</Text>
+            <TouchableOpacity style={styles.emptyCreateButton} onPress={() => { setPickerOpen(true); setCreatingWorkflow(true); }}>
+              <Text style={styles.emptyCreateButtonText}>Criar workflow</Text>
+            </TouchableOpacity>
+          </View>
         ) : nodes.length === 0 ? (
           <View style={styles.emptyState}><Text style={styles.emptyText}>Este workflow ainda não tem nós.</Text></View>
         ) : (
@@ -630,14 +738,18 @@ export default function WorkflowScreen({ navigation, route }) {
               {edges.map((edge) => {
                 const source = nodePositions.get(edge.source);
                 const target = nodePositions.get(edge.target);
+                const sourceNode = nodes.find((node) => node.id === edge.source);
+                const targetNode = nodes.find((node) => node.id === edge.target);
                 return source && target ? (
                   <WorkflowEdge
                     key={edge.id || `${edge.source}-${edge.target}`}
                     edge={edge}
-                    sourceX={source.x}
-                    sourceY={source.y}
-                    targetX={target.x}
-                    targetY={target.y}
+                    sourceType={sourceNode?.type}
+                    targetType={targetNode?.type}
+                    sourceHandle={edge.sourceHandle}
+                    targetHandle={edge.targetHandle}
+                    source={source}
+                    target={target}
                   />
                 ) : null;
               })}
@@ -652,13 +764,21 @@ export default function WorkflowScreen({ navigation, route }) {
                   connectMode={connectMode}
                   selectedForConnection={connectSource === node.id}
                   onLink={handleNodeLink}
+                  onMeasure={handleNodeSize}
                   agentRun={agentRuns[node.id]}
                   terminalRun={terminalRuns[node.id]}
                   setTerminalRun={(run) => setTerminalRuns((current) => ({ ...current, [node.id]: run }))}
                   desktopOnline={desktopOnline}
-                  hasFileInput={edges.some((edge) => edge.target === node.id && edge.targetHandle === 'files')}
-                  hasFileOutput={edges.some((edge) => edge.source === node.id && ['output', 'bottom'].includes(edge.sourceHandle))}
-                  onRunAgent={runAgent}
+                  desktopModels={desktopModels}
+                  activeModelName={activeModelName}
+                  chainRunning={chainRunning}
+                  hasFileInput={getAgentFileNodes(node.id, nodes, edges).inputs.length > 0}
+                  hasFileOutput={getAgentFileNodes(node.id, nodes, edges).outputs.length > 0}
+                  hasTerminal={nodes.some((candidate) => candidate.type === 'terminal' && edges.some((edge) => (edge.source === node.id && edge.target === candidate.id) || (edge.target === node.id && edge.source === candidate.id)))}
+                  hasAgentInput={edges.some((edge) => edge.target === node.id && nodes.some((candidate) => candidate.id === edge.source && candidate.type === 'agent'))}
+                  hasAgentOutput={edges.some((edge) => edge.source === node.id && nodes.some((candidate) => candidate.id === edge.target && candidate.type === 'agent'))}
+                  onStartChain={() => runChain({ startAgentId: node.id })}
+                  onRunAgent={runSingleAgent}
                 />
               ))}
             </View>
@@ -674,14 +794,26 @@ export default function WorkflowScreen({ navigation, route }) {
         <Text style={[styles.gestureHint, { bottom: 30 + navbarSpace }]}>Arraste o fundo para mover · pinça para zoom · cabeçalho para mover nós</Text>
       </View>
 
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => { setPickerOpen(false); setCreatingWorkflow(false); setNewWorkflowName(''); setNewWorkflowDescription(''); }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.workflowPicker}>
             <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>Selecionar workflow</Text>
-              <TouchableOpacity onPress={() => setPickerOpen(false)}><Feather name="x" size={20} color={themeColor(colors.muted)} /></TouchableOpacity>
+              <Text style={styles.pickerTitle}>{creatingWorkflow ? 'Criar workflow' : 'Selecionar workflow'}</Text>
+              <TouchableOpacity onPress={() => { setPickerOpen(false); setCreatingWorkflow(false); setNewWorkflowName(''); setNewWorkflowDescription(''); }}><Feather name="x" size={20} color={themeColor(colors.muted)} /></TouchableOpacity>
             </View>
-            <FlatList
+            {creatingWorkflow ? (
+              <View>
+                <TextInput value={newWorkflowName} onChangeText={setNewWorkflowName} placeholder="Nome do workflow" placeholderTextColor={themeColor(colors.muted)} style={styles.createNameInput} selectTextOnFocus />
+                <TextInput value={newWorkflowDescription} onChangeText={setNewWorkflowDescription} placeholder="Descricao (obrigatoria no desktop)" placeholderTextColor={themeColor(colors.muted)} style={styles.createDescriptionInput} multiline selectTextOnFocus />
+                <TouchableOpacity style={styles.createWorkflowButton} onPress={createWorkflow} disabled={!newWorkflowName.trim()}>
+                  <Text style={[styles.emptyCreateButtonText, !newWorkflowName.trim() && styles.createWorkflowDisabled]}>Criar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.backToListButton} onPress={() => setCreatingWorkflow(false)}>
+                  <Text style={styles.backToListText}>Ver lista</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
               data={workflows}
               keyExtractor={(item) => String(item.id_workflow)}
               ListEmptyComponent={<Text style={styles.emptyText}>Nenhum workflow encontrado.</Text>}
@@ -693,6 +825,13 @@ export default function WorkflowScreen({ navigation, route }) {
                 </TouchableOpacity>
               )}
             />
+            )}
+            {!creatingWorkflow ? (
+              <TouchableOpacity style={styles.createWorkflowEntry} onPress={() => setCreatingWorkflow(true)}>
+                <Feather name="plus" size={16} color={themeColor(colors.purple)} />
+                <Text style={styles.createWorkflowEntryText}>Criar novo workflow</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -710,30 +849,106 @@ function ToolButton({ Icon, label, onPress, active = false, color = '#e4e4e7' })
   );
 }
 
-function WorkflowEdge({ sourceX, sourceY, targetX, targetY }) {
+// Ancla no ponto do no que corresponde ao Handle visual do desktop,
+// espelhando os Handles: agente sai da base / entra no topo (cadeia),
+// file e terminal ligam pelas laterais. Handles 'side-*' do canvas novo
+// do desktop valem pelo proprio lado.
+function workflowAnchor(nodeType, handle, rect, role) {
+  const named = ['left', 'right', 'top', 'bottom'].includes(String(handle || '').replace(/^side-/, ''))
+    ? String(handle).replace(/^side-/, '')
+    : null;
+  if (nodeType === 'agent') {
+    if (role === 'source') {
+      const side = named || (handle === 'agent-out' ? 'bottom' : 'right');
+      return anchorAt(side, rect, 5);
+    }
+    const side = named || (handle === 'agent-in' ? 'top' : 'left');
+    return anchorAt(side, rect, 5);
+  }
+  if (nodeType === 'file') {
+    return anchorAt(named || (role === 'source' ? 'right' : 'left'), rect, 5);
+  }
+  if (nodeType === 'text') {
+    return anchorAt(named || (role === 'source' ? 'right' : 'left'), rect, 0);
+  }
+  if (nodeType === 'terminal') {
+    return anchorAt(named || (role === 'source' ? 'right' : 'left'), rect, 6);
+  }
+  return anchorAt(named || (role === 'source' ? 'right' : 'left'), rect, 0);
+}
+
+function anchorAt(side, rect, outset) {
+  if (side === 'left') return { x: rect.x - outset, y: rect.y + rect.height / 2, side };
+  if (side === 'right') return { x: rect.x + rect.width + outset, y: rect.y + rect.height / 2, side };
+  if (side === 'top') return { x: rect.x + rect.width / 2, y: rect.y - outset, side };
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height + outset, side: 'bottom' };
+}
+
+// Bezier na direcao do handle: lateral expande na horizontal, top/bottom na
+// vertical (mesma formula do getBezierPath do react-flow usado no desktop).
+const edgeDashOffset = new Animated.Value(0);
+let edgeDashLoop = null;
+function ensureEdgeDashLoop() {
+  if (edgeDashLoop) return;
+  edgeDashLoop = Animated.loop(
+    Animated.timing(edgeDashOffset, { toValue: -22, duration: 900, useNativeDriver: false }),
+  );
+  edgeDashLoop.start();
+}
+const AnimatedEdgePath = Animated.createAnimatedComponent(Path);
+
+function WorkflowEdge({ edge, sourceType, targetType, sourceHandle, targetHandle, source, target }) {
   const themeColor = useThemeColor();
-  const startX = sourceX + 250;
-  const startY = sourceY + 150;
-  const endX = targetX + 250;
-  const endY = targetY + 150;
-  const padding = 12;
-  const left = Math.min(startX, endX) - padding;
-  const top = Math.min(startY, endY) - padding;
-  const width = Math.max(24, Math.abs(endX - startX) + padding * 2);
-  const height = Math.max(24, Math.abs(endY - startY) + padding * 2);
-  const sx = startX - left;
-  const sy = startY - top;
-  const tx = endX - left;
-  const ty = endY - top;
+  useEffect(() => { ensureEdgeDashLoop(); }, []);
+  const start = workflowAnchor(sourceType, sourceHandle, source, 'source');
+  const end = workflowAnchor(targetType, targetHandle, target, 'target');
+  const curvature = 0.4;
+  const curveX = Math.max(60, Math.abs(end.x - start.x) * curvature);
+  const curveY = Math.max(60, Math.abs(end.y - start.y) * curvature);
+  const control = (point, forward) => {
+    if (point.side === 'right') return { x: point.x + (forward ? curveX : -curveX), y: point.y };
+    if (point.side === 'left') return { x: point.x + (forward ? -curveX : curveX), y: point.y };
+    if (point.side === 'bottom') return { x: point.x, y: point.y + (forward ? curveY : -curveY) };
+    return { x: point.x, y: point.y + (forward ? -curveY : curveY) };
+  };
+  const c1 = control(start, true);
+  const c2 = control(end, false);
+  const padding = 24;
+  const left = Math.min(start.x, end.x, c1.x, c2.x) - padding;
+  const top = Math.min(start.y, end.y, c1.y, c2.y) - padding;
+  const width = Math.max(24, Math.max(start.x, end.x, c1.x, c2.x) - left + padding);
+  const height = Math.max(24, Math.max(start.y, end.y, c1.y, c2.y) - top + padding);
+  const sx = start.x - left;
+  const sy = start.y - top;
+  const tx = end.x - left;
+  const ty = end.y - top;
+  const c1x = c1.x - left;
+  const c1y = c1.y - top;
+  const c2x = c2.x - left;
+  const c2y = c2.y - top;
 
   return (
     <Svg width={width} height={height} style={{ position: 'absolute', left, top }} pointerEvents="none">
-      <Path d={`M ${sx} ${sy} C ${sx + (tx - sx) * 0.4} ${sy}, ${tx - (tx - sx) * 0.4} ${ty}, ${tx} ${ty}`} stroke={themeColor("#8b5cf6")} strokeWidth={5} fill="none" />
+      <Defs>
+        <Marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" orient="auto" markerWidth="7" markerHeight="7">
+          <Path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+        </Marker>
+      </Defs>
+      <AnimatedEdgePath
+        d={`M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${tx} ${ty}`}
+        stroke={themeColor("#8b5cf6")}
+        strokeWidth={2}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={[6, 5]}
+        markerEnd="url(#edge-arrow)"
+        strokeDashoffset={edgeDashOffset}
+      />
     </Svg>
   );
 }
 
-const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIndex, zoomRef, onUpdate, onDelete, connectMode, selectedForConnection, onLink, agentRun, terminalRun, setTerminalRun, desktopOnline, hasFileInput, hasFileOutput, onRunAgent }) {
+const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIndex, zoomRef, onUpdate, onDelete, connectMode, selectedForConnection, onLink, onMeasure, agentRun, terminalRun, setTerminalRun, desktopOnline, desktopModels, activeModelName, chainRunning, hasFileInput, hasFileOutput, hasTerminal, hasAgentInput, hasAgentOutput, onStartChain, onRunAgent }) {
   const styles = useStyles();
   const themeColor = useThemeColor();
   const start = useRef(node.position || { x: 0, y: 0 });
@@ -753,17 +968,40 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
   const label = nodeDisplayName(node);
   const textStyle = type === 'terminal' ? styles.terminalText : styles.nodeText;
   const files = Array.isArray(node.data?.files) ? node.data.files : [];
-  const agentOutput = node.data?.output || agentRun?.output || '';
+  const agentOutput = node.data?.output ?? agentRun?.output ?? '';
   const agentError = node.data?.runError || agentRun?.error || '';
-  const agentStatus = node.data?.runStatus || agentRun?.status || 'idle';
-  const modelValue = node.data?.model || AGENT_MODELS[0].value;
-  const modelLabel = AGENT_MODELS.find((item) => item.value === modelValue)?.label || modelValue;
+  const rawAgentStatus = node.data?.runStatus || agentRun?.status || 'idle';
+  const agentStatus = rawAgentStatus === 'running' || rawAgentStatus === 'waiting' ? 'running' : rawAgentStatus;
+  const chainStatus = agentRun ? ({ waiting: 'Aguardando agentes anteriores', done: 'Concluido', cancelled: 'Interrompido', skipped: 'Nao executado' }[agentRun.status] || '') : '';
+  const received = Array.isArray(node.data?.received) ? node.data.received : [];
+  const [receivedOpen, setReceivedOpen] = useState(false);
+  const modelValue = node.data?.model || activeModelName || '';
+  const modelLabel = modelValue ? String(modelValue).replace(/\.gguf$/i, '') : 'sem modelo';
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelLoading, setModelLoading] = useState(false);
 
-  function updateFile(index, patch) {
-    onUpdate(node.id, {
-      data: { files: files.map((file, fileIndex) => fileIndex === index ? { ...file, ...patch } : file) },
-    });
+  async function selectModel(filename) {
+    if (modelLoading) return;
+    setModelPickerOpen(false);
+    onUpdate(node.id, { data: { model: filename } });
+    if (filename !== activeModelName) {
+      setModelLoading(true);
+      try {
+        const response = await fetch(`${aiUrl()}/api/models/load`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body?.error || 'Falha ao carregar o modelo no desktop.');
+        }
+      } catch (selectError) {
+        onUpdate(node.id, { data: { runError: selectError?.message || 'Falha ao carregar o modelo.' } });
+      } finally {
+        setModelLoading(false);
+      }
+    }
   }
 
   function formatFileSize(bytes = 0) {
@@ -810,65 +1048,97 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
   }
 
   return (
-    <View style={[styles.nodeCard, type === 'agent' && styles.agentNodeCard, type === 'file' && styles.fileNodeCard, type === 'text' && styles.textNodeCard, { left: CANVAS_PADDING + nodePosition.x, top: CANVAS_PADDING + nodePosition.y }]}>
+    <View
+      style={[styles.nodeCard, type === 'agent' && styles.agentNodeCard, type === 'file' && styles.fileNodeCard, type === 'terminal' && styles.terminalNodeCard, type === 'text' && styles.textNodeCard, { left: CANVAS_PADDING + nodePosition.x, top: CANVAS_PADDING + nodePosition.y }]}
+      onLayout={(layoutEvent) => onMeasure?.(node.id, layoutEvent.nativeEvent.layout.height)}
+    >
       {type !== 'text' ? (
-      <View style={[styles.nodeHeader, type === 'agent' && styles.agentNodeHeader, type === 'file' && styles.fileNodeHeader]} {...panResponder.panHandlers}>
+      <View style={[styles.nodeHeader, type === 'agent' && styles.agentNodeHeader, type === 'file' && styles.fileNodeHeader, type === 'terminal' && styles.terminalNodeHeader]} {...panResponder.panHandlers}>
         {type === 'agent' ? (
           <>
-            <Bot size={15} color={themeColor("#a78bfa")} />
+            <Bot size={14} color={themeColor('#71717a')} />
             <TextInput
               value={node.data?.label || 'Agent'}
               onChangeText={(labelText) => onUpdate(node.id, { data: { label: labelText } })}
+              editable={!chainRunning}
               style={styles.agentTitleInput}
               selectTextOnFocus
               accessibilityLabel="Nome do agente"
             />
-            <View style={styles.agentStatus}>
-              <View style={[styles.agentStatusDot, { backgroundColor: agentStatus === 'running' ? '#f59e0b' : agentStatus === 'error' || !desktopOnline ? themeColor('#ef4444') : themeColor('#10b981') }]} />
-              <Text style={[styles.agentStatusText, agentStatus === 'running' && styles.agentRunningText]}>
-                {agentStatus === 'running' ? 'executando...' : agentStatus === 'error' ? 'erro' : desktopOnline ? 'online' : 'offline'}
-              </Text>
-            </View>
-            {hasFileInput ? <Text style={styles.agentFileBadge}>lendo arquivos</Text> : null}
-            {hasFileOutput ? <Text style={styles.agentOutputBadge}>pode editar arquivos</Text> : null}
+            {hasFileInput ? <Text style={styles.agentBadgeRead}>lendo arquivos</Text> : null}
+            {hasFileOutput ? <Text style={styles.agentBadgeEdit}>pode editar arquivos</Text> : null}
+            {hasTerminal ? <Text style={styles.agentBadgeTerminal}>usa terminal</Text> : null}
+            {hasAgentInput ? <Text style={styles.agentBadgeReceive}>recebe task</Text> : null}
+            {hasAgentOutput ? <Text style={styles.agentBadgeSend}>passa task</Text> : null}
+            {agentStatus === 'running' ? (
+              <View style={styles.agentStatus}>
+                <ActivityIndicator size="small" color="#fbbf24" style={styles.agentSpinner} />
+                <Text style={[styles.agentStatusText, styles.agentRunningText]}>executando...</Text>
+              </View>
+            ) : agentStatus === 'error' ? (
+              <View style={styles.agentStatus}>
+                <View style={[styles.agentStatusDot, styles.agentStatusDotError]} />
+                <Text style={[styles.agentStatusText, styles.agentStatusErrorText]}>erro</Text>
+              </View>
+            ) : !hasFileInput && !hasFileOutput && !hasTerminal && !hasAgentInput && !hasAgentOutput ? (
+              <View style={styles.agentStatus}>
+                <View style={[styles.agentStatusDot, styles.agentStatusDotOnline]} />
+                <Text style={styles.agentStatusText}>online</Text>
+              </View>
+            ) : null}
           </>
         ) : type === 'file' ? (
           <>
             <View style={styles.fileNodeHeading}>
-              <Feather name="file-text" size={15} color={themeColor(ACCENTS.blue)} />
-              <Text style={styles.fileNodeTitle}>{label || 'Arquivos'}</Text>
+              <Feather name="file-text" size={14} color={themeColor("#71717a")} />
+              <Text style={styles.fileNodeTitle}>{node.data?.label || 'Arquivos'}</Text>
               {files.length > 0 ? (
                 <View style={styles.fileCountBadge}><Text style={styles.fileCountText}>{files.length}</Text></View>
               ) : null}
             </View>
-            <Feather name="more-vertical" size={15} color={themeColor("#52525b")} />
           </>
         ) : (
           <>
-            <View style={styles.windowDots}>
-              <View style={[styles.dot, { backgroundColor: '#ff6259' }]} />
-              <View style={[styles.dot, { backgroundColor: '#ffbd2e' }]} />
-              <View style={[styles.dot, { backgroundColor: '#28c840' }]} />
+            <View style={styles.terminalDotsRow}>
+              <View style={styles.terminalDot} />
+              <Text style={styles.terminalHeaderText} numberOfLines={1}>{node.data?.label || 'Terminal'}</Text>
+              {node.data?.terminalStatus === 'running' || terminalRun?.running ? <Text style={styles.terminalStatusRunning}>executando...</Text> : null}
+              {node.data?.terminalStatus === 'error' ? <Text style={styles.terminalStatusError}>erro</Text> : null}
             </View>
-            <Text style={styles.nodeTitle} numberOfLines={1}>{label}</Text>
           </>
         )}
-        {connectMode ? (
+          {connectMode ? (
           <TouchableOpacity style={styles.linkButton} onPress={() => onLink(node.id)} accessibilityLabel={`Selecionar conexão de ${label}`}>
             <Feather name="link-2" size={15} color={selectedForConnection ? themeColor(colors.purple) : themeColor('#77737c')} />
           </TouchableOpacity>
-        ) : null}
-        {type !== 'file' ? (
-          <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(node.id)} accessibilityLabel={`Excluir ${label}`}>
-            <Feather name="x" size={16} color={themeColor("#77737c")} />
-          </TouchableOpacity>
-        ) : null}
+        ) : type === 'agent' || type === 'file' ? <GripVertical size={13} color={themeColor('#3f3f46')} /> : type === 'terminal' ? <Text style={styles.terminalDragHint}>⠿ Drag</Text> : null}
+        <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(node.id)} accessibilityLabel={`Excluir ${label}`}>
+          <Feather name="x" size={16} color={themeColor("#77737c")} />
+        </TouchableOpacity>
       </View>
       ) : null}
       {type === 'file' ? (
         <>
           <View style={[styles.filePortDot, styles.filePortLeft]} />
           <View style={[styles.filePortDot, styles.filePortRight]} />
+          <View style={[styles.filePortDot, styles.filePortTopPos]} />
+          <View style={[styles.filePortDot, styles.filePortBottomPos]} />
+        </>
+      ) : null}
+      {type === 'agent' ? (
+        <>
+          <View style={[styles.agentPortDot, styles.agentPortLeft]} />
+          <View style={[styles.agentPortDot, styles.agentPortRight]} />
+          <View style={[styles.agentPortDot, styles.agentPortTopPos]} />
+          <View style={[styles.agentPortDot, styles.agentPortBottomPos]} />
+        </>
+      ) : null}
+      {type === 'terminal' ? (
+        <>
+          <View style={[styles.terminalPortDot, styles.terminalPortLeft]} />
+          <View style={[styles.terminalPortDot, styles.terminalPortRight]} />
+          <View style={[styles.terminalPortDot, styles.terminalPortTop]} />
+          <View style={[styles.terminalPortDot, styles.terminalPortBottom]} />
         </>
       ) : null}
       {type === 'text' ? (
@@ -887,13 +1157,6 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
       ) : type === 'terminal' ? (
         <View style={styles.terminalBody}>
           <TextInput
-            value={node.data?.label || ''}
-            onChangeText={(labelText) => onUpdate(node.id, { data: { label: labelText } })}
-            placeholder="Nome do terminal"
-            placeholderTextColor={themeColor("#71717a")}
-            style={styles.terminalLabelInput}
-          />
-          <TextInput
             value={node.data?.terminalContent || ''}
             onChangeText={(terminalContent) => onUpdate(node.id, { data: { terminalContent } })}
             placeholder="A saída do terminal aparecerá aqui..."
@@ -906,11 +1169,12 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
           />
           {terminalRun?.error ? <Text style={styles.agentError}>{terminalRun.error}</Text> : null}
           <View style={styles.terminalCommandRow}>
+            <Text style={styles.terminalPromptSign} selectable>&gt;</Text>
             <TextInput
               value={node.data?.terminalCommand || ''}
               onChangeText={(terminalCommand) => onUpdate(node.id, { data: { terminalCommand } })}
               placeholder="Digite um comando..."
-              placeholderTextColor={themeColor("#71717a")}
+              placeholderTextColor={themeColor("#52525b")}
               style={styles.terminalCommandInput}
               autoCapitalize="none"
               autoCorrect={false}
@@ -918,46 +1182,98 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
               returnKeyType="go"
             />
             <TouchableOpacity style={styles.terminalRunButton} onPress={executeTerminalCommand} disabled={terminalRun?.running}>
-              {terminalRun?.running ? <ActivityIndicator size="small" color={themeColor("#c4b5fd")} /> : <Feather name="play" size={15} color={themeColor("#c4b5fd")} />}
+              {terminalRun?.running ? <ActivityIndicator size="small" color="#a78bfa" /> : <Feather name="play" size={15} color="#c4b5fd" />}
             </TouchableOpacity>
           </View>
           <Text style={styles.terminalSafetyHint}>Executado no desktop conectado · limite de segurança do desktop</Text>
         </View>
       ) : type === 'agent' ? (
         <View style={styles.agentNodeBody}>
+          {chainStatus ? (
+            <View style={styles.agentChainStatus}>
+              <ActivityIndicator size="small" color="#fbbf24" />
+              <Text style={styles.agentChainStatusText}>{chainStatus}</Text>
+            </View>
+          ) : null}
           <TextInput
             value={node.data?.prompt || ''}
             onChangeText={(prompt) => onUpdate(node.id, { data: { prompt } })}
+            editable={!chainRunning}
             placeholder="Descreva o que este agente deve fazer..."
             placeholderTextColor={themeColor("#52525b")}
             multiline
             style={styles.agentPromptInput}
             textAlignVertical="top"
           />
-          {agentError ? <Text style={styles.agentError}>{agentError}</Text> : null}
+          {hasAgentOutput ? (
+            <View style={styles.agentHandoff}>
+              <Text style={styles.agentHandoffLabel}>Instrucoes para o proximo agente</Text>
+              <TextInput
+                value={node.data?.handoffPrompt || ''}
+                onChangeText={(handoffPrompt) => onUpdate(node.id, { data: { handoffPrompt } })}
+                editable={!chainRunning}
+                placeholder="Ex.: use o plano gerado para implementar e testar os arquivos."
+                placeholderTextColor={themeColor("#52525b")}
+                multiline
+                style={styles.agentHandoffInput}
+                textAlignVertical="top"
+              />
+            </View>
+          ) : null}
+          {received.length > 0 ? (
+            <View style={styles.agentReceivedBox}>
+              <TouchableOpacity onPress={() => setReceivedOpen((current) => !current)} accessibilityRole="button" accessibilityLabel="Instrucoes recebidas">
+                <Text style={styles.agentReceivedToggle}>Instrucoes recebidas ({received.length}){receivedOpen ? '' : ' ▸'}</Text>
+              </TouchableOpacity>
+              {receivedOpen ? received.map((message) => (
+                <View key={message.agentId} style={styles.agentReceivedItem}>
+                  <Text style={styles.agentReceivedFrom}>{message.label}</Text>
+                  <Text style={styles.agentReceivedText} selectable>{message.instruction ? message.instruction + '\n' : ''}{message.output}</Text>
+                </View>
+              )) : null}
+            </View>
+          ) : null}
+          {agentError ? (
+            <View style={styles.agentErrorRow}>
+              <Text style={styles.agentErrorIcon}>⚠</Text>
+              <Text style={styles.agentError}>{agentError}</Text>
+            </View>
+          ) : null}
+          {node.data?.notice ? <Text style={styles.agentNotice}>{node.data.notice}</Text> : null}
           {(agentOutput || agentStatus === 'running') ? (
             <View style={styles.agentOutputPanel}>
-              {agentStatus === 'running' && !agentOutput ? (
-                <View style={styles.agentWaiting}><ActivityIndicator size="small" color={themeColor(colors.purple)} /><Text style={styles.agentWaitingText}>Aguardando resposta...</Text></View>
-              ) : <Text style={styles.agentOutputText} selectable>{agentOutput}</Text>}
+              {agentOutput ? (
+                <Text style={styles.agentOutputText} selectable>{formatAgentOutput(agentOutput)}</Text>
+              ) : (
+                <View style={styles.agentWaiting}><ActivityIndicator size="small" color="#a78bfa" /><Text style={styles.agentWaitingText}>Aguardando resposta...</Text></View>
+              )}
             </View>
           ) : null}
           <View style={styles.agentFooter}>
             <View style={styles.agentModelGroup}>
               <Text style={styles.agentModelLabel}>modelo</Text>
-              <TouchableOpacity style={styles.agentModelButton} onPress={() => setModelPickerOpen(true)} disabled={agentStatus === 'running'}>
-                <Text style={styles.agentModelButtonText} numberOfLines={1}>{modelLabel}</Text>
+              <TouchableOpacity style={styles.agentModelButton} onPress={() => setModelPickerOpen(true)} disabled={agentStatus === 'running' || modelLoading}>
+                <Text style={styles.agentModelButtonText} numberOfLines={1}>{modelLoading ? 'carregando...' : modelLabel}</Text>
                 <Feather name="chevron-down" size={14} color={themeColor("#d4d4d8")} />
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.runButton, agentStatus === 'running' && styles.stopButton]}
-              onPress={() => onRunAgent(node.id)}
-              accessibilityLabel={agentStatus === 'running' ? 'Parar agente' : 'Executar agente'}
-            >
-              <Feather name={agentStatus === 'running' ? 'square' : 'play'} size={12} color={agentStatus === 'running' ? themeColor('#f87171') : themeColor('#c4b5fd')} />
-              <Text style={[styles.runButtonText, agentStatus === 'running' && styles.stopButtonText]}>{agentStatus === 'running' ? 'Parar' : 'Run'}</Text>
-            </TouchableOpacity>
+            <View style={styles.agentRunGroup}>
+              {hasAgentOutput ? (
+                <TouchableOpacity style={[styles.agentChainButton, chainRunning && styles.agentButtonsDisabled]} onPress={onStartChain} disabled={chainRunning} accessibilityRole="button" accessibilityLabel="Executar cadeia">
+                  <Workflow size={10} color="#fcd34d" />
+                  <Text style={styles.agentChainButtonText}>Executar cadeia</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[agentStatus === 'running' ? styles.agentStopButton : styles.agentRunButton, chainRunning && agentStatus !== 'running' && styles.agentButtonsDisabled]}
+                onPress={() => onRunAgent(node.id)}
+                accessibilityRole="button"
+                accessibilityLabel={agentStatus === 'running' ? 'Parar execucao' : 'Executar agente'}
+              >
+                {agentStatus === 'running' ? <Square size={10} color="#a1a1aa" /> : <Play size={10} color="#c4b5fd" />}
+                <Text style={agentStatus === 'running' ? styles.agentStopButtonText : styles.agentRunButtonText}>{agentStatus === 'running' ? 'Parar' : 'So este'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <Modal visible={modelPickerOpen} transparent animationType="fade" onRequestClose={() => setModelPickerOpen(false)}>
             <View style={styles.modalBackdrop}>
@@ -966,16 +1282,18 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
                   <Text style={styles.pickerTitle}>Selecionar modelo</Text>
                   <TouchableOpacity onPress={() => setModelPickerOpen(false)}><Feather name="x" size={20} color={themeColor(colors.muted)} /></TouchableOpacity>
                 </View>
-                {AGENT_MODELS.map((model) => (
-                  <TouchableOpacity
-                    key={model.value}
-                    style={styles.workflowOption}
-                    onPress={() => { onUpdate(node.id, { data: { model: model.value } }); setModelPickerOpen(false); }}
-                  >
-                    <Text style={styles.optionText}>{model.label}</Text>
-                    {model.value === modelValue ? <Feather name="check" size={17} color={themeColor(colors.purple)} /> : null}
+                {desktopModels.length ? desktopModels.map((model) => {
+                  const filename = model.filename;
+                  return (
+                  <TouchableOpacity key={filename} style={styles.workflowOption} onPress={() => selectModel(filename)}>
+                    <Text style={styles.optionText}>{String(filename).replace(/\.gguf$/i, '')}</Text>
+                    <Text style={styles.optionSizeText}>{model.sizeMB ? model.sizeMB + ' MB' : ''}</Text>
+                    {filename === activeModelName ? <Feather name="check" size={17} color={themeColor(colors.purple)} /> : null}
                   </TouchableOpacity>
-                ))}
+                  );
+                }) : (
+                  <Text style={styles.emptyText}>Conecte ao desktop para listar os modelos instalados.</Text>
+                )}
               </View>
             </View>
           </Modal>
@@ -995,44 +1313,33 @@ const WorkflowNodeCard = React.memo(function WorkflowNodeCard({ node, fallbackIn
         {type === 'file' ? (
           <View style={styles.fileNodeContent}>
             <TouchableOpacity style={styles.fileDropzone} onPress={pickFiles} activeOpacity={0.75}>
-              <Feather name="upload" size={20} color={themeColor("#52525b")} />
+              <Feather name="upload" size={18} color={themeColor("#52525b")} />
               <Text style={styles.fileDropzoneText}>Clique para selecionar arquivo</Text>
             </TouchableOpacity>
             {node.data?.fileError ? <Text style={styles.agentError}>{node.data.fileError}</Text> : null}
             {files.map((file, index) => (
-              <View key={`${file.fileName}-${index}`} style={styles.fileCard}>
+              <View key={`${file.filePath || file.fileName}-${index}`} style={styles.fileCard}>
                 <View style={styles.fileCardHeader}>
-                  <Feather name="file-text" size={13} color={themeColor("#71717a")} />
-                  <TextInput
-                    value={file.fileName || ''}
-                    onChangeText={(fileName) => updateFile(index, { fileName })}
-                    placeholder="Nome do arquivo"
-                    placeholderTextColor={themeColor(colors.muted)}
-                    style={styles.fileNameInput}
-                    autoCapitalize="none"
-                    numberOfLines={1}
-                  />
-                  <Text style={styles.fileSizeText}>{formatFileSize(file.fileSize)}</Text>
-                  <TouchableOpacity
-                    style={styles.removeFileButton}
-                    onPress={() => onUpdate(node.id, { data: { files: files.filter((_, fileIndex) => fileIndex !== index) } })}
-                    accessibilityLabel={`Remover ${file.fileName || 'arquivo'}`}
-                  >
-                    <Feather name="x" size={13} color={themeColor("#71717a")} />
-                  </TouchableOpacity>
+                  <View style={styles.fileCardTitle}>
+                    <Feather name="file-text" size={12} color="#71717a" />
+                    <View style={styles.fileCardTextGroup}>
+                      <Text style={styles.fileCardName} numberOfLines={1}>{file.fileName || 'Arquivo'}</Text>
+                      {file.filePath ? <Text style={styles.fileCardPath} numberOfLines={1}>{file.filePath}</Text> : null}
+                    </View>
+                  </View>
+                  <View style={styles.fileCardActions}>
+                    <Text style={styles.fileSizeText}>{formatFileSize(file.fileSize)}</Text>
+                    <TouchableOpacity
+                      style={styles.removeFileButton}
+                      onPress={() => onUpdate(node.id, { data: { files: files.filter((_, fileIndex) => fileIndex !== index) } })}
+                      accessibilityLabel={`Remover ${file.fileName || 'arquivo'}`}
+                    >
+                      <Feather name="x" size={11} color="#71717a" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.fileContentPreview}>
-                  <TextInput
-                    value={file.fileContent || ''}
-                    onChangeText={(fileContent) => updateFile(index, { fileContent, fileSize: fileContent.length })}
-                    placeholder="Arquivo vazio"
-                    placeholderTextColor={themeColor("#71717a")}
-                    multiline
-                    style={styles.fileContentInput}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textAlignVertical="top"
-                  />
+                  <Text style={styles.fileContentPreviewText} selectable>{file.fileContent || 'Arquivo vazio'}</Text>
                 </View>
               </View>
             ))}
@@ -1071,83 +1378,119 @@ const useStyles = createThemedStyles({
   emptyState: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', padding: 30 },
   emptyText: { color: colors.muted, textAlign: 'center', fontSize: 13 },
   nodeCard: { position: 'absolute', width: CARD_WIDTH, minHeight: CARD_HEIGHT, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#38363b', backgroundColor: colors.panel, elevation: 8 },
-  agentNodeCard: { width: 520, backgroundColor: '#151515', borderRadius: 24, borderColor: '#27272a' },
-  fileNodeCard: { width: 360, minHeight: 0, backgroundColor: '#151515', borderRadius: 22, borderColor: '#27272a' },
+  agentNodeCard: { width: 520, backgroundColor: '#181818', borderRadius: 16, borderColor: '#27272a' },
+  fileNodeCard: { width: 360, minHeight: 0, backgroundColor: '#181818', borderRadius: 16, borderColor: '#27272a' },
+  terminalNodeCard: { width: 560, minHeight: 0, backgroundColor: '#09090b', borderRadius: 12, borderColor: '#3f3f46CC' },
   textNodeCard: { width: 180, minHeight: 90, overflow: 'visible', borderWidth: 0, borderRadius: 0, backgroundColor: 'transparent', elevation: 0 },
   nodeHeader: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, backgroundColor: '#f3f3f3' },
-  agentNodeHeader: { height: 62, justifyContent: 'flex-start', gap: 10, paddingHorizontal: 18, backgroundColor: '#151515', borderBottomWidth: 1, borderBottomColor: '#27272a' },
-  fileNodeHeader: { height: 58, paddingHorizontal: 17, backgroundColor: '#151515', borderBottomWidth: 1, borderBottomColor: '#27272a' },
-  filePortDot: { position: 'absolute', zIndex: 2, top: '50%', width: 8, height: 8, borderRadius: 4, backgroundColor: '#8b5cf6' },
-  filePortLeft: { left: -4 },
-  filePortRight: { right: -4 },
+  agentNodeHeader: { height: 44, justifyContent: 'flex-start', gap: 10, paddingHorizontal: 16, backgroundColor: '#181818', borderBottomWidth: 1, borderBottomColor: '#27272aCC' },
+  fileNodeHeader: { height: 44, paddingHorizontal: 16, backgroundColor: '#181818', borderBottomWidth: 1, borderBottomColor: '#27272aCC' },
+  terminalNodeHeader: { height: 40, paddingHorizontal: 14, backgroundColor: '#18181bE6', borderBottomWidth: 1, borderBottomColor: '#27272a' },
+  filePortDot: { position: 'absolute', zIndex: 2, width: 10, height: 10, borderRadius: 5, backgroundColor: '#8b5cf6', borderWidth: 2, borderColor: '#181818' },
+  filePortLeft: { top: '50%', marginTop: -5, left: -5 },
+  filePortRight: { top: '50%', marginTop: -5, right: -5 },
+  filePortTopPos: { top: -5, left: '50%', marginLeft: -5 },
+  filePortBottomPos: { bottom: -5, left: '50%', marginLeft: -5 },
+  agentPortDot: { position: 'absolute', zIndex: 2, width: 10, height: 10, borderRadius: 5, backgroundColor: '#8b5cf6', borderWidth: 2, borderColor: '#181818' },
+  agentPortLeft: { top: '50%', marginTop: -5, left: -5 },
+  agentPortRight: { top: '50%', marginTop: -5, right: -5 },
+  agentPortTopPos: { top: -5, left: '50%', marginLeft: -5 },
+  agentPortBottomPos: { bottom: -5, left: '50%', marginLeft: -5 },
+  terminalPortDot: { position: 'absolute', zIndex: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: '#8b5cf6', borderWidth: 2, borderColor: '#18181b' },
+  terminalPortLeft: { top: '50%', marginTop: -6, left: -6 },
+  terminalPortRight: { top: '50%', marginTop: -6, right: -6 },
+  terminalPortTop: { top: -6, left: '50%', marginLeft: -6 },
+  terminalPortBottom: { bottom: -6, left: '50%', marginLeft: -6 },
   fileNodeHeading: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  fileNodeTitle: { color: '#e4e4e7', fontSize: 13, fontWeight: '600' },
-  fileCountBadge: { minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#8b5cf633', paddingHorizontal: 7 },
-  fileCountText: { color: '#a78bfa', fontSize: 10, fontWeight: '600' },
-  windowDots: { width: 55, flexDirection: 'row', gap: 7 },
-  dot: { width: 14, height: 14, borderRadius: 7 },
-  nodeTitle: { flex: 1, color: '#4b4b4b', textAlign: 'center', fontSize: 15, fontWeight: '600' },
-  agentTitleInput: { color: '#e4e4e7', fontSize: 14, fontWeight: '600', minWidth: 44, maxWidth: 90, padding: 0 },
+  fileNodeTitle: { color: '#e4e4e7', fontSize: 12, fontWeight: '500' },
+  fileCountBadge: { minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#8b5cf626', paddingHorizontal: 6 },
+  fileCountText: { color: '#a78bfa', fontSize: 9, fontWeight: '500' },
+  agentTitleInput: { color: '#e4e4e7', fontSize: 12, fontWeight: '500', minWidth: 44, maxWidth: 112, padding: 0 },
   agentStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  agentStatusDot: { width: 8, height: 8, borderRadius: 4 },
-  agentStatusText: { color: '#71717a', fontSize: 11 },
+  agentStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  agentStatusDotOnline: { backgroundColor: '#10b981' },
+  agentStatusDotError: { backgroundColor: '#ef4444' },
+  agentStatusText: { color: '#52525b', fontSize: 9 },
   agentRunningText: { color: '#fbbf24' },
-  agentFileBadge: { color: '#a78bfa', fontSize: 9, backgroundColor: '#8b5cf622', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8 },
-  agentOutputBadge: { color: '#34d399', fontSize: 9, backgroundColor: '#10b9811a', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8 },
+  agentStatusErrorText: { color: '#f87171' },
+  agentSpinner: { transform: [{ scale: 0.55 }], marginRight: -4 },
+  agentBadgeRead: { color: '#a78bfa', fontSize: 9, fontWeight: '500', backgroundColor: '#8b5cf626', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9 },
+  agentBadgeEdit: { color: '#34d399', fontSize: 9, fontWeight: '500', backgroundColor: '#10b98119', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9 },
+  agentBadgeTerminal: { color: '#7dd3fc', fontSize: 9, fontWeight: '500', backgroundColor: '#0ea5e926', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9 },
+  agentBadgeReceive: { color: '#fbbf24', fontSize: 9, fontWeight: '500', backgroundColor: '#f59e0b19', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9 },
+  agentBadgeSend: { color: '#fcd34d', fontSize: 9, fontWeight: '500', backgroundColor: '#f59e0b26', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 9 },
+  terminalDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#10b981CC' },
+  terminalHeaderText: { flex: 1, color: '#e4e4e7', fontSize: 12, fontWeight: '600', fontFamily: 'monospace' },
+  terminalStatusRunning: { color: '#fbbf24', fontSize: 10, fontFamily: 'monospace' },
+  terminalStatusError: { color: '#f87171', fontSize: 10, fontFamily: 'monospace' },
+  terminalDragHint: { color: '#71717a', fontSize: 10, fontFamily: 'monospace' },
   linkButton: { width: 26, alignItems: 'center', justifyContent: 'center' },
   deleteButton: { width: 32, alignItems: 'flex-end', justifyContent: 'center' },
   nodeBody: { minHeight: 250, padding: 18, backgroundColor: '#242326' },
-  fileNodeBody: { minHeight: 0, padding: 0, backgroundColor: '#151515' },
+  fileNodeBody: { minHeight: 0, padding: 0, backgroundColor: '#181818' },
   textNodeBody: { width: 180, height: 90, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   workflowTextInput: { width: 180, height: 90, color: '#e4e4e7', fontSize: 13, lineHeight: 19, padding: 0, backgroundColor: 'transparent' },
-  fileNodeContent: { paddingHorizontal: 15, paddingTop: 13, paddingBottom: 11 },
-  fileDropzone: { height: 108, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: '#303036', borderRadius: 15, backgroundColor: '#161617' },
-  fileDropzoneText: { color: '#71717a', fontSize: 12 },
-  fileCard: { overflow: 'hidden', marginTop: 15, borderWidth: 1, borderColor: '#303036', borderRadius: 17, backgroundColor: '#111112' },
-  fileCardHeader: { minHeight: 43, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12 },
-  fileNameInput: { flex: 1, minWidth: 0, color: '#d4d4d8', fontSize: 12, paddingVertical: 5 },
+  fileNodeContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
+  fileDropzone: { alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderColor: '#27272a', borderRadius: 12, paddingVertical: 20 },
+  fileDropzoneText: { color: '#71717a', fontSize: 11 },
+  fileCard: { overflow: 'hidden', marginTop: 12, borderWidth: 1, borderColor: '#27272a', borderRadius: 12, backgroundColor: '#09090b66' },
+  fileCardHeader: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  fileCardTitle: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fileCardTextGroup: { flex: 1, minWidth: 0 },
+  fileCardName: { color: '#d4d4d8', fontSize: 11 },
+  fileCardPath: { color: '#3f3f46', fontSize: 8, marginTop: 1 },
+  fileCardActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fileSizeText: { color: '#52525b', fontSize: 10 },
-  removeFileButton: { width: 23, height: 28, alignItems: 'center', justifyContent: 'center' },
-  fileContentPreview: { borderTopWidth: 1, borderTopColor: '#27272a', paddingHorizontal: 12, paddingVertical: 9 },
-  fileNodeFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 18, paddingBottom: 1 },
-  fileFooterCount: { color: '#52525b', fontSize: 10 },
-  fileFooterDot: { color: '#3f3f46', fontSize: 10 },
-  fileFooterPort: { color: '#8b5cf6', fontSize: 10 },
-  agentNodeBody: { minHeight: 188, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12, backgroundColor: '#151515' },
-  agentPromptInput: { minHeight: 82, color: '#e4e4e7', fontSize: 14, lineHeight: 21, padding: 0 },
-  agentError: { color: '#f87171', fontSize: 11, lineHeight: 16, marginTop: 8 },
-  agentOutputPanel: { maxHeight: 190, borderTopWidth: 1, borderTopColor: '#27272a', marginTop: 8, paddingTop: 10 },
-  agentOutputText: { color: '#d4d4d8', fontSize: 11, lineHeight: 16, fontFamily: 'monospace' },
+  removeFileButton: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 4 },
+  fileContentPreview: { borderTopWidth: 1, borderTopColor: '#27272a', padding: 12 },
+  fileContentPreviewText: { maxHeight: 208, color: '#a1a1aa', fontSize: 10, lineHeight: 16, fontFamily: 'monospace' },
+  fileNodeFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 12 },
+  fileFooterCount: { color: '#52525b', fontSize: 9 },
+  fileFooterDot: { color: '#27272a', fontSize: 9 },
+  fileFooterPort: { color: '#8b5cf699', fontSize: 9 },
+  agentNodeBody: { minHeight: 188, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, backgroundColor: '#181818' },
+  agentChainStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#27272aCC', marginBottom: 6 },
+  agentChainStatusText: { color: '#fbbf24', fontSize: 10 },
+  agentPromptInput: { minHeight: 60, color: '#e4e4e7', fontSize: 13, lineHeight: 20, padding: 0 },
+  agentHandoff: { marginTop: 12, marginBottom: 12 },
+  agentHandoffLabel: { color: '#fbbf24', fontSize: 10, marginBottom: 4 },
+  agentHandoffInput: { borderWidth: 1, borderColor: '#3e2414', borderRadius: 4, backgroundColor: '#09090b', padding: 8, color: '#e4e4e7', fontSize: 12, minHeight: 48, textAlignVertical: 'top' },
+  agentReceivedBox: { borderWidth: 1, borderColor: '#3e2414', borderRadius: 4, padding: 8, marginBottom: 12 },
+  agentReceivedToggle: { color: '#fcd34d', fontSize: 12 },
+  agentReceivedItem: { marginTop: 8, maxWidth: 192 },
+  agentReceivedFrom: { color: '#e4e4e7', fontSize: 12, fontWeight: '600' },
+  agentReceivedText: { color: '#d4d4d8', fontSize: 12, lineHeight: 17, marginTop: 2 },
+  agentErrorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 12, borderTopWidth: 1, borderTopColor: '#27272aCC', paddingTop: 12 },
+  agentErrorIcon: { color: '#f87171', fontSize: 10, marginTop: 2 },
+  agentError: { flex: 1, color: '#f87171', fontSize: 11, lineHeight: 16 },
+  agentNotice: { color: '#fcd34d', fontSize: 12, marginTop: 8 },
+  agentOutputPanel: { maxHeight: 320, borderTopWidth: 1, borderTopColor: '#27272aCC', marginTop: 12, paddingTop: 12 },
+  agentOutputText: { color: '#d4d4d8', fontSize: 11, lineHeight: 18, fontFamily: 'monospace' },
   agentWaiting: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7 },
-  agentWaitingText: { color: '#71717a', fontSize: 11 },
-  agentFooter: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  agentWaitingText: { color: '#52525b', fontSize: 11 },
+  agentFooter: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 },
   agentModelGroup: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 },
-  agentModelLabel: { color: '#71717a', fontSize: 10 },
-  agentModelButton: { maxWidth: 220, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#303036', borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#1b1b1e' },
+  agentModelLabel: { color: '#52525b', fontSize: 9 },
+  agentModelButton: { maxWidth: 220, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#303036', borderRadius: 8, paddingHorizontal: 12, backgroundColor: '#1b1b1e' },
   agentModelButtonText: { color: '#e4e4e7', fontSize: 11, flexShrink: 1 },
-  runButton: { minWidth: 72, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginLeft: 10, borderRadius: 13, paddingHorizontal: 12, backgroundColor: '#8b5cf633' },
-  runButtonText: { color: '#c4b5fd', fontSize: 12, fontWeight: '600' },
-  stopButton: { backgroundColor: '#ef444422' },
-  stopButtonText: { color: '#f87171' },
+  agentRunGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  agentChainButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: '#f59e0b26' },
+  agentChainButtonText: { color: '#fcd34d', fontSize: 11, fontWeight: '500' },
+  agentRunButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: '#8b5cf626' },
+  agentRunButtonText: { color: '#c4b5fd', fontSize: 11, fontWeight: '500' },
+  agentStopButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: '#ef444419' },
+  agentStopButtonText: { color: '#f87171', fontSize: 11, fontWeight: '500' },
+  agentButtonsDisabled: { opacity: 0.5 },
   terminalText: { color: '#f0eff2', fontSize: 15, lineHeight: 22, fontFamily: 'monospace' },
-  terminalBody: { minHeight: 270, padding: 14, backgroundColor: '#0c0c0e' },
-  terminalLabelInput: { minHeight: 34, color: '#e4e4e7', fontSize: 12, fontWeight: '600', borderBottomWidth: 1, borderBottomColor: '#27272a', marginBottom: 8, paddingVertical: 4 },
-  terminalEditor: { minHeight: 130, maxHeight: 220, color: '#d4d4d8', fontSize: 11, lineHeight: 16, fontFamily: 'monospace', textAlignVertical: 'top', padding: 8, backgroundColor: '#101012', borderRadius: 8 },
-  terminalCommandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  terminalCommandInput: { flex: 1, minHeight: 40, color: '#e4e4e7', fontSize: 12, fontFamily: 'monospace', borderWidth: 1, borderColor: '#303036', borderRadius: 8, paddingHorizontal: 10 },
+  terminalBody: { minHeight: 0, padding: 8, backgroundColor: '#101012' },
+  terminalEditor: { height: 320, color: '#a1a1aa', fontSize: 11, lineHeight: 16, fontFamily: 'monospace', textAlignVertical: 'top', padding: 0 },
+  terminalPromptSign: { color: '#34d399', fontSize: 12, fontFamily: 'monospace' },
+  terminalCommandRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#27272a' },
+  terminalCommandInput: { flex: 1, minHeight: 38, color: '#e4e4e7', fontSize: 12, fontFamily: 'monospace', backgroundColor: '#111113', borderRadius: 6, paddingHorizontal: 10 },
   terminalRunButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#8b5cf633' },
   terminalSafetyHint: { color: '#52525b', fontSize: 9, marginTop: 7 },
   nodeText: { color: colors.text, fontSize: 15, lineHeight: 22 },
   labelInput: { minHeight: 38, color: colors.text, fontSize: 14, fontWeight: '600', borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 12, paddingVertical: 6 },
-  modelInput: { minHeight: 38, color: colors.text, fontSize: 13, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 12, paddingVertical: 6 },
-  fileTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fileNameInput: { flex: 1, minWidth: 0, color: '#d4d4d8', fontSize: 12, paddingVertical: 5 },
-  fileContentInput: { minHeight: 34, maxHeight: 170, color: '#a1a1aa', fontSize: 11, lineHeight: 17, fontFamily: 'monospace', padding: 0 },
-  addFileButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  addFileText: { color: colors.purple, fontSize: 12 },
-  fileEntry: { marginBottom: 12 },
-  fileContent: { color: colors.muted, fontSize: 13, lineHeight: 19, marginTop: 4 },
-  textInput: { minHeight: 210, color: colors.text, fontSize: 17, lineHeight: 24, textAlignVertical: 'top' },
   zoomControls: { position: 'absolute', right: 12, bottom: 20, alignItems: 'center', borderColor: colors.border, borderWidth: 1, borderRadius: 13, padding: 5, backgroundColor: '#222126' },
   zoomButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   zoomLabel: { color: colors.muted, fontSize: 10, paddingVertical: 2 },
@@ -1158,4 +1501,30 @@ const useStyles = createThemedStyles({
   pickerTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
   workflowOption: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderTopColor: colors.border },
   optionText: { flex: 1, color: colors.text, fontSize: 14 },
+  optionSizeText: { color: colors.muted, fontSize: 10 },
+  createNameInput: { color: colors.text, fontSize: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, minHeight: 44, marginBottom: 10 },
+  createDescriptionInput: { color: colors.text, fontSize: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, minHeight: 64, marginBottom: 10, textAlignVertical: 'top' },
+  createWorkflowButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#8b5cf633' },
+  createWorkflowDisabled: { color: '#71717a' },
+  backToListButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  backToListText: { color: colors.muted, fontSize: 12 },
+  createWorkflowEntry: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 },
+  createWorkflowEntryText: { color: colors.purple, fontSize: 13, fontWeight: '600' },
+  execPanel: { position: 'absolute', left: 16, top: 16, zIndex: 5, alignSelf: 'flex-start', maxWidth: 448, borderWidth: 1, borderColor: '#3f3f46', borderRadius: 8, backgroundColor: '#09090b', padding: 8, gap: 8, elevation: 8 },
+  execButtonsRow: { flexDirection: 'row', gap: 8 },
+  execRunButton: { borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#7c3aed' },
+  execButtonDisabled: { opacity: 0.4 },
+  execRunButtonText: { color: '#e4e4e7', fontSize: 12 },
+  execStopButton: { borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#450a0a' },
+  execStopButtonText: { color: '#fca5a5', fontSize: 12 },
+  execToggle: { borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#18181b' },
+  execToggleText: { color: '#e4e4e7', fontSize: 12 },
+  execEventsList: { maxHeight: 288, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#27272a' },
+  eventRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#27272a99' },
+  eventTime: { color: '#52525b', fontSize: 10, paddingVertical: 2 },
+  eventText: { flex: 1, color: colors.muted, fontSize: 12, lineHeight: 17 },
+  eventTextError: { color: '#f87171' },
+  eventTextDone: { color: '#34d399' },
+  emptyCreateButton: { marginTop: 14, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#8b5cf633', paddingHorizontal: 18 },
+  emptyCreateButtonText: { color: '#c4b5fd', fontSize: 13, fontWeight: '600' },
 });

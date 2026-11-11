@@ -91,6 +91,8 @@ const sheets = {
 
   // ── Workflows ───────────────────────────────────────────────────────
   getWorkflows: () => api.get("/workflow"),
+  createWorkflow: (data) => api.post("/workflow", data),
+  deleteWorkflow: (id) => api.delete(`/workflow/${id}`),
   getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
   saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
 
