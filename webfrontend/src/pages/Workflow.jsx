@@ -18,7 +18,7 @@ import "@xyflow/react/dist/style.css";
 import TerminalNode from "@/components/terminalNode";
 import AgentNode from "@/components/agentNode";
 import FlowEdge from "@/components/FlowEdge";
-import FileNode from "@/components/FileNode";
+import FileNode from "@/components/fileNode";
 import { WorkflowExecutionProvider } from "@/contexts/WorkflowExecutionContext";
 import WorkflowExecutionPanel from "@/components/WorkflowExecutionPanel";
 import WorkflowText from "@/components/workflowText";
