@@ -2,11 +2,15 @@
 import axios from "axios";
 
 const getBaseURL = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  // Em páginas carregadas sob HTTPS (como na Vercel), navegadores bloqueiam chamadas HTTP
+  // por erro de Mixed Content. Usamos a rota relativa "/api/osiris" que o vercel.json faz proxy.
   if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith("https://")) {
+      return import.meta.env.VITE_API_URL;
+    }
     return "/api/osiris";
   }
-  return "http://163.176.45.118:5000/api/osiris";
+  return import.meta.env.VITE_API_URL || "http://163.176.45.118:5000/api/osiris";
 };
 
 const api = axios.create({
