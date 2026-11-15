@@ -1,3 +1,5 @@
+// aiModelController.js — cadastro, consulta, varredura e recomendação de modelos de IA da API.
+// A varredura olha só a pasta de modelos da própria API, nunca uma pasta escolhida pelo usuário.
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 const ModelScanService = require("../services/modelScanService");
@@ -174,8 +176,8 @@ class AiModelController {
 
   static async scanModels(req, res, next) {
     try {
-      const { directory_path } = req.body || {};
-      const files = ModelScanService.scanDirectory(directory_path);
+      // Só a pasta de modelos da API: o usuário não escolhe pastas do servidor.
+      const files = ModelScanService.scanDirectory();
 
       const [modelRows] = await pool.promise().execute(
         `SELECT id_model, name, download_url FROM ai_model`,

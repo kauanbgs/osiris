@@ -1,3 +1,5 @@
+// modelScanService.js — procura arquivos de modelo (.gguf e .bin) na pasta de modelos da API.
+// Não aceita outra pasta: assim ninguém lista diretórios do servidor por esta rota.
 const fs = require("fs");
 const path = require("path");
 
@@ -10,10 +12,8 @@ class ModelScanService {
     return defaultDir;
   }
 
-  static scanDirectory(customDir) {
-    const targetDir = customDir && fs.existsSync(customDir)
-      ? customDir
-      : this.getModelsDirectory();
+  static scanDirectory() {
+    const targetDir = this.getModelsDirectory();
 
     const results = [];
     const files = fs.readdirSync(targetDir);
