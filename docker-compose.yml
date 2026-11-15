@@ -1,3 +1,5 @@
+# docker-compose.yml — sobe o MySQL e a API do Osíris em containers.
+# Senhas, chave dos tokens e CORS não têm valor padrão: precisam vir do arquivo .env.
 services:
   mysql:
     image: mysql:8.0
@@ -5,17 +7,17 @@ services:
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD no arquivo .env}
       MYSQL_DATABASE: ${DB_NAME:-osiris}
       MYSQL_USER: ${DB_USER:-osiris_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-osiris_password}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no arquivo .env}
     ports:
       - "${DB_PORT:-3308}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./osiris-api/mysql-init/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD:-root} || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,11 +39,11 @@ services:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_USER: ${DB_USER:-osiris_user}
-      DB_PASSWORD: ${DB_PASSWORD:-osiris_password}
+      DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no arquivo .env}
       DB_NAME: ${DB_NAME:-osiris}
-      JWT_SECRET: ${JWT_SECRET:-osiris_jwt_super_secret_key_2026}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no arquivo .env com um valor longo e aleatório}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Defina CORS_ORIGIN no arquivo .env com o endereço do frontend}
     volumes:
       - api_uploads:/app/uploads
     depends_on:
