@@ -1,3 +1,5 @@
+// SettingsScreen.js — tela de Configurações do celular: IP do PC, teste de conexão, modelo de IA, memória e logout.
+// O teste de conexão confere separado a API da nuvem e o app desktop no IP informado.
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -9,7 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getIP, saveIP, loadIP, apiUrl } from "../services/serverConfig";
+import { getIP, saveIP, loadIP, apiUrl, aiUrl } from "../services/serverConfig";
+import { getDesktopStatus } from "../services/desktopModels";
 import sheets from "../services/api";
 import { NavbarSpacer } from "../components/Navbar";
 import { BACKGROUND, THEMES, createThemedStyles, useTheme, useThemeColor, ACCENTS } from "../theme";
@@ -46,29 +49,44 @@ export default function SettingsScreen({ navigation, route }) {
     }
   }
 
+  // Testa as duas conexões separadas: a API da nuvem (login, chats) e o app desktop deste IP (terminal, arquivos).
   async function handleTest() {
     const value = ip.trim();
     if (!value) {
       Alert.alert("Erro", "Digite o IP antes de testar.");
       return;
     }
+    setTesting(true);
+    setStatus("");
+    await saveIP(value);
+
+    let resultadoApi;
     try {
-      setTesting(true);
-      setStatus("");
-      await saveIP(value);
       await sheets.health();
-      setStatus("OK: API alcançável.");
-      Alert.alert("Sucesso", `API respondeu em ${apiUrl()}`);
+      resultadoApi = "API: OK";
     } catch (e) {
       const msg =
         e.code === "ECONNABORTED" || String(e.message || "").includes("timeout")
-          ? "Timeout: IP inacessível ou API fora do ar."
+          ? "não respondeu a tempo"
           : e.response?.data?.error?.message || e.message;
-      setStatus(`Falha: ${msg}`);
-      Alert.alert("Falha", `${msg}\n\nTentado: ${apiUrl()}/health`);
-    } finally {
-      setTesting(false);
+      resultadoApi = `API: falha (${msg})`;
     }
+
+    let resultadoDesktop;
+    try {
+      await getDesktopStatus();
+      resultadoDesktop = "Desktop: OK";
+    } catch (e) {
+      resultadoDesktop = `Desktop: falha (${e.message})`;
+    }
+
+    const resumo = `${resultadoApi}\n${resultadoDesktop}`;
+    setStatus(resumo);
+    Alert.alert(
+      "Teste de conexão",
+      `${resumo}\n\nAPI: ${apiUrl()}\nDesktop: ${aiUrl()}`,
+    );
+    setTesting(false);
   }
 
   async function handleOpenMemory() {

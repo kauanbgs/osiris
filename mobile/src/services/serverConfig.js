@@ -1,3 +1,5 @@
+// serverConfig.js — endereços que o celular usa: a API da nuvem (fixa) e o app desktop (IP do PC salvo no aparelho).
+// O IP do PC é escolhido em Configurações e fica guardado no AsyncStorage.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEY = "@osiris/desktop_ip";
@@ -8,14 +10,8 @@ let IP = "192.168.0.7";
 export async function loadIP() {
   try {
     const saved = await AsyncStorage.getItem(KEY);
-    if (saved && saved.trim()) {
-      if (saved.trim() === "172.20.10.3") {
-        IP = "192.168.0.7";
-        await AsyncStorage.setItem(KEY, IP);
-      } else {
-        IP = saved.trim();
-      }
-    }
+    // Respeita o IP que o usuário salvou; o padrão só vale enquanto nada foi configurado.
+    if (saved && saved.trim()) IP = saved.trim();
   } catch {}
   return IP;
 }

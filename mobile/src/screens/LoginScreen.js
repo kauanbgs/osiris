@@ -1,3 +1,5 @@
+// LoginScreen.js — tela de login do celular: valida o formulário, entra na conta e guarda o token.
+// O login vai para a API da nuvem; o IP do PC só importa para terminal, arquivos e modelos locais.
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,7 +15,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import DotField from "../components/DotField";
 import { KeyboardAvoider } from "../components/KeyboardAware";
 import api from "../services/api";
-import { getIP } from "../services/serverConfig";
 import { createThemedStyles, useTheme, useThemeColor } from "../theme";
 
 export default function Login({ navigation }) {
@@ -63,9 +64,9 @@ export default function Login({ navigation }) {
       const message =
         (typeof backendMsg === "string" && backendMsg) ||
         (isTimeout
-          ? `Tempo esgotado ao conectar em ${getIP()}:5000. Verifique se o celular está no mesmo Wi-Fi do PC, se a API está rodando e se o IP em "Configurar servidor" está correto.`
+          ? "Tempo esgotado ao conectar ao servidor do Osíris. Verifique a internet do celular e tente novamente."
           : error.request
-            ? "Não foi possível conectar à API. Verifique se ela está rodando e se o endereço do servidor está correto."
+            ? "Não foi possível conectar ao servidor do Osíris. Verifique a internet do celular e tente novamente."
             : error.message) ||
         "Não foi possível realizar o login.";
 
