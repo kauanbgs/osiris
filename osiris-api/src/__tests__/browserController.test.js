@@ -1,3 +1,5 @@
+// browserController.test.js — testes das rotas do Navegador: sessões, cliques e proxy do modo web.
+// O proxy é testado com ticket válido, sem ticket, com destinos internos e com redirecionamento para a rede interna.
 jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const {
@@ -8,10 +10,50 @@ const {
 } = require("./helpers/apiTest");
 const BrowserService = require("../services/browserService");
 
+// Página falsa usada nos testes: o Navegador lê os elementos reais do HTML.
+const PAGINA_EXEMPLO = `<html><head><title>Exemplo</title></head><body>
+  <h1>Olá</h1>
+  <a class="link" href="/docs">Documentation</a>
+  <button id="submit">Submit</button>
+  <button id="desligado" disabled>Desligado</button>
+  <input name="q" placeholder="Buscar">
+</body></html>`;
+
+let consultaDnsGeral;
+let buscaGeral;
+
 beforeEach(() => {
   resetDatabaseMock();
   BrowserService.clearAllSessions();
+  // Os testes não dependem de internet.
+  consultaDnsGeral = jest.spyOn(require("node:dns").promises, "lookup")
+    .mockResolvedValue([{ address: "93.184.215.14", family: 4 }]);
+  buscaGeral = jest.spyOn(global, "fetch").mockImplementation(async (url) => ({
+    status: 200,
+    url,
+    headers: { get: (h) => (h === "content-type" ? "text/html; charset=utf-8" : null) },
+    arrayBuffer: async () => Buffer.from(PAGINA_EXEMPLO),
+  }));
 });
+
+afterEach(() => {
+  consultaDnsGeral.mockRestore();
+  buscaGeral.mockRestore();
+});
+
+// Cria uma sessão e abre a página de exemplo, como o Navegador faz.
+async function abrirPaginaExemplo() {
+  const createRes = await request(app)
+    .post("/api/osiris/browser/session")
+    .set(auth(1))
+    .send({});
+  const sessionId = createRes.body.session.id_session;
+  await request(app)
+    .post("/api/osiris/browser/navigate")
+    .set(auth(1))
+    .send({ id_session: sessionId, url: "https://example.com" });
+  return sessionId;
+}
 
 describe("BrowserController", () => {
   it("creates, retrieves and closes a browser session", async () => {
@@ -85,11 +127,7 @@ describe("BrowserController", () => {
   });
 
   it("clicks on an element selector and handles link navigation", async () => {
-    const createRes = await request(app)
-      .post("/api/osiris/browser/session")
-      .set(auth(1))
-      .send({});
-    const sessionId = createRes.body.session.id_session;
+    const sessionId = await abrirPaginaExemplo();
 
     const clickRes = await request(app)
       .post("/api/osiris/browser/click")
@@ -106,11 +144,7 @@ describe("BrowserController", () => {
   });
 
   it("clicks by screen coordinates", async () => {
-    const createRes = await request(app)
-      .post("/api/osiris/browser/session")
-      .set(auth(1))
-      .send({});
-    const sessionId = createRes.body.session.id_session;
+    const sessionId = await abrirPaginaExemplo();
 
     const clickRes = await request(app)
       .post("/api/osiris/browser/click")
@@ -126,11 +160,7 @@ describe("BrowserController", () => {
   });
 
   it("returns 404 when clicking a non-existent element selector", async () => {
-    const createRes = await request(app)
-      .post("/api/osiris/browser/session")
-      .set(auth(1))
-      .send({});
-    const sessionId = createRes.body.session.id_session;
+    const sessionId = await abrirPaginaExemplo();
 
     const clickRes = await request(app)
       .post("/api/osiris/browser/click")
@@ -145,11 +175,7 @@ describe("BrowserController", () => {
   });
 
   it("clicks on interactive button without redirect and returns event confirmation", async () => {
-    const createRes = await request(app)
-      .post("/api/osiris/browser/session")
-      .set(auth(1))
-      .send({});
-    const sessionId = createRes.body.session.id_session;
+    const sessionId = await abrirPaginaExemplo();
 
     const clickRes = await request(app)
       .post("/api/osiris/browser/click")
@@ -165,22 +191,14 @@ describe("BrowserController", () => {
   });
 
   it("rejects clicking disabled element with 400", async () => {
-    const createRes = await request(app)
-      .post("/api/osiris/browser/session")
-      .set(auth(1))
-      .send({});
-    const sessionId = createRes.body.session.id_session;
-
-    // Add disabled element to session
-    const session = BrowserService.getSession(sessionId, 1);
-    session.dom_tree.elements.push({ selector: "button#disabled-btn", disabled: true, text: "Disabled" });
+    const sessionId = await abrirPaginaExemplo();
 
     const clickRes = await request(app)
       .post("/api/osiris/browser/click")
       .set(auth(1))
       .send({
         id_session: sessionId,
-        selector: "button#disabled-btn",
+        selector: "button#desligado",
       });
 
     expect(clickRes.status).toBe(400);
@@ -248,6 +266,10 @@ describe("BrowserController", () => {
       });
 
     expect(navRes.status).toBe(200);
+    expect(navRes.body.title).toBe("Exemplo");
+    expect(navRes.body.dom_tree.elements.map((el) => el.selector)).toEqual(
+      expect.arrayContaining(["h1:nth-of-type(1)", "a.link", "button#submit", "input:nth-of-type(1)"]),
+    );
     expect(navRes.body.elements_count).toBeGreaterThan(0);
     expect(navRes.body.dom_tree).toBeDefined();
     expect(Array.isArray(navRes.body.dom_tree.elements)).toBe(true);
@@ -256,22 +278,78 @@ describe("BrowserController", () => {
   });
 
   describe("GET /api/osiris/browser/proxy", () => {
+    const dns = require("node:dns").promises;
+    const { gerarTicketProxy } = require("../services/ticketProxy");
+    const ticket = () => gerarTicketProxy(1);
+    let consultaDns;
+
+    beforeEach(() => {
+      // Os testes não dependem de internet: example.com "resolve" para um IP público.
+      consultaDns = jest.spyOn(dns, "lookup").mockResolvedValue([{ address: "93.184.215.14", family: 4 }]);
+    });
+
+    afterEach(() => {
+      consultaDns.mockRestore();
+    });
+
+    it("gera o ticket do proxy só para quem está logado", async () => {
+      const semLogin = await request(app).post("/api/osiris/browser/proxy/ticket");
+      expect(semLogin.status).toBe(401);
+
+      const res = await request(app).post("/api/osiris/browser/proxy/ticket").set(auth());
+      expect(res.status).toBe(200);
+      expect(typeof res.body.ticket).toBe("string");
+    });
+
+    it("recusa o proxy sem ticket", async () => {
+      const res = await request(app).get("/api/osiris/browser/proxy?url=https://example.com");
+      expect(res.status).toBe(401);
+    });
+
+    it("não aceita o ticket do proxy como login nas outras rotas", async () => {
+      const res = await request(app).get("/api/osiris/auth/me").set({ Authorization: `Bearer ${ticket()}` });
+      expect(res.status).toBe(401);
+    });
+
     it("rejects request without url query parameter", async () => {
-      const res = await request(app).get("/api/osiris/browser/proxy");
+      const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}`);
       expect(res.status).toBe(400);
       expect(res.body.error.message).toContain("url");
     });
 
     it("rejects request with invalid url", async () => {
-      const res = await request(app).get("/api/osiris/browser/proxy?url=invalid-url");
+      const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}&url=invalid-url`);
       expect(res.status).toBe(400);
       expect(res.body.error.message).toContain("URL");
     });
 
     it("rejects request to localhost or private network (SSRF protection)", async () => {
-      const res = await request(app).get("/api/osiris/browser/proxy?url=http://127.0.0.1:8080");
+      const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}&url=http://127.0.0.1:8080`);
       expect(res.status).toBe(403);
       expect(res.body.error.message).toContain("Endereços locais");
+    });
+
+    it("recusa domínio que aponta para a rede interna", async () => {
+      consultaDns.mockResolvedValue([{ address: "169.254.169.254", family: 4 }]);
+      const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}&url=https://metadados.exemplo.com`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toContain("bloqueado");
+    });
+
+    it("não segue redirecionamento para a rede interna", async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 302,
+        headers: { get: (h) => (h === "location" ? "http://169.254.169.254/latest" : null) },
+      });
+
+      try {
+        const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}&url=https://example.com`);
+        expect(res.status).toBe(403);
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
 
     it("proxies and rewrites HTML content from valid upstream", async () => {
@@ -286,10 +364,11 @@ describe("BrowserController", () => {
       });
 
       try {
-        const res = await request(app).get("/api/osiris/browser/proxy?url=https://example.com");
+        const res = await request(app).get(`/api/osiris/browser/proxy?ticket=${ticket()}&url=https://example.com`);
         expect(res.status).toBe(200);
         expect(res.headers["content-type"]).toContain("text/html");
-        expect(res.text).toContain("<base href=\"https://example.com\">");
+        expect(res.headers["referrer-policy"]).toBe("no-referrer");
+        expect(res.text).toContain("<base href=\"https://example.com/\">");
         expect(res.text).toContain("__osiris");
         expect(res.text).not.toContain("x-frame-options");
       } finally {

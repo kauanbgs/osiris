@@ -1,3 +1,5 @@
+// verifyJWT.js — confere o token de login enviado no cabeçalho Authorization das rotas protegidas.
+// Recusa tokens revogados (logout) e tickets de uso restrito, como o do proxy do Navegador.
 const jwt = require("jsonwebtoken");
 const { UnauthorizedError } = require("../errors");
 const { isTokenRevoked } = require("../services/tokenService");
@@ -13,6 +15,11 @@ async function verifyJWT(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Tickets com escopo (ex.: proxy do Navegador) não valem como login.
+    if (payload.escopo) {
+      return next(new UnauthorizedError("Invalid token."));
+    }
 
     if (await isTokenRevoked(token)) {
       return next(new UnauthorizedError("Token has been revoked."));

@@ -1,3 +1,5 @@
+// Navegador.jsx — tela do Navegador: abas, histórico, inspeção e captura de páginas.
+// No modo web abre as páginas pelo proxy da API, que exige um ticket de uso restrito pedido para o usuário logado.
 import { useState, useEffect, useRef } from "react";
 import {
   Compass,
@@ -72,13 +74,17 @@ function hostnameOf(rawUrl) {
 
 // No modo web, sites como Google/GitHub bloqueiam iframes (X-Frame-Options / CSP).
 // O proxy da API busca a página, remove esses bloqueios e injeta o script de navegação.
-function proxiedUrl(rawUrl) {
+function proxiedUrl(rawUrl, ticket) {
+  const consulta = `url=${encodeURIComponent(rawUrl)}&ticket=${encodeURIComponent(ticket || "")}`;
   if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    return `/api/osiris/browser/proxy?url=${encodeURIComponent(rawUrl)}`;
+    return `/api/osiris/browser/proxy?${consulta}`;
   }
   const apiBase = import.meta.env.VITE_API_URL || "http://163.176.45.118:5000/api/osiris";
-  return `${apiBase}/browser/proxy?url=${encodeURIComponent(rawUrl)}`;
+  return `${apiBase}/browser/proxy?${consulta}`;
 }
+
+// O ticket do proxy vale 12 horas; é renovado antes disso (as abas abertas recarregam só nessa hora).
+const RENOVAR_TICKET_MS = 11 * 60 * 60 * 1000;
 
 // Métodos do <webview> lançam erro antes do evento dom-ready
 function safeWebviewCall(webview, method, ...args) {
@@ -195,6 +201,31 @@ export default function Navegador() {
   const [copiedLink, setCopiedLink] = useState(null);
   const [copiedText, setCopiedText] = useState(false);
   const [showFullImageModal, setShowFullImageModal] = useState(false);
+
+  // Ticket do proxy (só no modo web): sem ele o iframe não consegue abrir páginas pela API.
+  const [ticketProxy, setTicketProxy] = useState(null);
+
+  useEffect(() => {
+    if (isElectronApp) return undefined;
+    let cancelado = false;
+    const renovarTicket = async () => {
+      try {
+        const res = await sheets.gerarTicketProxy();
+        if (!cancelado) setTicketProxy(res.data?.ticket || null);
+      } catch (error) {
+        console.error("Não foi possível liberar o proxy do navegador:", error);
+      }
+    };
+    renovarTicket();
+    const intervalo = setInterval(renovarTicket, RENOVAR_TICKET_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+    };
+  }, [isElectronApp]);
+
+  const enderecoIframe = (tab) =>
+    tab.url && ticketProxy ? proxiedUrl(tab.url, ticketProxy) : "about:blank";
 
   // Aba ativa do navegador
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -393,7 +424,7 @@ export default function Navegador() {
       const data = res?.data;
       setActionFeedback({
         type: "success",
-        message: `Clique executado em "${element.selector}" com sucesso!`,
+        message: data?.aviso || `Clique executado em "${element.selector}".`,
         data,
       });
 
@@ -475,7 +506,7 @@ export default function Navegador() {
     if (!activeTab.url) return;
     updateActiveTab({ isLoading: true });
     const frame = iframeRefs.current.get(activeTabId);
-    if (frame) frame.src = proxiedUrl(activeTab.url);
+    if (frame) frame.src = proxiedUrl(activeTab.url, ticketProxy);
     if (activeTab.id_session) {
       sheets
         .navigateBrowser(activeTab.id_session, activeTab.url)
@@ -1062,7 +1093,7 @@ export default function Navegador() {
                       if (el) iframeRefs.current.set(tab.id, el);
                       else iframeRefs.current.delete(tab.id);
                     }}
-                    src={proxiedUrl(tab.url)}
+                    src={enderecoIframe(tab)}
                     title={tab.title}
                     sandbox="allow-scripts allow-forms allow-popups"
                     referrerPolicy="no-referrer"

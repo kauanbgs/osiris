@@ -7,7 +7,6 @@ const cors = require("cors");
 const apiRoutes = require("./routes/apiRoutes");
 const verifyJWT = require("./middlewares/verifyJWT");
 const TerminalController = require("./controllers/terminalController");
-const BrowserController = require("./controllers/browserController");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 const app = express();
@@ -18,7 +17,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Direct aliases
 app.post("/api/exec", verifyJWT, TerminalController.exec);
-app.all("/__osiris_proxy", BrowserController.proxy);
 
 app.use("/api/osiris", apiRoutes);
 

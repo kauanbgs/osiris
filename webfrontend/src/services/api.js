@@ -81,6 +81,10 @@ const sheets = {
   terminalClearHistory: () =>
     api.delete("/terminal/history"),
 
+  // Ticket de uso restrito que libera o proxy do Navegador no modo web
+  gerarTicketProxy: () =>
+    api.post("/browser/proxy/ticket"),
+
   // Sessões do navegador
   createBrowserSession: (initial_url) =>
     api.post("/browser/session", { initial_url }),

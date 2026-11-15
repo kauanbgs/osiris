@@ -1,7 +1,10 @@
+// browserController.js — rotas do Navegador: sessões, captura de página e proxy do modo web.
+// O proxy só funciona com o ticket de uso restrito gerado para o usuário logado (ver services/ticketProxy.js).
 const BrowserService = require("../services/browserService");
 const BrowserCaptureService = require("../services/browserCaptureService");
 const BrowserProxyService = require("../services/browserProxyService");
 const { BadRequestError } = require("../errors");
+const { gerarTicketProxy, validarTicketProxy } = require("../services/ticketProxy");
 
 class BrowserController {
 
@@ -138,9 +141,19 @@ class BrowserController {
   }
 
   // Proxy web para contornar X-Frame-Options e CSP em clientes web/iframe
+  // Gera o ticket que o iframe do Navegador usa para chamar o proxy.
+  static async ticketProxy(req, res, next) {
+    try {
+      return res.status(200).json({ ticket: gerarTicketProxy(req.userId) });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async proxy(req, res, next) {
     try {
-      const rawUrl = req.query?.url || req.body?.url;
+      validarTicketProxy(req.query?.ticket);
+      const rawUrl = req.query?.url;
 
       if (typeof rawUrl !== "string" || !rawUrl.trim()) {
         throw new BadRequestError("Informe o parâmetro 'url'.");

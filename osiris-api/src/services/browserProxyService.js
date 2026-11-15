@@ -1,4 +1,10 @@
+// browserProxyService.js — busca páginas externas para o Navegador do modo web e remove os bloqueios de iframe.
+// Confere o destino (inclusive o DNS e cada redirecionamento) para não alcançar a rede interna do servidor.
 const { BadRequestError, ForbiddenError } = require("../errors");
+const { assertPublicDestination } = require("./browserCaptureService");
+
+const MAX_REDIRECIONAMENTOS = 5;
+const MAX_BYTES_RESPOSTA = 10 * 1024 * 1024;
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
@@ -77,7 +83,9 @@ class BrowserProxyService {
     return rewriteHtml(html, finalUrl);
   }
 
-  static async handleProxy(req, res, rawTarget) {
+  // Busca uma página pública conferindo o destino (inclusive o DNS e cada redirecionamento).
+  // Usada pelo proxy do modo web e pela leitura de elementos da página no Navegador.
+  static async buscarPaginaPublica(rawTarget, { accept, acceptLanguage } = {}) {
     let target;
     try {
       target = new URL(rawTarget);
@@ -93,31 +101,73 @@ class BrowserProxyService {
       throw new ForbiddenError("Endereços locais não podem ser abertos pelo proxy.");
     }
 
+    // Os redirecionamentos são seguidos à mão para conferir cada destino antes de abrir.
     let upstream;
-    try {
-      upstream = await fetch(target.href, {
-        redirect: "follow",
-        headers: {
-          "user-agent": USER_AGENT,
-          accept: req.headers.accept || "text/html,application/xhtml+xml,*/*;q=0.8",
-          "accept-language": req.headers["accept-language"] || "pt-BR,pt;q=0.9,en;q=0.8",
-        },
-        signal: AbortSignal.timeout(20000),
-      });
-    } catch (err) {
-      throw new BadRequestError(`Falha ao conectar em ${target.hostname}: ${err.message}`);
+    let atual = target;
+    for (let salto = 0; ; salto++) {
+      await assertPublicDestination(atual.href);
+      try {
+        upstream = await fetch(atual.href, {
+          redirect: "manual",
+          headers: {
+            "user-agent": USER_AGENT,
+            accept: accept || "text/html,application/xhtml+xml,*/*;q=0.8",
+            "accept-language": acceptLanguage || "pt-BR,pt;q=0.9,en;q=0.8",
+          },
+          signal: AbortSignal.timeout(20000),
+        });
+      } catch (err) {
+        throw new BadRequestError(`Falha ao conectar em ${atual.hostname}: ${err.message}`);
+      }
+
+      const destino = upstream.status >= 300 && upstream.status < 400 && upstream.headers.get("location");
+      if (!destino) break;
+      if (salto >= MAX_REDIRECIONAMENTOS) {
+        throw new BadRequestError("A página redirecionou vezes demais.");
+      }
+      try {
+        atual = new URL(destino, atual);
+      } catch {
+        throw new BadRequestError("A página redirecionou para um endereço inválido.");
+      }
+      if (!/^https?:$/.test(atual.protocol) || isBlockedHost(atual.hostname)) {
+        throw new ForbiddenError("Endereços locais não podem ser abertos pelo proxy.");
+      }
+    }
+
+    const tamanho = Number(upstream.headers.get("content-length") || 0);
+    if (tamanho > MAX_BYTES_RESPOSTA) {
+      throw new BadRequestError("A página é grande demais para o proxy.");
     }
 
     const contentType = upstream.headers.get("content-type") || "";
     const buffer = new Uint8Array(await upstream.arrayBuffer());
+    if (buffer.length > MAX_BYTES_RESPOSTA) {
+      throw new BadRequestError("A página é grande demais para o proxy.");
+    }
 
-    res.status(upstream.status);
+    return { status: upstream.status, urlFinal: atual.href, contentType, buffer };
+  }
+
+  static decodificar(buffer, contentType) {
+    return decodeBody(buffer, contentType);
+  }
+
+  static async handleProxy(req, res, rawTarget) {
+    const { status, urlFinal, contentType, buffer } = await BrowserProxyService.buscarPaginaPublica(rawTarget, {
+      accept: req.headers.accept,
+      acceptLanguage: req.headers["accept-language"],
+    });
+
+    res.status(status);
     res.setHeader("Cache-Control", "no-store");
+    // O endereço do proxy leva o ticket de acesso: não deixa ele vazar para os sites abertos.
+    res.setHeader("Referrer-Policy", "no-referrer");
     res.removeHeader("X-Frame-Options");
     res.removeHeader("Content-Security-Policy");
 
     if (/text\/html|application\/xhtml/i.test(contentType)) {
-      const html = rewriteHtml(decodeBody(buffer, contentType), upstream.url || target.href);
+      const html = rewriteHtml(decodeBody(buffer, contentType), urlFinal);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.send(html);
     }

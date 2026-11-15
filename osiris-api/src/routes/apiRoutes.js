@@ -224,8 +224,8 @@ router.post("/browser/click", verifyJWT, BrowserController.click);
 router.post("/browser/capture", verifyJWT, BrowserController.capture);
 
 // Proxy web para contornar X-Frame-Options/CSP em clientes web/iframe
+router.post("/browser/proxy/ticket", verifyJWT, BrowserController.ticketProxy);
 router.get("/browser/proxy", BrowserController.proxy);
-router.all("/__osiris_proxy", BrowserController.proxy);
 
 // Terminal execution & history routes
 router.post("/terminal/exec", verifyJWT, TerminalController.exec);

@@ -1,5 +1,9 @@
+// browserService.js — sessões do Navegador na API: histórico, navegação e cliques de cada usuário.
+// Ao navegar, lê a página real e lista os elementos dela; não inventa elementos nem roda scripts.
 const crypto = require("crypto");
 const { BadRequestError, NotFoundError, ForbiddenError } = require("../errors");
+const BrowserProxyService = require("./browserProxyService");
+const { extrairElementosDaPagina } = require("./elementosPagina");
 
 class BrowserService {
   static sessions = new Map();
@@ -33,13 +37,10 @@ class BrowserService {
       current_url: initialUrl,
       title: initialUrl === "about:blank" ? "Blank Page" : "Web Page",
       history: [{ url: initialUrl, timestamp: new Date().toISOString() }],
+      // Os elementos reais só aparecem depois de navegar (a página é lida em navigate).
       dom_tree: {
         title: initialUrl === "about:blank" ? "Blank Page" : "Web Page",
-        elements: [
-          { id: "el-1", selector: "body", text: "Page Content", tag: "body", clickable: false, type: "container" },
-          { id: "el-2", selector: "button#submit", text: "Submit", tag: "button", clickable: true, type: "button", x: 100, y: 50 },
-          { id: "el-3", selector: "a.link", text: "Documentation", tag: "a", clickable: true, type: "link", href: "https://example.com/docs", x: 200, y: 50 },
-        ],
+        elements: [],
       },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -106,22 +107,25 @@ class BrowserService {
       throw new BadRequestError("Only HTTP and HTTPS protocols are allowed.");
     }
 
-    const title = `Page - ${parsed.hostname}`;
+    // Lê a página de verdade (com a mesma checagem de destino do proxy) e lista os elementos reais.
+    let domTree;
+    try {
+      const pagina = await BrowserProxyService.buscarPaginaPublica(targetUrl);
+      const ehHtml = /text\/html|application\/xhtml/i.test(pagina.contentType);
+      domTree = ehHtml
+        ? extrairElementosDaPagina(BrowserProxyService.decodificar(pagina.buffer, pagina.contentType), pagina.urlFinal)
+        : { title: null, elements: [] };
+    } catch (error) {
+      domTree = { title: null, elements: [], aviso: `Não foi possível ler a página: ${error.message}` };
+    }
+
+    const title = domTree.title || parsed.hostname;
+    domTree.title = title;
     session.current_url = targetUrl;
     session.title = title;
     session.updated_at = new Date().toISOString();
     session.history.push({ url: targetUrl, timestamp: session.updated_at });
-    session.dom_tree = {
-      title,
-      elements: [
-        { id: "el-1", selector: "h1", text: `Welcome to ${parsed.hostname}`, tag: "h1", clickable: false, type: "heading" },
-        { id: "el-2", selector: "button#login-btn", text: "Login", tag: "button", clickable: true, type: "button", x: 120, y: 40 },
-        { id: "el-3", selector: "a#nav-docs", text: "Docs", tag: "a", clickable: true, type: "link", href: `${targetUrl}/docs`, x: 220, y: 40 },
-        { id: "el-4", selector: "input#search", text: "", tag: "input", clickable: true, type: "input", placeholder: "Search...", x: 320, y: 40 },
-        { id: "el-5", selector: "button#submit-btn", text: "Search", tag: "button", clickable: true, type: "button", x: 440, y: 40 },
-        { id: "el-6", selector: "a#nav-home", text: "Home", tag: "a", clickable: true, type: "link", href: `${targetUrl}`, x: 50, y: 40 },
-      ],
-    };
+    session.dom_tree = domTree;
 
     return {
       id_session: sessionId,
@@ -170,12 +174,14 @@ class BrowserService {
       session.history.push({ url: nextUrl, timestamp: session.updated_at });
     }
 
+    // A API não roda os scripts da página: só links mudam de página. Outros cliques são apenas registrados.
     return {
       id_session: sessionId,
       clicked_element: {
         selector: targetElement.selector,
         text: targetElement.text,
       },
+      aviso: navigationTriggered ? null : "Clique registrado; scripts da página não são executados pelo servidor.",
       coordinates: x !== undefined && y !== undefined ? { x, y } : null,
       navigation_triggered: navigationTriggered,
       current_url: session.current_url,
