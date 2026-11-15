@@ -1,8 +1,8 @@
-// useTerminal.js — lógica da tela de Terminal: abas de sessão, execução de comandos
-// no PC pelo app desktop, histórico de comandos (↑ / ↓) e verificação da conexão.
-import { useCallback, useEffect, useState } from "react";
+// useTerminal.js — lógica da tela de Terminal: abas de sessão, execução de comandos no PC pelo app desktop,
+// pasta atual de cada aba, histórico de comandos (↑ / ↓) e verificação da conexão e da conta.
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { executeDesktopCommand, getDesktopStatus } from "../services/desktopModels";
+import { executeDesktopCommand, verificarAcessoDesktop } from "../services/desktopModels";
 import { getIP, loadIP } from "../services/serverConfig";
 
 // Remove códigos ANSI de escape das saídas do terminal
@@ -17,7 +17,12 @@ function stripAnsi(str) {
 
 export function useTerminal() {
   const [currentIp, setCurrentIp] = useState(getIP());
-  const [connected, setConnected] = useState(null); // true | false | null
+  // true = pode usar o PC | false = PC fora do alcance | "sem-acesso" = conta diferente ou sem login | null = testando
+  const [connected, setConnected] = useState(null);
+  // true quando o PC está fora da rede local e os comandos vão pela API até o desktop
+  const [viaApi, setViaApi] = useState(false);
+  // Número da próxima aba: só cresce, para não repetir nomes depois de fechar abas.
+  const proximoNumeroAba = useRef(2);
 
   // Abas do terminal (múltiplas sessões simultâneas)
   const [tabs, setTabs] = useState([
@@ -33,13 +38,14 @@ export function useTerminal() {
         {
           id: "init-2",
           type: "system",
-          text: "Digite qualquer comando do sistema operacional do seu desktop.",
+          text: "Os comandos rodam no seu PC. Comandos destrutivos são bloqueados.",
         },
       ],
       command: "",
       loading: false,
       cmdHistory: [],
       historyIdx: -1,
+      pasta: null,
     },
   ]);
   const [activeTabId, setActiveTabId] = useState("term-1");
@@ -48,15 +54,17 @@ export function useTerminal() {
   // Aba atualmente selecionada
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Carrega IP e testa se o app desktop está aberto no PC
+  // Carrega o IP e testa se o app desktop está aberto e logado com a mesma conta
   const checkConnection = useCallback(async () => {
+    setConnected(null);
     try {
       const ip = await loadIP();
       if (ip) setCurrentIp(ip);
-      await getDesktopStatus();
+      const acesso = await verificarAcessoDesktop();
+      setViaApi(Boolean(acesso?.viaApi));
       setConnected(true);
-    } catch {
-      setConnected(false);
+    } catch (error) {
+      setConnected(error?.status === 401 || error?.status === 403 ? "sem-acesso" : false);
     }
   }, []);
 
@@ -78,7 +86,7 @@ export function useTerminal() {
   // Adicionar nova aba
   const handleAddTab = () => {
     if (tabs.length >= 6) return;
-    const newIdx = tabs.length + 1;
+    const newIdx = proximoNumeroAba.current++;
     const newId = `term-${Date.now()}`;
     const newTab = {
       id: newId,
@@ -99,6 +107,7 @@ export function useTerminal() {
       loading: false,
       cmdHistory: [...(activeTab.cmdHistory || [])],
       historyIdx: -1,
+      pasta: activeTab.pasta,
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
@@ -172,10 +181,11 @@ export function useTerminal() {
     }));
 
     try {
-      const data = (await executeDesktopCommand(cmd, 30000)) || {};
+      const data = (await executeDesktopCommand(cmd, 30000, activeTab.pasta)) || {};
 
       const stdout = stripAnsi(data.stdout || "").trimEnd();
       const stderr = stripAnsi(data.stderr || "").trimEnd();
+      const codigo = data.exit_code ?? 0;
       const newItems = [];
 
       if (stdout) {
@@ -198,7 +208,25 @@ export function useTerminal() {
         newItems.push({
           id: `done-${Date.now()}`,
           type: "system",
-          text: `[Comando finalizado com sucesso — código ${data.exit_code ?? 0}]`,
+          text: codigo === 0
+            ? "[Comando finalizado com sucesso]"
+            : `[Comando terminou com erro — código ${codigo}]`,
+        });
+      } else if (codigo !== 0) {
+        newItems.push({
+          id: `code-${Date.now()}`,
+          type: "system",
+          text: `[Código de saída ${codigo}]`,
+        });
+      }
+
+      // O PC devolve a pasta onde o comando rodou (ou a nova pasta, depois de um "cd").
+      const novaPasta = typeof data.pasta === "string" ? data.pasta : null;
+      if (novaPasta && novaPasta !== activeTab.pasta && /^(cd|chdir)\b/i.test(cmd)) {
+        newItems.push({
+          id: `dir-${Date.now()}`,
+          type: "system",
+          text: `Pasta atual: ${novaPasta}`,
         });
       }
 
@@ -206,12 +234,16 @@ export function useTerminal() {
       updateActiveTab((t) => ({
         ...t,
         loading: false,
+        pasta: novaPasta || t.pasta,
         lines: [...t.lines, ...newItems],
       }));
     } catch (err) {
       const errMsg = err?.message || "Erro de conexão com o terminal do PC.";
 
-      setConnected(false);
+      // Erro com status HTTP: o PC respondeu (comando bloqueado, conta diferente...). Sem status: PC fora do alcance.
+      if (err?.status === 401 || err?.status === 403) setConnected("sem-acesso");
+      else if (!err?.status) setConnected(false);
+
       updateActiveTab((t) => ({
         ...t,
         loading: false,
@@ -243,6 +275,7 @@ export function useTerminal() {
     // conexão
     conectado: connected,
     ipAtual: currentIp,
+    viaApi,
     verificarConexao: checkConnection,
   };
 }

@@ -1,4 +1,4 @@
-// TerminalScreen.js — visual da tela de Terminal: cabeçalho com status, barra de abas,
+// TerminalScreen.js — visual da tela de Terminal: cabeçalho com status (PC, offline ou sem acesso), abas,
 // saída dos comandos e campo de digitação. A lógica fica em hooks/useTerminal.js.
 import React, { useRef, useEffect } from "react";
 import {
@@ -114,7 +114,7 @@ export default function TerminalScreen({ navigation }) {
                 backgroundColor: themeColor(`${colors.green}1f`),
                 borderColor: themeColor(`${colors.green}66`),
               },
-              terminal.conectado === false && {
+              (terminal.conectado === false || terminal.conectado === "sem-acesso") && {
                 backgroundColor: themeColor(`${colors.red}1f`),
                 borderColor: themeColor(`${colors.red}66`),
               },
@@ -129,7 +129,7 @@ export default function TerminalScreen({ navigation }) {
                   backgroundColor:
                     terminal.conectado === true
                       ? themeColor(colors.green)
-                      : terminal.conectado === false
+                      : terminal.conectado === false || terminal.conectado === "sem-acesso"
                       ? themeColor(colors.red)
                       : themeColor(colors.textMuted),
                 },
@@ -137,7 +137,9 @@ export default function TerminalScreen({ navigation }) {
             />
             <Text style={styles.statusText}>
               {terminal.conectado === true
-                ? `${terminal.ipAtual}`
+                ? terminal.viaApi ? "PC via nuvem" : `${terminal.ipAtual}`
+                : terminal.conectado === "sem-acesso"
+                ? "Sem acesso"
                 : terminal.conectado === false
                 ? "Offline"
                 : "Conectando..."}

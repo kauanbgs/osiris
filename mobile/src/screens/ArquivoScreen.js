@@ -1,3 +1,5 @@
+// ArquivoScreen.js — tela de Arquivos do celular: mostra, edita e apaga arquivos da pasta compartilhada do PC.
+// Os arquivos vêm direto do app desktop (services/pastaCompartilhada.js), que confere se é a mesma conta.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,7 +18,12 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NavbarSpacer } from "../components/Navbar";
-import sheets from "../services/api";
+import {
+  apagarArquivoCompartilhado,
+  buscarPastaCompartilhada,
+  lerArquivoCompartilhado,
+  salvarArquivoCompartilhado,
+} from "../services/pastaCompartilhada";
 import { createThemedStyles, useThemeColor, ACCENTS } from "../theme";
 
 const colors = {
@@ -111,8 +118,7 @@ export default function ArquivoScreen({ navigation }) {
     try {
       if (refresh) setRefreshing(true);
       else setLoading(true);
-      const response = await sheets.getDesktopWorkspace();
-      const workspace = response.data?.workspace;
+      const workspace = await buscarPastaCompartilhada();
       setWorkspaceName(workspace?.folderName || null);
       setFiles(workspace?.files || []);
       if (!workspace) {
@@ -122,9 +128,9 @@ export default function ArquivoScreen({ navigation }) {
         setRootExpanded(true);
       }
     } catch (error) {
-      if (error?.response?.status !== 401) {
+      if (error?.status !== 401) {
         console.warn("Não foi possível carregar os arquivos:", error?.message);
-        Alert.alert("Erro", error?.response?.data?.error?.message || "Não foi possível carregar a pasta compartilhada.");
+        Alert.alert("Erro", error?.message || "Não foi possível carregar a pasta compartilhada.");
       }
     } finally {
       setLoading(false);
@@ -140,8 +146,7 @@ export default function ArquivoScreen({ navigation }) {
     };
     const syncWorkspace = async () => {
       try {
-        const response = await sheets.getDesktopWorkspace();
-        const workspace = response.data?.workspace;
+        const workspace = await buscarPastaCompartilhada();
         const nextFiles = workspace?.files || [];
         setWorkspaceName(workspace?.folderName || null);
         setFiles((current) => JSON.stringify(current) === JSON.stringify(nextFiles) ? current : nextFiles);
@@ -152,8 +157,7 @@ export default function ArquivoScreen({ navigation }) {
 
         const opened = activeFileRef.current;
         if (opened && fileContentRef.current === originalContentRef.current) {
-          const contentResponse = await sheets.getWorkspaceFile(opened.relativePath);
-          const latest = contentResponse.data?.fileContent ?? "";
+          const latest = await lerArquivoCompartilhado(opened.relativePath);
           if (activeFileRef.current?.relativePath === opened.relativePath
             && fileContentRef.current === originalContentRef.current) {
             fileContentRef.current = latest;
@@ -164,7 +168,7 @@ export default function ArquivoScreen({ navigation }) {
         }
       } catch (error) {
         // Poll quietly; the manual refresh and file actions surface actionable errors.
-        if (error?.response?.status !== 401) console.warn("Falha ao sincronizar arquivos:", error?.message);
+        if (error?.status !== 401) console.warn("Falha ao sincronizar arquivos:", error?.message);
       }
     };
     const startSync = () => {
@@ -186,8 +190,7 @@ export default function ArquivoScreen({ navigation }) {
   const openFile = useCallback(async (item) => {
     setOpening(true);
     try {
-      const response = await sheets.getWorkspaceFile(item.relativePath);
-      const content = response.data?.fileContent ?? "";
+      const content = await lerArquivoCompartilhado(item.relativePath);
       activeFileRef.current = item;
       fileContentRef.current = content;
       originalContentRef.current = content;
@@ -195,11 +198,7 @@ export default function ArquivoScreen({ navigation }) {
       setFileContent(content);
       setOriginalContent(content);
     } catch (error) {
-      const serverMessage = error?.response?.data?.error?.message;
-      const message = error?.response?.status === 404 && serverMessage === "Route not found."
-        ? "A API do desktop ainda não carregou as rotas de arquivos. Reinicie o serviço osiris-api e tente novamente."
-        : serverMessage || "Este arquivo não pôde ser aberto como texto.";
-      Alert.alert("Não foi possível abrir", message);
+      Alert.alert("Não foi possível abrir", error?.message || "Este arquivo não pôde ser aberto como texto.");
     } finally {
       setOpening(false);
     }
@@ -221,13 +220,13 @@ export default function ArquivoScreen({ navigation }) {
     if (!activeFile || !dirty || saving) return;
     setSaving(true);
     try {
-      await sheets.saveWorkspaceFile(activeFile.relativePath, fileContent);
+      await salvarArquivoCompartilhado(activeFile.relativePath, fileContent);
       fileContentRef.current = fileContent;
       originalContentRef.current = fileContent;
       setOriginalContent(fileContent);
       Alert.alert("Arquivo salvo", activeFile.name);
     } catch (error) {
-      Alert.alert("Erro ao salvar", error?.response?.data?.error?.message || "Não foi possível salvar o arquivo.");
+      Alert.alert("Erro ao salvar", error?.message || "Não foi possível salvar o arquivo.");
     } finally {
       setSaving(false);
     }
@@ -241,14 +240,14 @@ export default function ArquivoScreen({ navigation }) {
         style: "destructive",
         onPress: async () => {
           try {
-            await sheets.deleteWorkspaceFile(item.relativePath);
+            await apagarArquivoCompartilhado(item.relativePath);
             setFiles((current) => current.filter((file) => file.relativePath !== item.relativePath));
             if (activeFile?.relativePath === item.relativePath) {
               activeFileRef.current = null;
               setActiveFile(null);
             }
           } catch (error) {
-            Alert.alert("Erro ao excluir", error?.response?.data?.error?.message || "Não foi possível excluir o arquivo.");
+            Alert.alert("Erro ao excluir", error?.message || "Não foi possível excluir o arquivo.");
           }
         },
       },

@@ -1,3 +1,5 @@
+// api.js — cliente HTTP do app mobile para a API central do Osíris (axios com o token de login).
+// Terminal e pasta compartilhada pela API são repassados ao app desktop da mesma conta (rodam no PC).
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiUrl } from "./serverConfig";
@@ -68,11 +70,13 @@ const sheets = {
   updateTool: (id_tool, payload) => api.put(`/tool/${id_tool}`, payload),
   deleteTool: (id_tool) => api.delete(`/tool/${id_tool}`),
 
-  // ── Files ──────────────────────────────────────────────────────────
+  // ── Pasta compartilhada pela API (a API repassa ao app desktop da mesma conta) ──
   getDesktopWorkspace: () => api.get("/file/workspace"),
   getWorkspaceFile: (filePath) => api.get("/file/workspace/content", { params: { path: filePath } }),
   saveWorkspaceFile: (filePath, content) => api.put("/file/workspace/content", { path: filePath, content }),
   deleteWorkspaceFile: (filePath) => api.delete("/file/workspace/item", { params: { path: filePath } }),
+
+  // ── Files ──────────────────────────────────────────────────────────
   // Envia um arquivo do celular; a API devolve o texto extraído em `reading`
   // (PDF, DOCX e arquivos de texto).
   uploadFile: ({ uri, name, mimeType }) => {
@@ -96,19 +100,12 @@ const sheets = {
   getWorkflowCanvas: (id) => api.get(`/workflow/${id}/canvas`),
   saveWorkflowCanvas: (id, canvas) => api.put(`/workflow/${id}/canvas`, canvas),
 
-  // ── Terminal ───────────────────────────────────────────────────────
+
+  // ── Terminal pela API (o comando roda no PC, pelo app desktop da mesma conta) ──
   terminalExecute: (data) =>
     api.post("/terminal/exec", data, {
-      timeout: ((data && data.timeout_ms) || 30000) + 5000,
+      timeout: ((data && data.timeout_ms) || 30000) + 20000,
     }),
-  executeCommand: (commandOrPayload, timeout_ms = 30000) => {
-    const payload =
-      typeof commandOrPayload === "string"
-        ? { command: commandOrPayload, timeout_ms }
-        : commandOrPayload;
-    const timeout = ((payload && payload.timeout_ms) || timeout_ms || 30000) + 5000;
-    return api.post("/terminal/exec", payload, { timeout });
-  },
   terminalHistory: (params) => api.get("/terminal/history", { params }),
   terminalClearHistory: () => api.delete("/terminal/history"),
 };
