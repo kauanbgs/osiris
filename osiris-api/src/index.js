@@ -1,3 +1,5 @@
+// index.js — monta o app Express da API: CORS, leitura de JSON, rotas em /api/osiris e tratamento de erros.
+// O atalho /api/exec continua levando ao terminal, que roda no PC do usuário pelo app desktop.
 // Only load dotenv-safe if not in test environment (test env vars are set in setup.js)
 if (process.env.NODE_ENV !== "test") {
   require("dotenv-safe").config();
@@ -6,7 +8,7 @@ const express = require("express");
 const cors = require("cors");
 const apiRoutes = require("./routes/apiRoutes");
 const verifyJWT = require("./middlewares/verifyJWT");
-const TerminalController = require("./controllers/terminalController");
+const PonteDesktopController = require("./controllers/ponteDesktopController");
 const { errorHandler, notFoundHandler } = require("./middlewares/errorHandler");
 
 const app = express();
@@ -15,8 +17,8 @@ app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Direct aliases
-app.post("/api/exec", verifyJWT, TerminalController.exec);
+// Atalho antigo usado por versões anteriores do app mobile.
+app.post("/api/exec", verifyJWT, PonteDesktopController.executarComando);
 
 app.use("/api/osiris", apiRoutes);
 

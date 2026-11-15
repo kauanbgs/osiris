@@ -1,3 +1,5 @@
+// apiRoutes.js — todas as rotas da API do Osíris em /api/osiris e o middleware de login de cada uma.
+// Terminal e pasta compartilhada passam pela API até o app desktop do usuário; o proxy do Navegador exige ticket.
 const router = require("express").Router();
 
 const UserController = require("../controllers/userController");
@@ -14,8 +16,8 @@ const ConnectionController = require("../controllers/connectionController");
 const FileController = require("../controllers/fileController");
 const SystemController = require("../controllers/systemController");
 const BrowserController = require("../controllers/browserController");
-const TerminalController = require("../controllers/terminalController");
 const ThemeController = require("../controllers/themeController");
+const PonteDesktopController = require("../controllers/ponteDesktopController");
 
 const verifyJWT = require("../middlewares/verifyJWT");
 const upload = require("../middlewares/upload");
@@ -168,12 +170,13 @@ router.delete(
   ConnectionController.delete,
 );
 
+// Pasta compartilhada: os arquivos ficam no PC; a API repassa o pedido ao app desktop da mesma conta.
+router.get("/file/workspace", verifyJWT, PonteDesktopController.listarPasta);
+router.get("/file/workspace/content", verifyJWT, PonteDesktopController.lerArquivo);
+router.put("/file/workspace/content", verifyJWT, PonteDesktopController.gravarArquivo);
+router.delete("/file/workspace/item", verifyJWT, PonteDesktopController.apagarArquivo);
+
 // File routes (standard & Notion CT18/RF10 aliases)
-router.post("/file/workspace", verifyJWT, FileController.saveWorkspace);
-router.get("/file/workspace", verifyJWT, FileController.getWorkspace);
-router.get("/file/workspace/content", verifyJWT, FileController.readWorkspaceFile);
-router.put("/file/workspace/content", verifyJWT, FileController.writeWorkspaceFile);
-router.delete("/file/workspace/item", verifyJWT, FileController.deleteWorkspaceFile);
 router.post(
   "/file",
   verifyJWT,
@@ -227,9 +230,14 @@ router.post("/browser/capture", verifyJWT, BrowserController.capture);
 router.post("/browser/proxy/ticket", verifyJWT, BrowserController.ticketProxy);
 router.get("/browser/proxy", BrowserController.proxy);
 
-// Terminal execution & history routes
-router.post("/terminal/exec", verifyJWT, TerminalController.exec);
-router.get("/terminal/history", verifyJWT, TerminalController.getHistory);
-router.delete("/terminal/history", verifyJWT, TerminalController.clearHistory);
+// Terminal: o comando roda no PC do usuário (app desktop logado na mesma conta), nunca no servidor.
+router.post("/terminal/exec", verifyJWT, PonteDesktopController.executarComando);
+router.get("/terminal/history", verifyJWT, PonteDesktopController.historico);
+router.delete("/terminal/history", verifyJWT, PonteDesktopController.limparHistorico);
+
+// Usadas pelo app desktop para buscar os pedidos da sua conta e devolver as respostas.
+router.get("/desktop/pedidos/proximo", verifyJWT, PonteDesktopController.proximoPedido);
+router.get("/desktop/conectado", verifyJWT, PonteDesktopController.desktopConectado);
+router.post("/desktop/pedidos/:id_pedido/resposta", verifyJWT, PonteDesktopController.responderPedido);
 
 module.exports = router;
