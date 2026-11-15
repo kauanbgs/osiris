@@ -1,3 +1,5 @@
+// main.cjs — processo principal do app desktop (Electron): janela, modelos locais, terminais e arquivos.
+// Também sobe o servidor local da porta 8080, que o celular usa para o terminal e para a pasta compartilhada.
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
@@ -7,6 +9,7 @@ const express = require("express");
 const { createWorkflowStore } = require("./workflowStore.cjs");
 const workspaceFs = require("./workspaceFs.cjs");
 const remoteTerminal = require("./remoteTerminal.cjs");
+const pastaCompartilhada = require("./pastaCompartilhada.cjs");
 
 const workflowStore = () => createWorkflowStore(path.join(app.getPath("userData"), "workflows"));
 ipcMain.handle("workflow:load", (_event, owner, chatId) => workflowStore().load(owner, chatId));
@@ -833,6 +836,7 @@ ipcMain.handle("fs:read-file", async (_, filePath) => {
 app.whenReady().then(() => {
   createWindow();
   startAiServer();
+  iniciarPonteComApi();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1034,14 +1038,27 @@ aiServer.post("/api/models/load", async (req, res) => {
 
 const API_URL = process.env.VITE_API_URL || process.env.API_URL || "http://163.176.45.118:5000/api/osiris";
 
+// O celular consulta o PC a cada poucos segundos (ex.: pasta compartilhada). Para não perguntar
+// à API toda vez, guarda por 30 s de quem é cada token; um logout leva no máximo isso para valer aqui.
+const VALIDADE_CACHE_CONTA_MS = 30 * 1000;
+const cacheContas = new Map();
+
 async function fetchUserId(token) {
+  const agora = Date.now();
+  const salvo = cacheContas.get(token);
+  if (salvo && salvo.expira > agora) return salvo.idUsuario;
+
   const response = await fetch(`${API_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(5000),
   });
-  if (!response.ok) return null;
-  const data = await response.json();
-  return data?.user?.id_user ?? null;
+  const data = response.ok ? await response.json() : null;
+  const idUsuario = data?.user?.id_user ?? null;
+
+  if (cacheContas.size > 100) cacheContas.clear();
+  if (idUsuario !== null) cacheContas.set(token, { idUsuario, expira: agora + VALIDADE_CACHE_CONTA_MS });
+  else cacheContas.delete(token);
+  return idUsuario;
 }
 
 async function readDesktopToken() {
@@ -1051,8 +1068,8 @@ async function readDesktopToken() {
 }
 
 // A porta 8080 fica aberta na rede e qualquer um pode criar conta na API. Por isso
-// só a conta logada aqui no desktop pode executar comandos neste PC.
-async function checkTerminalAccess(authorization) {
+// só a conta logada aqui no desktop pode usar o terminal e a pasta compartilhada deste PC.
+async function verificarMesmaConta(authorization) {
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
   if (!token) return { status: 401, error: "Faça login no aplicativo." };
 
@@ -1062,26 +1079,177 @@ async function checkTerminalAccess(authorization) {
 
     const desktopToken = await readDesktopToken();
     const desktopUser = desktopToken ? await fetchUserId(desktopToken) : null;
-    if (desktopUser === null) return { status: 403, error: "Faça login no app desktop para usar o terminal." };
-    if (desktopUser !== remoteUser) return { status: 403, error: "Entre com a mesma conta do app desktop para usar o terminal." };
+    if (desktopUser === null) return { status: 403, error: "Faça login no app desktop para acessar este PC." };
+    if (desktopUser !== remoteUser) return { status: 403, error: "Entre com a mesma conta do app desktop para acessar este PC." };
 
     return null;
   } catch (error) {
-    console.error("Não foi possível validar o acesso ao terminal:", error.message);
+    console.error("Não foi possível validar o acesso remoto:", error.message);
     return { status: 503, error: "O desktop não conseguiu falar com a API para validar o acesso." };
   }
 }
 
-aiServer.post("/api/terminal/exec", async (req, res) => {
-  const denied = await checkTerminalAccess(req.headers.authorization);
-  if (denied) return res.status(denied.status).json({ error: denied.error });
+// Envolve uma rota do servidor local: confere a conta e transforma erros em respostas JSON.
+function rotaProtegida(acao) {
+  return async (req, res) => {
+    const negado = await verificarMesmaConta(req.headers.authorization);
+    if (negado) return res.status(negado.status).json({ error: negado.error });
+    try {
+      return await acao(req, res);
+    } catch (error) {
+      return res.status(error.status || 500).json({ error: error.message || "Erro inesperado no desktop." });
+    }
+  };
+}
 
-  const { command, timeout_ms: timeoutMs } = req.body || {};
+// O celular usa esta rota para saber se pode usar este PC (indicador de conexão do terminal).
+aiServer.get("/api/acesso", rotaProtegida(async (req, res) => {
+  res.json({ liberado: true });
+}));
+
+aiServer.post("/api/terminal/exec", rotaProtegida(async (req, res) => {
+  const { command, timeout_ms: timeoutMs, cwd } = req.body || {};
   const invalid = remoteTerminal.validateCommand(command);
   if (invalid) return res.status(400).json({ error: invalid });
 
-  res.json(await remoteTerminal.runCommand(command, timeoutMs));
+  res.json(await remoteTerminal.runCommand(command, timeoutMs, cwd));
+}));
+
+// ===============================
+// PASTA COMPARTILHADA (app mobile)
+// ===============================
+
+const pastaDados = () => app.getPath("userData");
+
+ipcMain.handle("pasta:compartilhar", async (_event, caminhoPasta) => {
+  const pasta = await pastaCompartilhada.salvarPastaCompartilhada(pastaDados(), caminhoPasta);
+  return { pasta };
 });
+
+async function pastaOuErro() {
+  const raiz = await pastaCompartilhada.lerPastaCompartilhada(pastaDados());
+  if (!raiz) {
+    const erro = new Error("Nenhuma pasta foi compartilhada no app desktop.");
+    erro.status = 404;
+    throw erro;
+  }
+  return raiz;
+}
+
+aiServer.get("/api/pasta-compartilhada", rotaProtegida(async (req, res) => {
+  const raiz = await pastaCompartilhada.lerPastaCompartilhada(pastaDados());
+  if (!raiz) return res.json({ workspace: null });
+  res.json({
+    workspace: {
+      folderName: path.basename(raiz),
+      files: await pastaCompartilhada.listarItens(raiz),
+    },
+  });
+}));
+
+aiServer.get("/api/pasta-compartilhada/arquivo", rotaProtegida(async (req, res) => {
+  res.json(await pastaCompartilhada.lerArquivo(await pastaOuErro(), req.query.path));
+}));
+
+aiServer.put("/api/pasta-compartilhada/arquivo", rotaProtegida(async (req, res) => {
+  const { path: caminhoRelativo, content } = req.body || {};
+  await pastaCompartilhada.gravarArquivo(await pastaOuErro(), caminhoRelativo, content);
+  res.json({ message: "Arquivo salvo com sucesso." });
+}));
+
+aiServer.delete("/api/pasta-compartilhada/arquivo", rotaProtegida(async (req, res) => {
+  await pastaCompartilhada.apagarArquivo(await pastaOuErro(), req.query.path);
+  res.json({ message: "Arquivo excluído com sucesso." });
+}));
+
+// ===============================
+// PONTE COM A API (pedidos de fora da rede local)
+// ===============================
+// O celular fora do Wi-Fi, o Workflow do celular e o terminal do navegador falam com a API,
+// e a API repassa ao desktop logado na mesma conta. Aqui o desktop busca esses pedidos e responde.
+
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function atenderPedidoDaApi(pedido) {
+  const dados = pedido?.dados || {};
+  try {
+    switch (pedido?.tipo) {
+      case "terminal": {
+        const invalido = remoteTerminal.validateCommand(dados.command);
+        if (invalido) return { erro: { status: 400, message: invalido } };
+        return { resultado: await remoteTerminal.runCommand(dados.command, dados.timeout_ms, dados.cwd) };
+      }
+      case "listarPasta": {
+        const raiz = await pastaCompartilhada.lerPastaCompartilhada(pastaDados());
+        if (!raiz) return { resultado: { workspace: null } };
+        return {
+          resultado: {
+            workspace: { folderName: path.basename(raiz), files: await pastaCompartilhada.listarItens(raiz) },
+          },
+        };
+      }
+      case "lerArquivo":
+        return { resultado: await pastaCompartilhada.lerArquivo(await pastaOuErro(), dados.path) };
+      case "gravarArquivo":
+        await pastaCompartilhada.gravarArquivo(await pastaOuErro(), dados.path, dados.content);
+        return { resultado: { ok: true } };
+      case "apagarArquivo":
+        await pastaCompartilhada.apagarArquivo(await pastaOuErro(), dados.path);
+        return { resultado: { ok: true } };
+      default:
+        return { erro: { status: 400, message: "Pedido desconhecido para o app desktop." } };
+    }
+  } catch (error) {
+    return { erro: { status: error.status || 500, message: error.message || "Erro no app desktop." } };
+  }
+}
+
+async function devolverRespostaParaApi(token, idPedido, resposta) {
+  try {
+    await fetch(`${API_URL}/desktop/pedidos/${encodeURIComponent(idPedido)}/resposta`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(resposta),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (error) {
+    console.error("Não foi possível devolver a resposta para a API:", error.message);
+  }
+}
+
+// Fica perguntando à API se há pedidos para a conta logada neste desktop.
+async function iniciarPonteComApi() {
+  for (;;) {
+    let token = null;
+    try {
+      token = await readDesktopToken();
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      await esperar(5000);
+      continue;
+    }
+
+    try {
+      const resposta = await fetch(`${API_URL}/desktop/pedidos/proximo`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(40000),
+      });
+      if (resposta.status === 204) continue;
+      if (!resposta.ok) {
+        await esperar(resposta.status === 401 ? 10000 : 5000);
+        continue;
+      }
+      const { pedido } = await resposta.json();
+      if (!pedido?.id) continue;
+      // Atende sem travar a busca do próximo pedido (um comando demorado não segura os outros).
+      atenderPedidoDaApi(pedido).then((resultado) => devolverRespostaParaApi(token, pedido.id, resultado));
+    } catch {
+      await esperar(5000);
+    }
+  }
+}
 
 const AI_SERVER_PORT = 8080;
 

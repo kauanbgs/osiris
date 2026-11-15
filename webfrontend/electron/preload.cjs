@@ -1,3 +1,5 @@
+// preload.cjs — ponte segura entre as telas (React) e o processo principal do Electron.
+// Cria window.electronAPI com as poucas funções que a tela pode chamar: arquivos, terminal, modelos e janela.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -44,6 +46,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Ler conteúdo de um arquivo
   readFile: (filePath) =>
     ipcRenderer.invoke("fs:read-file", filePath),
+
+  // Compartilha com o celular a pasta aberta na tela de Arquivos (fica salva no PC).
+  compartilharPasta: (caminhoPasta) => ipcRenderer.invoke("pasta:compartilhar", caminhoPasta),
 
   // TERMINAL CONTROLS
   terminalCreate: (id, mode, cwd) => ipcRenderer.invoke("terminal-create", id, mode, cwd),

@@ -1,3 +1,5 @@
+// Arquivos.jsx — tela de Arquivos do desktop: abre uma pasta, mostra a árvore, edita arquivos e usa a IA.
+// A pasta aberta fica compartilhada com o celular pelo servidor local do desktop (não passa pela API).
 import { useEffect, useState } from "react";
 import {
   ChevronDown,
@@ -12,7 +14,6 @@ import {
   Save,
   X,
 } from "lucide-react";
-import sheets from "@/services/api";
 import FileAssistantInput from "@/components/FileAssistantInput";
 
 export default function Arquivos() {
@@ -39,11 +40,11 @@ export default function Arquivos() {
       setWorkspace(result);
 
       try {
-        await sheets.syncDesktopWorkspace(result.folderPath);
+        await window.electronAPI.compartilharPasta(result.folderPath);
       } catch (syncError) {
         console.error("Não foi possível compartilhar a pasta com o mobile:", syncError);
         window.alert(
-          "A pasta abriu no desktop, mas não foi sincronizada com o mobile. Verifique seu login e a conexão com a API.",
+          "A pasta abriu no desktop, mas não foi compartilhada com o celular.",
         );
       }
 

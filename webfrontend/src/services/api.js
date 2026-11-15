@@ -1,3 +1,5 @@
+// api.js — cliente HTTP do app web/desktop para a API central do Osíris (axios com o token de login).
+// Reúne as chamadas das telas; terminal e pasta compartilhada são repassados pela API ao app desktop.
 
 import axios from "axios";
 
@@ -61,16 +63,12 @@ const sheets = {
   saveWorkflowCanvas: (id, canvas) =>
     api.put(`/workflow/${id}/canvas`, canvas),
 
-  // Workspace Desktop
-  syncDesktopWorkspace: (folderPath) =>
-    api.post("/file/workspace", { folderPath }),
 
-  getDesktopWorkspace: () =>
-    api.get("/file/workspace"),
-
-  // Terminal
+  // Terminal: a API repassa o comando ao app desktop logado na mesma conta (roda no PC)
   terminalExecute: (data) =>
-    api.post("/terminal/exec", data),
+    api.post("/terminal/exec", data, {
+      timeout: ((data && data.timeout_ms) || 30000) + 20000,
+    }),
 
   executeCommand: (command, timeout_ms) =>
     api.post("/terminal/exec", { command, timeout_ms }),
