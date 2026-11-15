@@ -1,5 +1,8 @@
+// App.js — ponto de entrada do app mobile: carrega as fontes, o tema e as telas de navegação.
+// As fontes Inter e JetBrains Mono são carregadas antes de mostrar qualquer tela.
 import { useEffect, useMemo } from 'react';
 import { useFonts, Inter_400Regular, Inter_500Medium } from '@expo-google-fonts/inter';
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import LoginScreen from './src/screens/LoginScreen';
@@ -61,7 +64,8 @@ export default function App() {
   }, []);
 
   // Fonte das conversas. Se falhar ao carregar, segue com a fonte do sistema.
-  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium });
+  // JetBrains Mono é usada nas telas de login e cadastro.
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, JetBrainsMono_400Regular });
   if (!fontsLoaded && !fontError) return null;
 
   return (
