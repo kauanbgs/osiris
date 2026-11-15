@@ -1,3 +1,5 @@
+// agentController.test.js — testes dos agentes da API: cadastro, consulta, ferramentas, arquivos e execução.
+// Confere também que cada consulta filtra pelo dono do agente (fk_id_user).
 jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const {
@@ -103,5 +105,18 @@ describe("AgentController", () => {
 
     llmSpy.mockRestore();
     delete process.env.LLM_ENDPOINT;
+  });
+
+  it("só lista e consulta agentes do próprio usuário", async () => {
+    const execute = mockQueries([[]], [[]]);
+
+    const listed = await request(app).get("/api/osiris/agent").set(auth(7));
+    const fetched = await request(app).get("/api/osiris/agent/5").set(auth(7));
+
+    expect(listed.status).toBe(200);
+    expect(execute.mock.calls[0][0]).toContain("fk_id_user = ?");
+    expect(execute.mock.calls[0][1]).toEqual(["7"]);
+    expect(fetched.status).toBe(404);
+    expect(execute.mock.calls[1][1]).toEqual(["5", "7"]);
   });
 });

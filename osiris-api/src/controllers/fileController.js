@@ -1,3 +1,5 @@
+// fileController.js — envio, listagem, download e exclusão de arquivos e registro de logs de arquivos.
+// Cada arquivo e log pertence a um usuário (fk_id_user): ninguém vê os arquivos de outra conta.
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -249,7 +251,16 @@ class FileController {
         throw new BadRequestError("Status de log inválido.");
       }
 
+      if (id_file) {
+        const [donos] = await pool.promise().execute(
+          "SELECT id_file FROM file WHERE id_file = ? AND fk_id_user = ? LIMIT 1",
+          [id_file, req.userId],
+        );
+        if (!donos[0]) throw new NotFoundError("Arquivo não encontrado.");
+      }
+
       await FileController.registerLog({
+        id_user: req.userId,
         id_file: id_file || null,
         file_name,
         action,
@@ -267,6 +278,7 @@ class FileController {
   }
 
   static async registerLog({
+    id_user = null,
     id_file = null,
     file_name,
     action,
@@ -276,9 +288,9 @@ class FileController {
     try {
       await pool.promise().execute(
         `INSERT INTO file_log
-          (fk_id_file, file_name, action, status, message)
-         VALUES (?, ?, ?, ?, ?)`,
-        [id_file, file_name, action, status, message],
+          (fk_id_user, fk_id_file, file_name, action, status, message)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id_user, id_file, file_name, action, status, message],
       );
     } catch (error) {
       // Um erro ao registrar o log não deve esconder o erro original.
@@ -299,8 +311,8 @@ class FileController {
         throw new BadRequestError("O limite deve ser um número entre 1 e 500.");
       }
 
-      const conditions = [];
-      const params = [];
+      const conditions = ["fk_id_user = ?"];
+      const params = [req.userId];
 
       if (action) {
         conditions.push("action = ?");
@@ -312,9 +324,7 @@ class FileController {
         params.push(status);
       }
 
-      const where = conditions.length
-        ? `WHERE ${conditions.join(" AND ")}`
-        : "";
+      const where = `WHERE ${conditions.join(" AND ")}`;
 
       const [logs] = await pool.promise().execute(
         `SELECT id_file_log, fk_id_file, file_name,
@@ -359,12 +369,13 @@ class FileController {
 
       // Salva os dados do arquivo
       const [result] = await pool.promise().execute(
-        `INSERT INTO file (name, path, extension, size, hash, type)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-        [file.originalname, file.path, extension, file.size, hash, mimeType],
+        `INSERT INTO file (name, path, extension, size, hash, type, fk_id_user)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [file.originalname, file.path, extension, file.size, hash, mimeType, req.userId],
       );
 
       await FileController.registerLog({
+        id_user: req.userId,
         id_file: result.insertId,
         file_name: file.originalname,
         action: "upload",
@@ -374,6 +385,7 @@ class FileController {
 
       // Registra o resultado da leitura
       await FileController.registerLog({
+        id_user: req.userId,
         id_file: result.insertId,
         file_name: file.originalname,
         action: "read",
@@ -404,6 +416,7 @@ class FileController {
     } catch (error) {
       if (file) {
         await FileController.registerLog({
+          id_user: req.userId,
           file_name: file.originalname,
           action: "upload",
           status: "error",
@@ -420,7 +433,9 @@ class FileController {
       const [files] = await pool.promise().execute(
         `SELECT id_file, name, path, extension, size, hash, type
        FROM file
+       WHERE fk_id_user = ?
        ORDER BY id_file DESC`,
+        [req.userId],
       );
 
       return res.status(200).json({
@@ -438,8 +453,8 @@ class FileController {
 
       const [rows] = await pool.promise().execute(
         `SELECT id_file, name, path, extension, size, hash, type
-         FROM file WHERE id_file = ? LIMIT 1`,
-        [id_file],
+         FROM file WHERE id_file = ? AND fk_id_user = ? LIMIT 1`,
+        [id_file, req.userId],
       );
 
       if (!rows[0]) {
@@ -460,8 +475,8 @@ class FileController {
 
       const [rows] = await pool.promise().execute(
         `SELECT id_file, name, path
-         FROM file WHERE id_file = ? LIMIT 1`,
-        [id_file],
+         FROM file WHERE id_file = ? AND fk_id_user = ? LIMIT 1`,
+        [id_file, req.userId],
       );
 
       if (!rows[0]) {
@@ -475,6 +490,7 @@ class FileController {
       }
 
       await FileController.registerLog({
+        id_user: req.userId,
         id_file: file.id_file,
         file_name: file.name,
         action: "download",
@@ -485,6 +501,7 @@ class FileController {
       return res.download(file.path, file.name, (error) => {
         if (error) {
           FileController.registerLog({
+            id_user: req.userId,
             id_file: file.id_file,
             file_name: file.name,
             action: "download",
@@ -496,6 +513,7 @@ class FileController {
     } catch (error) {
       if (file) {
         await FileController.registerLog({
+          id_user: req.userId,
           id_file: file.id_file,
           file_name: file.name,
           action: "download",
@@ -516,8 +534,8 @@ class FileController {
 
       const [rows] = await pool.promise().execute(
         `SELECT id_file, name, path
-         FROM file WHERE id_file = ? LIMIT 1`,
-        [id_file],
+         FROM file WHERE id_file = ? AND fk_id_user = ? LIMIT 1`,
+        [id_file, req.userId],
       );
 
       if (!rows[0]) {
@@ -535,6 +553,7 @@ class FileController {
         .execute(`DELETE FROM file WHERE id_file = ?`, [id_file]);
 
       await FileController.registerLog({
+        id_user: req.userId,
         file_name: file.name,
         action: "delete",
         status: "success",
@@ -547,6 +566,7 @@ class FileController {
     } catch (error) {
       if (file) {
         await FileController.registerLog({
+          id_user: req.userId,
           id_file: file.id_file,
           file_name: file.name,
           action: "delete",

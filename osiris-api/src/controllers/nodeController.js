@@ -1,3 +1,5 @@
+// nodeController.js — nós dos workflows da API: criar, listar, consultar, editar e excluir.
+// Um nó só pode apontar para um workflow e um agente do próprio usuário.
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 
@@ -41,9 +43,9 @@ class NodeController {
         const [agentRows] = await pool.promise().execute(
           `SELECT id_agent
              FROM agent
-             WHERE id_agent = ?
+             WHERE id_agent = ? AND fk_id_user = ?
              LIMIT 1`,
-          [fk_id_agent],
+          [fk_id_agent, req.userId],
         );
 
         if (!agentRows[0]) {
@@ -250,9 +252,9 @@ class NodeController {
         const [agentRows] = await pool.promise().execute(
           `SELECT id_agent
              FROM agent
-             WHERE id_agent = ?
+             WHERE id_agent = ? AND fk_id_user = ?
              LIMIT 1`,
-          [fk_id_agent],
+          [fk_id_agent, req.userId],
         );
 
         if (!agentRows[0]) {

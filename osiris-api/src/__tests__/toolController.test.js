@@ -1,3 +1,5 @@
+// toolController.test.js — testes das ferramentas da API: cadastro, listagem, edição e exclusão.
+// Confere também que cada usuário só enxerga e altera as próprias ferramentas.
 jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const {
@@ -39,5 +41,17 @@ describe("ToolController", () => {
     const response = await request(app).delete("/api/osiris/tool/3").set(auth());
 
     expect(response.status).toBe(200);
+  });
+
+  it("só lista e altera ferramentas do próprio usuário", async () => {
+    const execute = mockQueries([[]], [[]]);
+
+    await request(app).get("/api/osiris/tool").set(auth(7));
+    const removed = await request(app).delete("/api/osiris/tool/3").set(auth(7));
+
+    expect(execute.mock.calls[0][0]).toContain("fk_id_user = ?");
+    expect(execute.mock.calls[0][1]).toEqual(["7"]);
+    expect(removed.status).toBe(404);
+    expect(execute.mock.calls[1][1]).toEqual(["3", "7"]);
   });
 });

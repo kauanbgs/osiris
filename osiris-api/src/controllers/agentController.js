@@ -1,3 +1,5 @@
+// agentController.js — agentes de IA da API: cadastro, ferramentas, arquivos, execução e controle de execução.
+// Cada agente pertence a um usuário (fk_id_user): ninguém vê nem mexe nos agentes de outra conta.
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 const AgentExecutionService = require("../services/agentExecutionService");
@@ -30,14 +32,15 @@ class AgentController {
 
       const [result] = await pool.promise().execute(
         `INSERT INTO agent
-          (name, objective, execution_log, system_prompt, fk_id_model)
-         VALUES (?, ?, ?, ?, ?)`,
+          (name, objective, execution_log, system_prompt, fk_id_model, fk_id_user)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           name.trim(),
           objective.trim(),
           "idle",
           system_prompt.trim(),
           fk_id_model || null,
+          req.userId,
         ],
       );
 
@@ -71,7 +74,9 @@ class AgentController {
           m.provider AS model_provider
          FROM agent a
          LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
+         WHERE a.fk_id_user = ?
          ORDER BY a.id_agent DESC`,
+        [req.userId],
       );
 
       return res.status(200).json({ agents: rows });
@@ -96,9 +101,9 @@ class AgentController {
           m.provider AS model_provider
          FROM agent a
          LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-         WHERE a.id_agent = ?
+         WHERE a.id_agent = ? AND a.fk_id_user = ?
          LIMIT 1`,
-        [id_agent],
+        [id_agent, req.userId],
       );
 
       if (!rows[0]) {
@@ -151,8 +156,9 @@ class AgentController {
 
       const [agentRows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!agentRows[0]) {
@@ -224,9 +230,9 @@ class AgentController {
           system_prompt,
           fk_id_model
          FROM agent
-         WHERE id_agent = ?
+         WHERE id_agent = ? AND fk_id_user = ?
          LIMIT 1`,
-        [id_agent],
+        [id_agent, req.userId],
       );
 
       return res.status(200).json({
@@ -244,8 +250,9 @@ class AgentController {
 
       const [agentRows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!agentRows[0]) {
@@ -275,8 +282,9 @@ class AgentController {
 
       const [agentRows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!agentRows[0]) {
@@ -285,8 +293,9 @@ class AgentController {
 
       const [toolRows] = await pool
         .promise()
-        .execute("SELECT id_tool FROM tool WHERE id_tool = ? LIMIT 1", [
+        .execute("SELECT id_tool FROM tool WHERE id_tool = ? AND fk_id_user = ? LIMIT 1", [
           fk_id_tool,
+          req.userId,
         ]);
 
       if (!toolRows[0]) {
@@ -326,8 +335,9 @@ class AgentController {
 
       const [agentRows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!agentRows[0]) {
@@ -364,9 +374,9 @@ class AgentController {
       const [agentRows] = await pool.promise().execute(
         `SELECT id_agent
          FROM agent
-         WHERE id_agent = ?
+         WHERE id_agent = ? AND fk_id_user = ?
          LIMIT 1`,
-        [id_agent],
+        [id_agent, req.userId],
       );
 
       if (!agentRows[0]) {
@@ -376,9 +386,9 @@ class AgentController {
       const [fileRows] = await pool.promise().execute(
         `SELECT id_file
          FROM file
-         WHERE id_file = ?
+         WHERE id_file = ? AND fk_id_user = ?
          LIMIT 1`,
-        [fk_id_file],
+        [fk_id_file, req.userId],
       );
 
       if (!fileRows[0]) {
@@ -423,9 +433,9 @@ class AgentController {
       const [agentRows] = await pool.promise().execute(
         `SELECT id_agent
          FROM agent
-         WHERE id_agent = ?
+         WHERE id_agent = ? AND fk_id_user = ?
          LIMIT 1`,
-        [id_agent],
+        [id_agent, req.userId],
       );
 
       if (!agentRows[0]) {
@@ -478,9 +488,9 @@ class AgentController {
         m.name AS model_name
        FROM agent a
        LEFT JOIN ai_model m ON a.fk_id_model = m.id_model
-       WHERE a.id_agent = ?
+       WHERE a.id_agent = ? AND a.fk_id_user = ?
        LIMIT 1`,
-        [id_agent],
+        [id_agent, req.userId],
       );
 
       if (!agentRows[0]) {
@@ -610,8 +620,9 @@ class AgentController {
 
       const [rows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!rows[0]) {
@@ -656,8 +667,9 @@ class AgentController {
 
       const [rows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!rows[0]) {
@@ -702,8 +714,9 @@ class AgentController {
 
       const [rows] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!rows[0]) {
@@ -748,8 +761,9 @@ class AgentController {
 
       const [agents] = await pool
         .promise()
-        .execute("SELECT id_agent FROM agent WHERE id_agent = ? LIMIT 1", [
+        .execute("SELECT id_agent FROM agent WHERE id_agent = ? AND fk_id_user = ? LIMIT 1", [
           id_agent,
+          req.userId,
         ]);
 
       if (!agents[0]) {

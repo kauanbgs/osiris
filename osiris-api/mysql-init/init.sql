@@ -1,3 +1,5 @@
+-- init.sql — cria do zero o banco do Osíris (tabelas e relações); roda só na primeira subida do MySQL.
+-- Agentes, ferramentas, arquivos e logs de arquivos têm dono (fk_id_user); bancos antigos usam a migração 001.
 CREATE DATABASE IF NOT EXISTS osiris;
 
 USE osiris;
@@ -82,7 +84,12 @@ CREATE TABLE tool (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     type VARCHAR(50),
-    active BOOLEAN NOT NULL
+    active BOOLEAN NOT NULL,
+    fk_id_user INT NULL,
+    FOREIGN KEY (fk_id_user)
+        REFERENCES `user`(id_user)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE file (
@@ -92,7 +99,12 @@ CREATE TABLE file (
     extension VARCHAR(50),
     size INT NOT NULL,
     hash VARCHAR(255) NOT NULL,
-    type VARCHAR(100) NOT NULL
+    type VARCHAR(100) NOT NULL,
+    fk_id_user INT NULL,
+    FOREIGN KEY (fk_id_user)
+        REFERENCES `user`(id_user)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE agent (
@@ -105,6 +117,11 @@ CREATE TABLE agent (
     FOREIGN KEY (fk_id_model)
         REFERENCES ai_model(id_model)
         ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    fk_id_user INT NULL,
+    FOREIGN KEY (fk_id_user)
+        REFERENCES `user`(id_user)
+        ON DELETE CASCADE
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -405,5 +422,10 @@ CREATE TABLE file_log (
     FOREIGN KEY (fk_id_file)
         REFERENCES file(id_file)
         ON DELETE SET NULL
+        ON UPDATE CASCADE,
+    fk_id_user INT NULL,
+    FOREIGN KEY (fk_id_user)
+        REFERENCES `user`(id_user)
+        ON DELETE CASCADE
         ON UPDATE CASCADE
 );

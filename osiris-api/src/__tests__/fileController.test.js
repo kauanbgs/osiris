@@ -1,3 +1,5 @@
+// fileController.test.js — testes de envio, listagem, consulta e exclusão de arquivos pela API.
+// Confere também que cada usuário só lista e baixa os próprios arquivos.
 jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const path = require("path");
@@ -185,5 +187,17 @@ describe("FileController", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.message).toBe("Arquivo excluído com sucesso.");
+  });
+
+  it("só lista e baixa arquivos do próprio usuário", async () => {
+    const execute = mockQueries([[]], [[]]);
+
+    await request(app).get("/api/osiris/file").set(auth(7));
+    const downloaded = await request(app).get("/api/osiris/file/9/download").set(auth(7));
+
+    expect(execute.mock.calls[0][0]).toContain("fk_id_user = ?");
+    expect(execute.mock.calls[0][1]).toEqual(["7"]);
+    expect(downloaded.status).toBe(404);
+    expect(execute.mock.calls[1][1]).toEqual(["9", "7"]);
   });
 });

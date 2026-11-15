@@ -1,3 +1,5 @@
+// toolController.js — ferramentas que os agentes podem usar: cadastro, listagem, edição e exclusão.
+// Cada ferramenta pertence a um usuário (fk_id_user): só o dono vê e altera as próprias ferramentas.
 const pool = require("../db/connect");
 const { BadRequestError, NotFoundError } = require("../errors");
 
@@ -21,13 +23,14 @@ class ToolController {
       const isActive = active !== undefined ? active : true;
 
       const [result] = await pool.promise().execute(
-        `INSERT INTO tool (name, description, type, active)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO tool (name, description, type, active, fk_id_user)
+         VALUES (?, ?, ?, ?, ?)`,
         [
           name.trim(),
           description ? description.trim() : null,
           type.trim(),
           isActive,
+          req.userId,
         ],
       );
 
@@ -53,11 +56,11 @@ class ToolController {
     try {
       const { active } = req.query;
 
-      let query = `SELECT id_tool, name, description, type, active FROM tool`;
-      const params = [];
+      let query = `SELECT id_tool, name, description, type, active FROM tool WHERE fk_id_user = ?`;
+      const params = [req.userId];
 
       if (active !== undefined) {
-        query += ` WHERE active = ?`;
+        query += ` AND active = ?`;
         params.push(active === "true" ? 1 : 0);
       }
 
@@ -83,9 +86,9 @@ class ToolController {
       const [rows] = await pool.promise().execute(
         `SELECT id_tool, name, description, type, active
          FROM tool
-         WHERE id_tool = ?
+         WHERE id_tool = ? AND fk_id_user = ?
          LIMIT 1`,
-        [id_tool],
+        [id_tool, req.userId],
       );
 
       if (!rows[0]) {
@@ -110,8 +113,8 @@ class ToolController {
 
       // Verify tool exists
       const [toolRows] = await pool.promise().execute(
-        `SELECT id_tool FROM tool WHERE id_tool = ? LIMIT 1`,
-        [id_tool],
+        `SELECT id_tool FROM tool WHERE id_tool = ? AND fk_id_user = ? LIMIT 1`,
+        [id_tool, req.userId],
       );
 
       if (!toolRows[0]) {
@@ -157,9 +160,9 @@ class ToolController {
       const [updatedRows] = await pool.promise().execute(
         `SELECT id_tool, name, description, type, active
          FROM tool
-         WHERE id_tool = ?
+         WHERE id_tool = ? AND fk_id_user = ?
          LIMIT 1`,
-        [id_tool],
+        [id_tool, req.userId],
       );
 
       return res.status(200).json({
@@ -180,8 +183,8 @@ class ToolController {
 
       // Verify tool exists
       const [toolRows] = await pool.promise().execute(
-        `SELECT id_tool FROM tool WHERE id_tool = ? LIMIT 1`,
-        [id_tool],
+        `SELECT id_tool FROM tool WHERE id_tool = ? AND fk_id_user = ? LIMIT 1`,
+        [id_tool, req.userId],
       );
 
       if (!toolRows[0]) {
