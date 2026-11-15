@@ -1,6 +1,6 @@
 // main.cjs — processo principal do app desktop (Electron): janela, modelos locais, terminais e arquivos.
 // Também sobe o servidor local da porta 8080, que o celular usa para o terminal e para a pasta compartilhada.
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, session } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -147,7 +147,6 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
-      webSecurity: false,
     },
   });
 
@@ -833,7 +832,24 @@ ipcMain.handle("fs:read-file", async (_, filePath) => {
 // WINDOW CONTROLS IPC HANDLERS
 // ===============================
 
+// A tela do desktop roda em file:// (ou localhost no dev) e chama a API em outro endereço.
+// Em vez de desligar a segurança do navegador inteiro, libera o CORS só nas respostas da API.
+function liberarApiNaTela() {
+  const origemApi = new URL(API_URL).origin;
+  session.defaultSession.webRequest.onHeadersReceived({ urls: [`${origemApi}/*`] }, (details, callback) => {
+    const cabecalhos = {};
+    for (const [nome, valor] of Object.entries(details.responseHeaders || {})) {
+      if (!nome.toLowerCase().startsWith("access-control-")) cabecalhos[nome] = valor;
+    }
+    cabecalhos["Access-Control-Allow-Origin"] = ["*"];
+    cabecalhos["Access-Control-Allow-Headers"] = ["Authorization, Content-Type"];
+    cabecalhos["Access-Control-Allow-Methods"] = ["GET, POST, PUT, PATCH, DELETE, OPTIONS"];
+    callback({ responseHeaders: cabecalhos });
+  });
+}
+
 app.whenReady().then(() => {
+  liberarApiNaTela();
   createWindow();
   startAiServer();
   iniciarPonteComApi();
