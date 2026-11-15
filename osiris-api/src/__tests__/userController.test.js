@@ -1,3 +1,5 @@
+// userController.test.js — testes de cadastro, login, logout e perfil do usuário.
+// O login com Google é testado com respostas simuladas do Google (token válido, falso e de outro app).
 jest.mock("../db/connect", () => ({ promise: jest.fn() }));
 
 const {
@@ -75,39 +77,87 @@ describe("UserController", () => {
     expect(res.body.error.message).toBe("Token not provided.");
   });
 
-  it("logs in an existing user via Google Auth", async () => {
-    mockQueries([[
-      { id_user: 3, name: "Google Dev", email: "google@example.com" },
-    ]]);
+  describe("login com Google", () => {
+    const idCliente = "osiris-teste.apps.googleusercontent.com";
+    let buscaGoogle;
 
-    const response = await request(app)
-      .post("/api/osiris/auth/google")
-      .send({ email: "google@example.com", name: "Google Dev" });
+    // Simula a resposta do Google para o token enviado.
+    function googleResponde(status, dados) {
+      buscaGoogle = jest.spyOn(global, "fetch").mockResolvedValue({
+        ok: status === 200,
+        status,
+        json: async () => dados,
+      });
+    }
 
-    expect(response.status).toBe(200);
-    expect(response.body.token).toBeDefined();
-    expect(response.body.user.email).toBe("google@example.com");
-  });
+    beforeEach(() => {
+      process.env.GOOGLE_CLIENT_ID = idCliente;
+    });
 
-  it("auto-provisions a new user via Google Auth", async () => {
-    mockQueries([[]], [{ insertId: 10 }]);
+    afterEach(() => {
+      delete process.env.GOOGLE_CLIENT_ID;
+      buscaGoogle?.mockRestore();
+      buscaGoogle = undefined;
+    });
 
-    const response = await request(app)
-      .post("/api/osiris/auth/google")
-      .send({ email: "newuser@example.com", name: "New Google User" });
+    const tokenValido = {
+      aud: idCliente,
+      iss: "https://accounts.google.com",
+      email: "Google@Example.com",
+      email_verified: "true",
+      name: "Google Dev",
+    };
 
-    expect(response.status).toBe(201);
-    expect(response.body.token).toBeDefined();
-    expect(response.body.user.id_user).toBe(10);
-    expect(response.body.user.email).toBe("newuser@example.com");
-  });
+    it("entra numa conta existente com token confirmado pelo Google", async () => {
+      googleResponde(200, tokenValido);
+      mockQueries([[{ id_user: 3, name: "Google Dev", email: "google@example.com" }]]);
 
-  it("rejects Google auth when email is missing", async () => {
-    const response = await request(app)
-      .post("/api/osiris/auth/google")
-      .send({});
+      const response = await request(app).post("/api/osiris/auth/google").send({ credential: "token-do-google" });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.message).toBe("Google email is required.");
+      expect(response.status).toBe(200);
+      expect(response.body.token).toBeDefined();
+      expect(response.body.user.email).toBe("google@example.com");
+      expect(buscaGoogle.mock.calls[0][0]).toContain("id_token=token-do-google");
+    });
+
+    it("cria a conta no primeiro login com Google", async () => {
+      googleResponde(200, tokenValido);
+      mockQueries([[]], [{ insertId: 10 }]);
+
+      const response = await request(app).post("/api/osiris/auth/google").send({ credential: "token-do-google" });
+
+      expect(response.status).toBe(201);
+      expect(response.body.user.id_user).toBe(10);
+    });
+
+    it("não aceita só o e-mail, sem token do Google", async () => {
+      const response = await request(app).post("/api/osiris/auth/google").send({ email: "vitima@example.com" });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("recusa token que o Google não confirma", async () => {
+      googleResponde(400, { error: "invalid_token" });
+
+      const response = await request(app).post("/api/osiris/auth/google").send({ credential: "falso" });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("recusa token emitido para outro aplicativo", async () => {
+      googleResponde(200, { ...tokenValido, aud: "outro-app.apps.googleusercontent.com" });
+
+      const response = await request(app).post("/api/osiris/auth/google").send({ credential: "token-de-outro-app" });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("recusa quando o login com Google não está configurado no servidor", async () => {
+      delete process.env.GOOGLE_CLIENT_ID;
+
+      const response = await request(app).post("/api/osiris/auth/google").send({ credential: "qualquer" });
+
+      expect(response.status).toBe(503);
+    });
   });
 });

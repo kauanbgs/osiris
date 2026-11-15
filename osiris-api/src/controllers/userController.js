@@ -1,3 +1,5 @@
+// userController.js — cadastro, login, logout e perfil do usuário da API do Osíris.
+// O login com Google só aceita tokens confirmados pelo próprio Google para o GOOGLE_CLIENT_ID do servidor.
 const crypto = require("crypto");
 let bcrypt;
 try {
@@ -9,6 +11,7 @@ const jwt = require("jsonwebtoken");
 const pool = require("../db/connect");
 const emailAlreadyExists = require("../validators/validateEmail");
 const { revokeToken } = require("../services/tokenService");
+const { verificarTokenGoogle } = require("../services/verificacaoGoogle");
 const {
   validateRegistration,
   validateLogin,
@@ -90,31 +93,10 @@ class UserController {
     }
   }
 
+  // Login com Google: o e-mail só é aceito depois de o Google confirmar o token (ver services/verificacaoGoogle.js).
   static async googleAuth(req, res, next) {
     try {
-      const { credential, email: bodyEmail, name: bodyName } = req.body;
-
-      let email = bodyEmail;
-      let name = bodyName;
-
-      if (credential) {
-        try {
-          const decoded = jwt.decode(credential);
-          if (decoded && decoded.email) {
-            email = decoded.email;
-            name = name || decoded.name || decoded.given_name || "Google User";
-          }
-        } catch {
-          // fallback to body fields
-        }
-      }
-
-      if (!email || typeof email !== "string" || !email.trim()) {
-        throw new BadRequestError("Google email is required.");
-      }
-
-      email = email.trim().toLowerCase();
-      name = (name || email.split("@")[0] || "User").trim();
+      const { email, name } = await verificarTokenGoogle(req.body?.credential);
 
       const [rows] = await pool.promise().execute(
         "SELECT id_user, name, email FROM user WHERE email = ? LIMIT 1",
