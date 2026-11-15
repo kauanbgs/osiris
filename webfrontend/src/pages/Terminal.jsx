@@ -1,4 +1,5 @@
-
+// Terminal.jsx — página Terminal do desktop: abas de terminais interativos (PowerShell/bash) pelo Electron.
+// No navegador, sem Electron, os comandos vão pela API até o app desktop logado na mesma conta.
 import { useRef, useState } from "react";
 import {
   TerminalSquare,
@@ -81,7 +82,7 @@ export default function TerminalPage() {
           ) : (
             <span className="flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-violet-300">
               <Globe size={11} />
-              REST API (Web)
+              Pelo app desktop
             </span>
           )}
         </div>
@@ -169,20 +170,23 @@ export default function TerminalPage() {
         )}
       </div>
 
-      {/* Área do terminal */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* Área do terminal: todas as abas ficam abertas; só a ativa aparece, para não encerrar os terminais */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {isElectronMode ? (
-          <ElectronTerminalPanel
-            key={activeTabId}
-            terminalId={activeTabId}
-            clearTrigger={clearTrigger}
-          />
+          tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`absolute inset-0 ${tab.id === activeTabId ? "" : "invisible pointer-events-none"}`}
+            >
+              <ElectronTerminalPanel
+                terminalId={tab.id}
+                ativo={tab.id === activeTabId}
+                clearTrigger={clearTrigger}
+              />
+            </div>
+          ))
         ) : (
-          <WebTerminalPanel
-            key={activeTabId}
-            terminalId={activeTabId}
-            clearTrigger={clearTrigger}
-          />
+          <WebTerminalPanel key={activeTabId} clearTrigger={clearTrigger} />
         )}
       </div>
     </div>

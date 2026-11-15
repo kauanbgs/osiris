@@ -1,4 +1,5 @@
-
+// ElectronTerminalPanel.jsx — terminal interativo de uma aba da página Terminal (xterm.js ligado ao PowerShell/bash).
+// Fica aberto mesmo com a aba escondida; só reajusta o tamanho e o foco quando a aba volta a aparecer.
 import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -6,18 +7,38 @@ import "@xterm/xterm/css/xterm.css";
 
 export default function ElectronTerminalPanel({
   terminalId,
+  ativo = true,
   clearTrigger = 0,
 }) {
   const containerRef = useRef(null);
   const xtermRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const fitAddonRef = useRef(null);
+  const ativoRef = useRef(ativo);
 
-  // Limpar terminal pelo botão da página
+  // Guarda se a aba está aparecendo, para os callbacks do terminal consultarem
   useEffect(() => {
-    if (clearTrigger > 0 && xtermRef.current) {
+    ativoRef.current = ativo;
+  }, [ativo]);
+
+  // Limpar terminal pelo botão da página (só a aba que está aparecendo)
+  useEffect(() => {
+    if (clearTrigger > 0 && ativoRef.current && xtermRef.current) {
       xtermRef.current.clear();
     }
   }, [clearTrigger]);
+
+  // Ao voltar para a aba, reajusta o tamanho e devolve o foco ao terminal
+  useEffect(() => {
+    if (!ativo || !xtermRef.current) return;
+    try {
+      fitAddonRef.current?.fit();
+      window.electronAPI?.terminalResize?.(terminalId, xtermRef.current.cols, xtermRef.current.rows);
+    } catch {
+      // o painel ainda não tem tamanho
+    }
+    xtermRef.current.focus();
+  }, [ativo, terminalId]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -45,10 +66,12 @@ export default function ElectronTerminalPanel({
     xterm.open(containerRef.current);
 
     xtermRef.current = xterm;
+    fitAddonRef.current = fitAddon;
 
     // Ajustar tamanho do terminal
     function ajustarTerminal() {
-      if (disposed) return;
+      // Aba escondida não tem tamanho: ajusta quando ela voltar a aparecer.
+      if (disposed || !ativoRef.current) return;
 
       try {
         fitAddon.fit();
@@ -133,11 +156,11 @@ export default function ElectronTerminalPanel({
     // Ajustar e ativar o teclado
     const fitTimer = setTimeout(() => {
       ajustarTerminal();
-      xterm.focus();
+      if (ativoRef.current) xterm.focus();
     }, 100);
 
     const focusFrame = requestAnimationFrame(() => {
-      xterm.focus();
+      if (ativoRef.current) xterm.focus();
     });
 
     // Remover recursos ao sair da página
@@ -164,6 +187,7 @@ export default function ElectronTerminalPanel({
 
       xterm.dispose();
       xtermRef.current = null;
+      fitAddonRef.current = null;
     };
   }, [terminalId]);
 

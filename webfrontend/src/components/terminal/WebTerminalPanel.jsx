@@ -1,3 +1,5 @@
+// WebTerminalPanel.jsx — terminal da página Terminal quando o app roda no navegador, fora do Electron.
+// O comando vai para a API, que o repassa ao app desktop logado na mesma conta: ele roda no PC, nunca no servidor.
 import { useState, useRef, useEffect, useCallback } from "react";
 import sheets from "@/services/api";
 import { Terminal, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
@@ -9,23 +11,25 @@ const QUICK_COMMANDS = [
   { label: "System Info", cmd: "systeminfo" },
 ];
 
-export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
+export default function WebTerminalPanel({ clearTrigger = 0 }) {
   const [history, setHistory] = useState([
     {
       id: "welcome-1",
       type: "system",
-      text: "Osíris Terminal — Conectado à API Local (Modo REST)",
+      text: "Osíris Terminal — os comandos rodam no seu PC pelo app desktop",
     },
     {
       id: "welcome-2",
       type: "system",
-      text: "Digite qualquer comando do sistema ou clique nos comandos rápidos.",
+      text: "Deixe o app desktop aberto e logado nesta conta. Comandos destrutivos são bloqueados.",
     },
   ]);
   const [command, setCommand] = useState("");
   const [loading, setLoading] = useState(false);
   const [cmdHistory, setCmdHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  // Pasta atual do terminal no PC (muda com "cd"; cada comando roda num processo separado).
+  const [pasta, setPasta] = useState(null);
 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -37,18 +41,12 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
     }
   }, [history, loading]);
 
-  // Clear trigger from header
-  useEffect(() => {
-    if (clearTrigger > 0) {
-      setHistory([
-        {
-          id: `clear-${Date.now()}`,
-          type: "system",
-          text: "Terminal limpo.",
-        },
-      ]);
-    }
-  }, [clearTrigger]);
+  // Botão "Limpar" da página: ajusta o histórico quando o contador muda (sem efeito colateral).
+  const [ultimaLimpeza, setUltimaLimpeza] = useState(clearTrigger);
+  if (clearTrigger !== ultimaLimpeza) {
+    setUltimaLimpeza(clearTrigger);
+    setHistory([{ id: `clear-${clearTrigger}`, type: "system", text: "Terminal limpo." }]);
+  }
 
   const executeCommand = useCallback(
     async (rawCmd) => {
@@ -71,10 +69,12 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
         const response = await sheets.terminalExecute({
           command: trimmed,
           timeout_ms: 30000,
+          cwd: pasta,
         });
 
         const data = response.data || {};
         const newEntries = [];
+        if (typeof data.pasta === "string") setPasta(data.pasta);
 
         if (data.stdout) {
           newEntries.push({
@@ -93,11 +93,11 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
         }
 
         if (!data.stdout && !data.stderr) {
-          newEntries.push({
-            id: `done-${Date.now()}`,
-            type: "success",
-            text: "Comando executado com sucesso (sem retorno de texto).",
-          });
+          newEntries.push(
+            data.exit_code && data.exit_code !== 0
+              ? { id: `done-${Date.now()}`, type: "stderr", text: `Comando terminou com erro (código ${data.exit_code}).` }
+              : { id: `done-${Date.now()}`, type: "success", text: "Comando executado com sucesso (sem retorno de texto)." },
+          );
         }
 
         setHistory((prev) => [...prev, ...newEntries]);
@@ -121,7 +121,7 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
-    [command, loading]
+    [command, loading, pasta]
   );
 
   const handleKeyDown = (e) => {
@@ -234,7 +234,7 @@ export default function WebTerminalPanel({ terminalId, clearTrigger = 0 }) {
         {loading && (
           <div className="flex items-center gap-2 text-violet-400 text-xs py-1">
             <Loader2 size={14} className="animate-spin" />
-            <span>Executando comando no backend...</span>
+            <span>Executando comando no seu PC...</span>
           </div>
         )}
       </div>
