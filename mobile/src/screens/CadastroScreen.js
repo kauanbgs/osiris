@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   View,
   Text,
   TextInput,
@@ -11,7 +12,7 @@ import {
   StatusBar,
 } from "react-native";
 import { Octicons } from "@expo/vector-icons";
-import DotField from "../components/DotField";
+import AuthBackground from "../components/AuthBackground";
 import api from "../services/api";
 import { createThemedStyles, useTheme, useThemeColor } from "../theme";
 
@@ -90,16 +91,7 @@ export default function Cadastro({ navigation }) {
     >
       <StatusBar barStyle={statusBarStyle} backgroundColor={themeColor("#121212")} />
 
-      <DotField
-        dotRadius={1.5}
-        dotSpacing={22}
-        bulgeStrength={26}
-        touchRadius={110}
-        glowRadius={90}
-        gradientFrom={themeColor("#8A56FF")}
-        gradientTo={themeColor("#BB86FC")}
-        glowColor={themeColor("#8A56FF")}
-      />
+      <AuthBackground />
 
       <ScrollView
         style={styles.scroll}
@@ -108,6 +100,12 @@ export default function Cadastro({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
+          <Image
+            source={require("../../assets/splash-icon.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
           <Text style={styles.title}>Osíris</Text>
 
           <View style={styles.card}>
@@ -284,6 +282,14 @@ const useStyles = createThemedStyles({
     zIndex: 1,
   },
 
+  // A logo é branca; o tint faz ela seguir a cor do texto do tema.
+  logo: {
+    width: 72,
+    height: 72,
+    tintColor: "#fefefe",
+    marginBottom: 12,
+    zIndex: 1,
+  },
   title: {
     fontFamily: "JetBrainsMono_400Regular",
     fontSize: 48,
